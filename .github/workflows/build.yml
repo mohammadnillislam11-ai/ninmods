@@ -38,15 +38,15 @@ jobs:
         run: |
           keytool -genkey -v -keystore release.keystore -alias ninmods -keyalg RSA -keysize 2048 -validity 10000 -storepass ninmods123 -keypass ninmods123 -dname "CN=NINMODS, OU=Mobile, O=NIN, L=Dhaka, S=Dhaka, C=BD"
           $ANDROID_HOME/build-tools/34.0.0/zipalign -p -f 4 app/build/outputs/apk/debug/app-debug.apk main_aligned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V43.apk" main_aligned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V43.apk"
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V45.apk" main_aligned.apk
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V45.apk"
 
       - name: Fetch Latest Loader APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p loader_tmp
-          gh release download --repo mohammadnillislam11-ai/ninmods-kernel-builder --pattern "NINMODS_Driver_Loader.apk" --dir loader_tmp 2>/dev/null && cp loader_tmp/NINMODS_Driver_Loader.apk Loader_V41.apk || curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "Loader_V41.apk" || echo "Loader download fallback"
+          gh release download --repo mohammadnillislam11-ai/ninmods-kernel-builder --pattern "NINMODS_Driver_Loader.apk" --dir loader_tmp 2>/dev/null && cp loader_tmp/NINMODS_Driver_Loader.apk Loader_V45.apk || curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "Loader_V45.apk" || echo "Loader download fallback"
           ls -la *.apk
 
       - name: Upload APK Artifacts
@@ -54,8 +54,8 @@ jobs:
         with:
           name: NINMODS-Release-APKs
           path: |
-            Main_V43.apk
-            Loader_V41.apk
+            Main_V45.apk
+            Loader_V45.apk
 
       - name: Create GitHub Release and Upload Both APKs
         env:
@@ -67,10 +67,10 @@ jobs:
             gh release delete "$old_tag" --yes --cleanup-tag || true
           done
 
-          RELEASE_TAG="v43.0-$(date +'%Y%m%d%H%M%S')"
-          ASSETS="Main_V43.apk"
-          if [ -f "Loader_V41.apk" ]; then
-            ASSETS="Main_V43.apk Loader_V41.apk"
+          RELEASE_TAG="v45.0-$(date +'%Y%m%d%H%M%S')"
+          ASSETS="Main_V45.apk"
+          if [ -f "Loader_V45.apk" ]; then
+            ASSETS="Main_V45.apk Loader_V45.apk"
           fi
           gh release create "$RELEASE_TAG" \
             $ASSETS \
