@@ -4,6 +4,7 @@
 #include <android/log.h>
 #include "GameOffsets.h"
 #include "DriverClient.h"
+#include "EntityScanner.h"
 #include "UnityTransform.h"
 #include "Unity/Vector3.hpp"
 #include "Unity/Quaternion.h"
@@ -26,7 +27,13 @@ static void ResetFeatureState() {
 }
 
 static inline bool IsValidPtr(uint64_t ptr, bool is64) {
-    if (is64) return ptr >= 0x10000000ULL && ptr <= 0x00007FFFFFFFF000ULL && ((ptr & 3ULL) == 0ULL);
+    if (ptr == 0) return false;
+    if (is64) {
+        if (ptr < 0x10000000ULL || ptr > 0x00007FFFFFFFF000ULL) return false;
+        if ((ptr & 3ULL) != 0ULL) return false;
+        if ((ptr & 0xFFFFFFFFULL) == 0ULL) return false;
+        return true;
+    }
     return ptr >= 0x10000ULL && ptr <= 0xFFFFFFFCULL && ((ptr & 3ULL) == 0ULL);
 }
 
@@ -194,51 +201,19 @@ Java_com_ninmods_menu_ipc_DriverBridge_nativeUpdateCombat(
         return;
     }
 
-    uint64_t facade = ReadPtr(s_driverFd, h, base + off->gameFacade, is64);
-    if (!IsValidPtr(facade, is64) && off->gameFacadeInd != 0) {
-        facade = ReadPtr(s_driverFd, h, base + off->gameFacadeInd, is64);
-    }
-    if (!IsValidPtr(facade, is64)) {
-        static const uint64_t kCandidateCombatFacades[] = {
-            0x0AD6DC18ULL, 0x0AD68E18ULL, 0x0AD3532CULL, 0x0AD6DE18ULL, 0x0AD6EE18ULL, 0x0AD6CE18ULL, 0x0A3532CULL
-        };
-        for (uint64_t cand : kCandidateCombatFacades) {
-            uint64_t test = ReadPtr(s_driverFd, h, base + cand, is64);
-            if (IsValidPtr(test, is64)) {
-                facade = test;
-                break;
-            }
-        }
-    }
-    if (!IsValidPtr(facade, is64)) {
-        if (s_lastLocalPlayer != 0) RevertCombatFeatures(s_driverFd, h);
-        return;
-    }
-
-    uint64_t stClass = ReadPtr(s_driverFd, h, facade + off->staticClassField, is64);
-    uint64_t baseGame = IsValidPtr(stClass, is64) ? stClass : facade;
+    uint64_t resBase = base;
+    uint64_t facade = 0;
     uint64_t match = 0;
-    if (IsValidPtr(stClass, is64)) {
-        match = ReadPtr(s_driverFd, h, stClass + off->currentMatch, is64);
-    }
-    if (!IsValidPtr(match, is64)) {
-        match = ReadPtr(s_driverFd, h, facade + off->currentMatch, is64);
-    }
-    if (!IsValidPtr(match, is64) && IsValidPtr(stClass, is64)) {
-        uint64_t derefStClass = ReadPtr(s_driverFd, h, stClass, is64);
-        if (IsValidPtr(derefStClass, is64)) {
-            match = ReadPtr(s_driverFd, h, derefStClass + off->currentMatch, is64);
-        }
-    }
-    if (!IsValidPtr(match, is64) && off->currentMatchFallback != 0) {
-        if (IsValidPtr(stClass, is64)) match = ReadPtr(s_driverFd, h, stClass + off->currentMatchFallback, is64);
-        if (!IsValidPtr(match, is64)) match = ReadPtr(s_driverFd, h, facade + off->currentMatchFallback, is64);
-    }
-    if (!IsValidPtr(match, is64)) {
+    if (!ResolveGamePointers(pid, h, s_driverFd, off, is64, resBase, facade, match) || match == 0) {
         if (s_lastLocalPlayer != 0) RevertCombatFeatures(s_driverFd, h);
         return;
     }
+    base = resBase;
+
     uint64_t lp = ReadPtr(s_driverFd, h, match + off->localPlayer, is64);
+    if (!IsValidPtr(lp, is64) && off->localPlayerFallback != 0) {
+        lp = ReadPtr(s_driverFd, h, match + off->localPlayerFallback, is64);
+    }
     if (!IsValidPtr(lp, is64)) {
         if (s_lastLocalPlayer != 0) RevertCombatFeatures(s_driverFd, h);
         return;

@@ -4,9 +4,20 @@
 #include "UnityTransform.h"
 #include <algorithm>
 #include <cmath>
+#include <vector>
+#include <cstdio>
+#include <cstring>
 
 static inline bool IsValidPtr(uint64_t ptr, bool is64) {
-    if (is64) return ptr >= 0x10000000ULL && ptr <= 0x00007FFFFFFFF000ULL && ((ptr & 3ULL) == 0ULL);
+    if (ptr == 0) return false;
+    if (is64) {
+        if (ptr < 0x10000000ULL || ptr > 0x00007FFFFFFFF000ULL) return false;
+        if ((ptr & 3ULL) != 0ULL) return false;
+        // CRITICAL: ARM64 heap/object pointers never have lower 32-bits all zero.
+        // Rejects float/integer constants such as 0x40300000000.
+        if ((ptr & 0xFFFFFFFFULL) == 0ULL) return false;
+        return true;
+    }
     return ptr >= 0x10000ULL && ptr <= 0xFFFFFFFCULL && ((ptr & 3ULL) == 0ULL);
 }
 
@@ -23,15 +34,146 @@ static inline uint64_t ReadPtr(int fd, uint64_t handle, uint64_t addr, bool is64
     return static_cast<uint64_t>(ReadMem<uint32_t>(fd, handle, addr));
 }
 
+static inline bool IsElfHeader(int fd, uint64_t handle, uint64_t addr) {
+    if (addr == 0) return false;
+    unsigned char magic[4] = {0};
+    if (!DriverRead(fd, handle, addr, magic, 4)) return false;
+    return (magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F');
+}
+
 static const uint64_t kCandidateFacades[] = {
-    0x0AD6DC18ULL,
-    0x0AD68E18ULL,
-    0x0AD3532CULL,
+    0x0AD6DC18ULL, // Free Fire MAX & Global Primary
+    0x0AD68E18ULL, // Free Fire MAX & Global Secondary
+    0x0A984D48ULL, // OB53 / Bull_Team Updated Facade
+    0x0C2132B8ULL, // Legacy Treasure Facade
+    0x0AD5B288ULL, // Alternate 1.120
+    0x0AD3532CULL, // Alternate 1.119
     0x0AD6DE18ULL,
     0x0AD6EE18ULL,
     0x0AD6CE18ULL,
     0x0A3532CULL
 };
+
+static std::vector<uint64_t> GetCandidateBases(int pid, uint64_t handle, int driverFd, uint64_t primaryBase) {
+    std::vector<uint64_t> bases;
+    if (primaryBase != 0) bases.push_back(primaryBase);
+
+    const char* paths[] = {
+        "/data/data/com.ninmods.menu/cache/maps",
+        "/data/user/0/com.ninmods.menu/cache/maps",
+        nullptr
+    };
+    char procPath[64];
+    snprintf(procPath, sizeof(procPath), "/proc/%d/maps", pid);
+
+    FILE* fp = fopen(procPath, "r");
+    if (!fp) {
+        for (int i = 0; paths[i] != nullptr; ++i) {
+            fp = fopen(paths[i], "r");
+            if (fp) break;
+        }
+    }
+
+    if (fp) {
+        char line[512];
+        while (fgets(line, sizeof(line), fp)) {
+            if (strstr(line, "libil2cpp.so")) {
+                unsigned long long start = 0;
+                if (sscanf(line, "%llx-", &start) == 1 && start != 0) {
+                    uint64_t addr = static_cast<uint64_t>(start);
+                    if (IsElfHeader(driverFd, handle, addr)) {
+                        bool exists = false;
+                        for (uint64_t b : bases) {
+                            if (b == addr) { exists = true; break; }
+                        }
+                        if (!exists) bases.push_back(addr);
+                    }
+                }
+            }
+        }
+        fclose(fp);
+    }
+
+    return bases;
+}
+
+bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffsets* off, bool is64,
+                         uint64_t& inOutBase, uint64_t& outFacade, uint64_t& outMatch) {
+    if (!off || handle == 0) return false;
+
+    std::vector<uint64_t> bases = GetCandidateBases(pid, handle, driverFd, inOutBase);
+    if (bases.empty() && inOutBase != 0) bases.push_back(inOutBase);
+    if (bases.empty()) return false;
+
+    uint64_t bestBase = 0;
+    uint64_t bestFacade = 0;
+    uint64_t bestMatch = 0;
+
+    for (uint64_t testBase : bases) {
+        for (uint64_t cand : kCandidateFacades) {
+            uint64_t candFacade = ReadPtr(driverFd, handle, testBase + cand, is64);
+            if (!IsValidPtr(candFacade, is64)) continue;
+
+            // Structure A: candFacade is Il2CppClass* (holds static fields)
+            uint64_t stClass = ReadPtr(driverFd, handle, candFacade + off->staticClassField, is64);
+            if (IsValidPtr(stClass, is64)) {
+                uint64_t m = ReadPtr(driverFd, handle, stClass + off->currentMatch, is64);
+                if (!IsValidPtr(m, is64) && off->currentMatchFallback != 0) {
+                    m = ReadPtr(driverFd, handle, stClass + off->currentMatchFallback, is64);
+                }
+                uint64_t curGame = ReadPtr(driverFd, handle, stClass + 0x0ULL, is64);
+                if (!IsValidPtr(m, is64) && IsValidPtr(curGame, is64)) {
+                    m = ReadPtr(driverFd, handle, curGame + 0x90ULL, is64);
+                }
+
+                if (IsValidPtr(m, is64)) {
+                    inOutBase = testBase;
+                    outFacade = candFacade;
+                    outMatch = m;
+                    return true;
+                }
+
+                if (IsValidPtr(curGame, is64) && bestFacade == 0) {
+                    bestBase = testBase;
+                    bestFacade = candFacade;
+                    bestMatch = 0;
+                }
+            }
+
+            // Structure B: candFacade is direct singleton instance
+            uint64_t directMatch = ReadPtr(driverFd, handle, candFacade + off->currentMatch, is64);
+            if (!IsValidPtr(directMatch, is64) && off->currentMatchFallback != 0) {
+                directMatch = ReadPtr(driverFd, handle, candFacade + off->currentMatchFallback, is64);
+            }
+            uint64_t directGame = ReadPtr(driverFd, handle, candFacade + 0x0ULL, is64);
+            if (!IsValidPtr(directMatch, is64) && IsValidPtr(directGame, is64)) {
+                directMatch = ReadPtr(driverFd, handle, directGame + 0x90ULL, is64);
+            }
+
+            if (IsValidPtr(directMatch, is64)) {
+                inOutBase = testBase;
+                outFacade = candFacade;
+                outMatch = directMatch;
+                return true;
+            }
+
+            if (IsValidPtr(directGame, is64) && bestFacade == 0) {
+                bestBase = testBase;
+                bestFacade = candFacade;
+                bestMatch = 0;
+            }
+        }
+    }
+
+    if (bestFacade != 0) {
+        inOutBase = bestBase;
+        outFacade = bestFacade;
+        outMatch = bestMatch;
+        return true;
+    }
+
+    return false;
+}
 
 static bool ReadCamMatrix(int fd, uint64_t handle, const GameOffsets* off, uint64_t lp, bool is64, Matrix4x4& outM) {
     if (lp == 0 || !off) return false;
@@ -84,6 +226,9 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
     bool needRefresh = (facade == 0 || match == 0 || (++s_cacheFrames > 60));
     if (!needRefresh) {
         uint64_t testLp = ReadPtr(driverFd, handle, match + off->localPlayer, is64);
+        if (!IsValidPtr(testLp, is64) && off->localPlayerFallback != 0) {
+            testLp = ReadPtr(driverFd, handle, match + off->localPlayerFallback, is64);
+        }
         if (!IsValidPtr(testLp, is64)) {
             needRefresh = true;
         }
@@ -91,65 +236,30 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
 
     if (needRefresh) {
         s_cacheFrames = 0;
-        facade = ReadPtr(driverFd, handle, base + off->gameFacade, is64);
-        if (!IsValidPtr(facade, is64) && off->gameFacadeInd != 0) {
-            facade = ReadPtr(driverFd, handle, base + off->gameFacadeInd, is64);
-        }
-        if (!IsValidPtr(facade, is64)) {
-            for (uint64_t cand : kCandidateFacades) {
-                uint64_t test = ReadPtr(driverFd, handle, base + cand, is64);
-                if (IsValidPtr(test, is64)) {
-                    facade = test;
-                    break;
-                }
-            }
-        }
-        if (!IsValidPtr(facade, is64)) {
+        uint64_t resBase = base;
+        uint64_t resFacade = 0;
+        uint64_t resMatch = 0;
+
+        bool resolved = ResolveGamePointers(pid, handle, driverFd, off, is64, resBase, resFacade, resMatch);
+        if (resolved) {
+            base = resBase;
+            facade = resFacade;
+            match = resMatch;
+            s_cachedBase = base;
+            s_cachedFacade = facade;
+            s_cachedMatch = match;
+            if (outDiag) outDiag->libBase = base;
+        } else {
             s_cachedFacade = 0;
             s_cachedMatch = 0;
             s_cachedDict = 0;
             s_cachedValuesBase = 0;
-            if (outDiag) outDiag->gameFacade = 0;
-            return 0;
-        }
-
-        uint64_t stClass = ReadPtr(driverFd, handle, facade + off->staticClassField, is64);
-        uint64_t baseGame = IsValidPtr(stClass, is64) ? stClass : facade;
-
-        match = 0;
-        if (IsValidPtr(stClass, is64)) {
-            match = ReadPtr(driverFd, handle, stClass + off->currentMatch, is64);
-        }
-        if (!IsValidPtr(match, is64)) {
-            match = ReadPtr(driverFd, handle, facade + off->currentMatch, is64);
-        }
-        if (!IsValidPtr(match, is64) && IsValidPtr(stClass, is64)) {
-            uint64_t derefStClass = ReadPtr(driverFd, handle, stClass, is64);
-            if (IsValidPtr(derefStClass, is64)) {
-                match = ReadPtr(driverFd, handle, derefStClass + off->currentMatch, is64);
-            }
-        }
-        if (!IsValidPtr(match, is64) && off->currentMatchFallback != 0) {
-            if (IsValidPtr(stClass, is64)) match = ReadPtr(driverFd, handle, stClass + off->currentMatchFallback, is64);
-            if (!IsValidPtr(match, is64)) match = ReadPtr(driverFd, handle, facade + off->currentMatchFallback, is64);
-        }
-        if (!IsValidPtr(match, is64)) {
-            s_cachedFacade = facade;
-            s_cachedMatch = 0;
-            s_cachedDict = 0;
-            s_cachedValuesBase = 0;
             if (outDiag) {
-                outDiag->gameFacade = facade;
+                outDiag->gameFacade = 0;
                 outDiag->matchPtr = 0;
             }
             return 0;
         }
-        if (s_cachedMatch != match) {
-            s_cachedDict = 0;
-            s_cachedValuesBase = 0;
-        }
-        s_cachedFacade = facade;
-        s_cachedMatch = match;
     }
 
     if (outDiag) {
@@ -157,8 +267,16 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
         outDiag->matchPtr = match;
     }
 
+    if (match == 0) {
+        return 0;
+    }
+
+
     static uint64_t s_savedLocal = 0;
     uint64_t liveLocal = ReadPtr(driverFd, handle, match + off->localPlayer, is64);
+    if (!IsValidPtr(liveLocal, is64) && off->localPlayerFallback != 0) {
+        liveLocal = ReadPtr(driverFd, handle, match + off->localPlayerFallback, is64);
+    }
     if (IsValidPtr(liveLocal, is64)) s_savedLocal = liveLocal;
     uint64_t localPlayer = IsValidPtr(liveLocal, is64) ? liveLocal : s_savedLocal;
     if (outDiag) outDiag->localPlayer = localPlayer;
@@ -175,6 +293,10 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
         dictCount = dict ? ReadMem<int>(driverFd, handle, dict + off->dictCount) : 0;
         if (dictCount <= 0 && off->entityListFallback != 0) {
             dict = ReadPtr(driverFd, handle, match + off->entityListFallback, is64);
+            dictCount = dict ? ReadMem<int>(driverFd, handle, dict + off->dictCount) : 0;
+        }
+        if (dictCount <= 0) {
+            dict = ReadPtr(driverFd, handle, match + 0x68ULL, is64);
             dictCount = dict ? ReadMem<int>(driverFd, handle, dict + off->dictCount) : 0;
         }
         if (dictCount > 0 && dictCount <= 200) {

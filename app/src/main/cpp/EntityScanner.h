@@ -28,3 +28,16 @@ int ScanAndComputeEsp(
     ScanDiagnostics* outDiag,
     float aimFov = 0.0f
 );
+
+struct GameOffsets;
+
+bool ResolveGamePointers(
+    int pid,
+    uint64_t handle,
+    int driverFd,
+    const GameOffsets* off,
+    bool is64,
+    uint64_t& inOutBase,
+    uint64_t& outFacade,
+    uint64_t& outMatch
+);

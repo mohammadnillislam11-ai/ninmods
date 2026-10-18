@@ -11,6 +11,7 @@ struct GameOffsets {
   uint64_t entityList;
   uint64_t entityListFallback;
   uint64_t localPlayer;
+  uint64_t localPlayerFallback;
   uint64_t dictValues;
   uint64_t dictCount;
   uint64_t entryValue;
@@ -62,6 +63,7 @@ static const GameOffsets kOffsetsFFMax = {
     .entityList = 0x148ULL,
     .entityListFallback = 0xC0ULL,
     .localPlayer = 0xD8ULL,
+    .localPlayerFallback = 0x94ULL,
     .dictValues = 0x18ULL,
     .dictCount = 0x20ULL,
     .entryValue = 0x10ULL,
@@ -112,6 +114,7 @@ static const GameOffsets kOffsetsFFGlobal = {
     .entityList = 0x148ULL,
     .entityListFallback = 0xC0ULL,
     .localPlayer = 0xD8ULL,
+    .localPlayerFallback = 0x94ULL,
     .dictValues = 0x18ULL,
     .dictCount = 0x20ULL,
     .entryValue = 0x10ULL,
