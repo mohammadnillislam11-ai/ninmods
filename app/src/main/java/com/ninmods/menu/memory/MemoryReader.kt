@@ -110,7 +110,7 @@ object MemoryReader {
                 cachedBase = b
                 return b
             }
-        }kaj korbe 
+        }
 
         // 2. Root Maps Shell Fallback (using su to read /proc/<pid>/maps directly)
         try {
