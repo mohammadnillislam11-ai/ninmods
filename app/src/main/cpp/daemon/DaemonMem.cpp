@@ -299,7 +299,7 @@ uint64_t MasterMem::GetModuleBase(const char* name) {
         fclose(fp);
 
         static const uint64_t kCandOffsets[] = {
-            0x0AD6DC18ULL, 0x0AD68E18ULL, 0x0A984D48ULL, 0x0C2132B8ULL, 0x0AD5B288ULL, 0x0AD3532CULL
+            0x0A984D48ULL, 0x0AD6DC18ULL, 0x0AD68E18ULL, 0x0C2132B8ULL, 0x0AD5B288ULL, 0x0AD3532CULL
         };
 
         for (int i = 0; i < elfCount; ++i) {

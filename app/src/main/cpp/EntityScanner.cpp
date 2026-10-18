@@ -42,9 +42,9 @@ static inline bool IsElfHeader(int fd, uint64_t handle, uint64_t addr) {
 }
 
 static const uint64_t kCandidateFacades[] = {
-    0x0AD6DC18ULL, // Free Fire MAX & Global Primary
-    0x0AD68E18ULL, // Free Fire MAX & Global Secondary
-    0x0A984D48ULL, // OB53 / Bull_Team Updated Facade
+    0x0A984D48ULL, // Free Fire Normal (com.dts.freefireth) Primary - Bull_Team & treasure
+    0x0AD6DC18ULL, // Free Fire MAX (com.dts.freefirethmax) Primary - CROSS SRC
+    0x0AD68E18ULL, // Free Fire MAX Secondary - CROSS SRC
     0x0C2132B8ULL, // Legacy Treasure Facade
     0x0AD5B288ULL, // Alternate 1.120
     0x0AD3532CULL, // Alternate 1.119
@@ -98,7 +98,7 @@ static std::vector<uint64_t> GetCandidateBases(int pid, uint64_t handle, int dri
 }
 
 bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffsets* off, bool is64,
-                         uint64_t& inOutBase, uint64_t& outFacade, uint64_t& outMatch) {
+                         uint64_t& inOutBase, uint64_t& outFacade, uint64_t& outMatch, uint64_t* outBaseGame) {
     if (!off || handle == 0) return false;
 
     std::vector<uint64_t> bases = GetCandidateBases(pid, handle, driverFd, inOutBase);
@@ -108,6 +108,7 @@ bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffse
     uint64_t bestBase = 0;
     uint64_t bestFacade = 0;
     uint64_t bestMatch = 0;
+    uint64_t bestBaseGame = 0;
 
     for (uint64_t testBase : bases) {
         for (uint64_t cand : kCandidateFacades) {
@@ -117,43 +118,63 @@ bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffse
             // Structure A: candFacade is Il2CppClass* (holds static fields)
             uint64_t stClass = ReadPtr(driverFd, handle, candFacade + off->staticClassField, is64);
             if (IsValidPtr(stClass, is64)) {
-                uint64_t m = ReadPtr(driverFd, handle, stClass + off->currentMatch, is64);
+                // Bull_Team & CROSS SRC: BaseGame is at stClass + 0x8 or stClass + 0x0
+                uint64_t baseGame = ReadPtr(driverFd, handle, stClass + 0x8ULL, is64);
+                if (!IsValidPtr(baseGame, is64)) {
+                    baseGame = ReadPtr(driverFd, handle, stClass + 0x0ULL, is64);
+                }
+
+                uint64_t m = 0;
+                if (IsValidPtr(baseGame, is64)) {
+                    m = ReadPtr(driverFd, handle, baseGame + 0x90ULL, is64);
+                    if (!IsValidPtr(m, is64)) m = ReadPtr(driverFd, handle, baseGame + 0x930ULL, is64);
+                    if (!IsValidPtr(m, is64)) m = ReadPtr(driverFd, handle, baseGame + 0x8ULL, is64);
+                }
+
+                if (!IsValidPtr(m, is64)) {
+                    m = ReadPtr(driverFd, handle, stClass + off->currentMatch, is64);
+                }
                 if (!IsValidPtr(m, is64) && off->currentMatchFallback != 0) {
                     m = ReadPtr(driverFd, handle, stClass + off->currentMatchFallback, is64);
-                }
-                uint64_t curGame = ReadPtr(driverFd, handle, stClass + 0x0ULL, is64);
-                if (!IsValidPtr(m, is64) && IsValidPtr(curGame, is64)) {
-                    m = ReadPtr(driverFd, handle, curGame + 0x90ULL, is64);
                 }
 
                 if (IsValidPtr(m, is64)) {
                     inOutBase = testBase;
                     outFacade = candFacade;
                     outMatch = m;
+                    if (outBaseGame) *outBaseGame = IsValidPtr(baseGame, is64) ? baseGame : stClass;
                     return true;
                 }
 
-                if (IsValidPtr(curGame, is64) && bestFacade == 0) {
+                if (IsValidPtr(baseGame, is64) && bestFacade == 0) {
                     bestBase = testBase;
                     bestFacade = candFacade;
                     bestMatch = 0;
+                    bestBaseGame = baseGame;
                 }
             }
 
             // Structure B: candFacade is direct singleton instance
-            uint64_t directMatch = ReadPtr(driverFd, handle, candFacade + off->currentMatch, is64);
+            uint64_t directGame = ReadPtr(driverFd, handle, candFacade + 0x8ULL, is64);
+            if (!IsValidPtr(directGame, is64)) directGame = ReadPtr(driverFd, handle, candFacade + 0x0ULL, is64);
+
+            uint64_t directMatch = 0;
+            if (IsValidPtr(directGame, is64)) {
+                directMatch = ReadPtr(driverFd, handle, directGame + 0x90ULL, is64);
+                if (!IsValidPtr(directMatch, is64)) directMatch = ReadPtr(driverFd, handle, directGame + 0x930ULL, is64);
+            }
+            if (!IsValidPtr(directMatch, is64)) {
+                directMatch = ReadPtr(driverFd, handle, candFacade + off->currentMatch, is64);
+            }
             if (!IsValidPtr(directMatch, is64) && off->currentMatchFallback != 0) {
                 directMatch = ReadPtr(driverFd, handle, candFacade + off->currentMatchFallback, is64);
-            }
-            uint64_t directGame = ReadPtr(driverFd, handle, candFacade + 0x0ULL, is64);
-            if (!IsValidPtr(directMatch, is64) && IsValidPtr(directGame, is64)) {
-                directMatch = ReadPtr(driverFd, handle, directGame + 0x90ULL, is64);
             }
 
             if (IsValidPtr(directMatch, is64)) {
                 inOutBase = testBase;
                 outFacade = candFacade;
                 outMatch = directMatch;
+                if (outBaseGame) *outBaseGame = IsValidPtr(directGame, is64) ? directGame : candFacade;
                 return true;
             }
 
@@ -161,6 +182,7 @@ bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffse
                 bestBase = testBase;
                 bestFacade = candFacade;
                 bestMatch = 0;
+                bestBaseGame = directGame;
             }
         }
     }
@@ -169,27 +191,52 @@ bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffse
         inOutBase = bestBase;
         outFacade = bestFacade;
         outMatch = bestMatch;
+        if (outBaseGame) *outBaseGame = bestBaseGame;
         return true;
     }
 
     return false;
 }
 
-static bool ReadCamMatrix(int fd, uint64_t handle, const GameOffsets* off, uint64_t lp, bool is64, Matrix4x4& outM) {
-    if (lp == 0 || !off) return false;
-    uint64_t follow = ReadPtr(fd, handle, lp + off->followCamera, is64);
-    if (!IsValidPtr(follow, is64)) follow = ReadPtr(fd, handle, lp + off->followCameraFallback, is64);
-    if (!IsValidPtr(follow, is64)) return false;
-    uint64_t cam = ReadPtr(fd, handle, follow + off->camera, is64);
-    if (!IsValidPtr(cam, is64)) cam = ReadPtr(fd, handle, follow + off->cameraFallback, is64);
-    if (!IsValidPtr(cam, is64)) cam = follow;
-    if (!IsValidPtr(cam, is64)) return false;
-    uint64_t intPtr = ReadPtr(fd, handle, cam + off->intPtrCam, is64);
-    if (!IsValidPtr(intPtr, is64)) return false;
-    outM = ReadMem<Matrix4x4>(fd, handle, intPtr + off->camMatrix);
-    if (outM.m[0] != 0.0f || outM.m[5] != 0.0f || outM.m[10] != 0.0f) return true;
-    outM = ReadMem<Matrix4x4>(fd, handle, intPtr + off->camMatrixFallback);
-    return (outM.m[0] != 0.0f || outM.m[5] != 0.0f || outM.m[10] != 0.0f);
+static bool ReadCamMatrix(int fd, uint64_t handle, const GameOffsets* off, uint64_t lp, bool is64, Matrix4x4& outM, uint64_t stClass = 0) {
+    if (!off) return false;
+    if (lp != 0) {
+        static const uint64_t kFollowOffsets[] = {0x638ULL, 0x698ULL, 0x3E8ULL, 0x38ULL};
+        uint64_t follow = 0;
+        for (uint64_t fOff : kFollowOffsets) {
+            follow = ReadPtr(fd, handle, lp + fOff, is64);
+            if (IsValidPtr(follow, is64)) break;
+        }
+        if (!IsValidPtr(follow, is64)) follow = ReadPtr(fd, handle, lp + off->followCamera, is64);
+        if (!IsValidPtr(follow, is64)) follow = ReadPtr(fd, handle, lp + off->followCameraFallback, is64);
+
+        if (IsValidPtr(follow, is64)) {
+            uint64_t cam = ReadPtr(fd, handle, follow + off->camera, is64);
+            if (!IsValidPtr(cam, is64)) cam = ReadPtr(fd, handle, follow + off->cameraFallback, is64);
+            if (!IsValidPtr(cam, is64)) cam = follow;
+            if (IsValidPtr(cam, is64)) {
+                uint64_t intPtr = ReadPtr(fd, handle, cam + off->intPtrCam, is64);
+                if (IsValidPtr(intPtr, is64)) {
+                    static const uint64_t kMatrixOffsets[] = {0x100ULL, 0xBCULL, 0xE8ULL, 0x38ULL};
+                    for (uint64_t mOff : kMatrixOffsets) {
+                        outM = ReadMem<Matrix4x4>(fd, handle, intPtr + mOff);
+                        if (outM.m[0] != 0.0f || outM.m[5] != 0.0f || outM.m[10] != 0.0f) return true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Direct matrix from staticClass (from treasure Offsets::ViewMatrix = 0xBC)
+    if (IsValidPtr(stClass, is64)) {
+        static const uint64_t kStaticMatOffsets[] = {0xBCULL, 0x100ULL, 0xE8ULL};
+        for (uint64_t smOff : kStaticMatOffsets) {
+            outM = ReadMem<Matrix4x4>(fd, handle, stClass + smOff);
+            if (outM.m[0] != 0.0f || outM.m[5] != 0.0f || outM.m[10] != 0.0f) return true;
+        }
+    }
+
+    return false;
 }
 
 int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
@@ -207,6 +254,7 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
     static uint64_t s_cachedBase = 0;
     static uint64_t s_cachedFacade = 0;
     static uint64_t s_cachedMatch = 0;
+    static uint64_t s_cachedBaseGame = 0;
     static uint64_t s_cachedDict = 0;
     static uint64_t s_cachedValuesBase = 0;
     static int s_cacheFrames = 0;
@@ -215,6 +263,7 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
         s_cachedBase = base;
         s_cachedFacade = 0;
         s_cachedMatch = 0;
+        s_cachedBaseGame = 0;
         s_cachedDict = 0;
         s_cachedValuesBase = 0;
         s_cacheFrames = 0;
@@ -222,6 +271,7 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
 
     uint64_t facade = s_cachedFacade;
     uint64_t match = s_cachedMatch;
+    uint64_t baseGame = s_cachedBaseGame;
 
     bool needRefresh = (facade == 0 || match == 0 || (++s_cacheFrames > 60));
     if (!needRefresh) {
@@ -239,19 +289,23 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
         uint64_t resBase = base;
         uint64_t resFacade = 0;
         uint64_t resMatch = 0;
+        uint64_t resBaseGame = 0;
 
-        bool resolved = ResolveGamePointers(pid, handle, driverFd, off, is64, resBase, resFacade, resMatch);
+        bool resolved = ResolveGamePointers(pid, handle, driverFd, off, is64, resBase, resFacade, resMatch, &resBaseGame);
         if (resolved) {
             base = resBase;
             facade = resFacade;
             match = resMatch;
+            baseGame = resBaseGame;
             s_cachedBase = base;
             s_cachedFacade = facade;
             s_cachedMatch = match;
+            s_cachedBaseGame = baseGame;
             if (outDiag) outDiag->libBase = base;
         } else {
             s_cachedFacade = 0;
             s_cachedMatch = 0;
+            s_cachedBaseGame = 0;
             s_cachedDict = 0;
             s_cachedValuesBase = 0;
             if (outDiag) {
@@ -271,33 +325,46 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
         return 0;
     }
 
-
     static uint64_t s_savedLocal = 0;
     uint64_t liveLocal = ReadPtr(driverFd, handle, match + off->localPlayer, is64);
     if (!IsValidPtr(liveLocal, is64) && off->localPlayerFallback != 0) {
         liveLocal = ReadPtr(driverFd, handle, match + off->localPlayerFallback, is64);
+    }
+    if (!IsValidPtr(liveLocal, is64) && IsValidPtr(baseGame, is64)) {
+        liveLocal = ReadPtr(driverFd, handle, baseGame + off->localPlayer, is64);
+        if (!IsValidPtr(liveLocal, is64) && off->localPlayerFallback != 0) {
+            liveLocal = ReadPtr(driverFd, handle, baseGame + off->localPlayerFallback, is64);
+        }
     }
     if (IsValidPtr(liveLocal, is64)) s_savedLocal = liveLocal;
     uint64_t localPlayer = IsValidPtr(liveLocal, is64) ? liveLocal : s_savedLocal;
     if (outDiag) outDiag->localPlayer = localPlayer;
 
     Matrix4x4 camMat{};
-    bool hasMatrix = ReadCamMatrix(driverFd, handle, off, localPlayer, is64, camMat);
+    uint64_t stClass = IsValidPtr(baseGame, is64) ? baseGame : (facade ? ReadPtr(driverFd, handle, facade + off->staticClassField, is64) : 0);
+    bool hasMatrix = ReadCamMatrix(driverFd, handle, off, localPlayer, is64, camMat, stClass);
     if (outDiag) outDiag->matrixValid = hasMatrix;
     if (!hasMatrix) return 0;
 
     uint64_t dict = s_cachedDict;
     int dictCount = dict ? ReadMem<int>(driverFd, handle, dict + off->dictCount) : 0;
     if (dictCount <= 0 || dictCount > 200) {
-        dict = ReadPtr(driverFd, handle, match + off->entityList, is64);
-        dictCount = dict ? ReadMem<int>(driverFd, handle, dict + off->dictCount) : 0;
-        if (dictCount <= 0 && off->entityListFallback != 0) {
-            dict = ReadPtr(driverFd, handle, match + off->entityListFallback, is64);
-            dictCount = dict ? ReadMem<int>(driverFd, handle, dict + off->dictCount) : 0;
-        }
-        if (dictCount <= 0) {
-            dict = ReadPtr(driverFd, handle, match + 0x68ULL, is64);
-            dictCount = dict ? ReadMem<int>(driverFd, handle, dict + off->dictCount) : 0;
+        uint64_t dictCandidates[] = {
+            match ? ReadPtr(driverFd, handle, match + off->entityList, is64) : 0,
+            baseGame ? ReadPtr(driverFd, handle, baseGame + 0xC0ULL, is64) : 0,
+            match ? ReadPtr(driverFd, handle, match + off->entityListFallback, is64) : 0,
+            baseGame ? ReadPtr(driverFd, handle, baseGame + 0x148ULL, is64) : 0,
+            match ? ReadPtr(driverFd, handle, match + 0x68ULL, is64) : 0,
+            baseGame ? ReadPtr(driverFd, handle, baseGame + 0x68ULL, is64) : 0
+        };
+        for (uint64_t candD : dictCandidates) {
+            if (!IsValidPtr(candD, is64)) continue;
+            int c = ReadMem<int>(driverFd, handle, candD + off->dictCount);
+            if (c > 0 && c <= 200) {
+                dict = candD;
+                dictCount = c;
+                break;
+            }
         }
         if (dictCount > 0 && dictCount <= 200) {
             s_cachedDict = dict;

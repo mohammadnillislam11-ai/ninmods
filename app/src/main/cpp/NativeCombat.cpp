@@ -1,7 +1,16 @@
 #include <jni.h>
+#include <stdint.h>
+#include <cstdint>
 #include <cmath>
 #include <algorithm>
 #include <android/log.h>
+
+#ifndef UINT64_C
+typedef unsigned long long uint64_t;
+typedef unsigned int uint32_t;
+typedef unsigned short uint16_t;
+typedef unsigned char uint8_t;
+#endif
 #include "GameOffsets.h"
 #include "DriverClient.h"
 #include "EntityScanner.h"
