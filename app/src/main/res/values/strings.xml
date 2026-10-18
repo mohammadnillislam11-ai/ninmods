@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">NINMODS</string>
+    <string name="login_title">NINMODS</string>
+    <string name="email_hint">Email Address</string>
+    <string name="password_hint">Password</string>
+    <string name="btn_login">LOGIN</string>
+    <string name="btn_create_account">Create new account</string>
+    <string name="account_active">Account Active</string>
+    <string name="btn_start_menu">START MENU</string>
+    <string name="btn_logout">LOGOUT</string>
+    <string name="btn_exit">Exit</string>
+    <string name="overlay_permission_needed">Overlay permission is required to display the floating menu.</string>
+    <string name="notification_channel_name">NINMODS Service</string>
+    <string name="notification_channel_desc">Active background overlay service</string>
+    <string name="service_running">NINMODS Overlay Running</string>
+    <string name="menu_header">NINMODS MOD MENU</string>
+    <string name="section_esp">ESP OPTIONS</string>
+    <string name="section_aimbot">AIMBOT SETTINGS</string>
+    <string name="section_fly">FLY HACK SETTINGS</string>
+    <string name="section_guest">GUEST RESET</string>
+</resources>

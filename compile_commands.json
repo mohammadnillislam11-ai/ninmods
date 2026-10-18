@@ -1,0 +1,32 @@
+[
+{
+  "directory": "C:/Users/Sajala/Documents/mods/main_app/app/.cxx/Debug/a0261s6m/arm64-v8a",
+  "command": "C:\\Android\\Sdk\\ndk\\21.4.7075529\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=aarch64-none-linux-android26 --gcc-toolchain=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64 --sysroot=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dninmods_mem_EXPORTS -IC:/Users/Sajala/Documents/mods/main_app/app/src/main/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++17 -O0 -fno-limit-debug-info  -fPIC -o CMakeFiles\\ninmods_mem.dir\\memory_native.cpp.o -c C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\memory_native.cpp",
+  "file": "C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\memory_native.cpp"
+},
+{
+  "directory": "C:/Users/Sajala/Documents/mods/main_app/app/.cxx/Debug/a0261s6m/arm64-v8a",
+  "command": "C:\\Android\\Sdk\\ndk\\21.4.7075529\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=aarch64-none-linux-android26 --gcc-toolchain=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64 --sysroot=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dninmods_mem_EXPORTS -IC:/Users/Sajala/Documents/mods/main_app/app/src/main/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++17 -O0 -fno-limit-debug-info  -fPIC -o CMakeFiles\\ninmods_mem.dir\\driver_client.cpp.o -c C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\driver_client.cpp",
+  "file": "C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\driver_client.cpp"
+},
+{
+  "directory": "C:/Users/Sajala/Documents/mods/main_app/app/.cxx/Debug/a0261s6m/arm64-v8a",
+  "command": "C:\\Android\\Sdk\\ndk\\21.4.7075529\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=aarch64-none-linux-android26 --gcc-toolchain=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64 --sysroot=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dninmods_mem_EXPORTS -IC:/Users/Sajala/Documents/mods/main_app/app/src/main/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++17 -O0 -fno-limit-debug-info  -fPIC -o CMakeFiles\\ninmods_mem.dir\\unity_transform.cpp.o -c C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\unity_transform.cpp",
+  "file": "C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\unity_transform.cpp"
+},
+{
+  "directory": "C:/Users/Sajala/Documents/mods/main_app/app/.cxx/Debug/a0261s6m/arm64-v8a",
+  "command": "C:\\Android\\Sdk\\ndk\\21.4.7075529\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=aarch64-none-linux-android26 --gcc-toolchain=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64 --sysroot=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dninmods_mem_EXPORTS -IC:/Users/Sajala/Documents/mods/main_app/app/src/main/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++17 -O0 -fno-limit-debug-info  -fPIC -o CMakeFiles\\ninmods_mem.dir\\native_esp_aim.cpp.o -c C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\native_esp_aim.cpp",
+  "file": "C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\native_esp_aim.cpp"
+},
+{
+  "directory": "C:/Users/Sajala/Documents/mods/main_app/app/.cxx/Debug/a0261s6m/arm64-v8a",
+  "command": "C:\\Android\\Sdk\\ndk\\21.4.7075529\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=aarch64-none-linux-android26 --gcc-toolchain=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64 --sysroot=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dninmods_mem_EXPORTS -IC:/Users/Sajala/Documents/mods/main_app/app/src/main/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++17 -O0 -fno-limit-debug-info  -fPIC -o CMakeFiles\\ninmods_mem.dir\\entityscanner.cpp.o -c C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\entityscanner.cpp",
+  "file": "C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\entityscanner.cpp"
+},
+{
+  "directory": "C:/Users/Sajala/Documents/mods/main_app/app/.cxx/Debug/a0261s6m/arm64-v8a",
+  "command": "C:\\Android\\Sdk\\ndk\\21.4.7075529\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=aarch64-none-linux-android26 --gcc-toolchain=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64 --sysroot=C:/Android/Sdk/ndk/21.4.7075529/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dninmods_mem_EXPORTS -IC:/Users/Sajala/Documents/mods/main_app/app/src/main/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++17 -O0 -fno-limit-debug-info  -fPIC -o CMakeFiles\\ninmods_mem.dir\\scannerbridge.cpp.o -c C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\scannerbridge.cpp",
+  "file": "C:\\Users\\Sajala\\Documents\\mods\\main_app\\app\\src\\main\\cpp\\scannerbridge.cpp"
+}
+]

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="nin_bg">#0A0E1A</color>
+    <color name="nin_primary">#6EB4FF</color>
+    <color name="nin_accent">#FF6B00</color>
+    <color name="nin_text_primary">#FFFFFF</color>
+    <color name="nin_text_secondary">#8899AA</color>
+    <color name="nin_panel_bg">#E60A0E1A</color>
+</resources>
