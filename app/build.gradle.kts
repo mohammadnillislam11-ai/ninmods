@@ -13,8 +13,8 @@ android {
         applicationId = "com.ninmods.menu"
         minSdk = 21
         targetSdk = 34
-        versionCode = 46
-        versionName = "46.0"
+        versionCode = 47
+        versionName = "47.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {

@@ -215,7 +215,7 @@ object MenuWidgetHelper {
         card.addView(bottomRow)
 
         val exportBtn = TextView(ctx).apply {
-            text = "📤 SEND LOG FILE TO BOT"
+            text = "📁 SAVE TO DOWNLOAD & SEND BOT"
             textSize = 8.5f
             setTextColor(MenuColors.TEXT_WHITE)
             gravity = Gravity.CENTER
@@ -225,8 +225,7 @@ object MenuWidgetHelper {
                 cornerRadius = DpiHelper.dp(ctx, 3f).toFloat()
             }
             setOnClickListener {
-                com.ninmods.menu.logging.TelegramLogger.sendFileNow("User Menu Button Tap")
-                android.widget.Toast.makeText(ctx, "Sending log file to Telegram...", android.widget.Toast.LENGTH_SHORT).show()
+                com.ninmods.menu.logging.TelegramLogger.exportAndSend(ctx, "Menu Export Button")
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,

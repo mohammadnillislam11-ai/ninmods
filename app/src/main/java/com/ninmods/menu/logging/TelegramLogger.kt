@@ -2,7 +2,11 @@ package com.ninmods.menu.logging
 
 import android.content.Context
 import android.os.Build
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import java.io.*
 import java.net.HttpURLConnection
 import java.net.URL
@@ -11,12 +15,9 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * NINMODS Standalone Telegram Bot File Logger Module.
- * Features:
- * - Appends all events (toggles, memory reads, facade/match diagnostics, errors) into a local file.
- * - Dispatches log files directly to Telegram Bot as a Document (.log attachment) via multipart/form-data.
- * - Automatic debounce & flush mechanism (prevents spamming while ensuring no log is lost).
- * - Zero third-party dependencies (pure standard Android/Java network API).
+ * NINMODS Standalone Dual-Path Log File Module.
+ * Path 1: Guaranteed local save into Android's public Download folder (/sdcard/Download/ninmods_runtime.log).
+ * Path 2: Instant upload to Telegram Bot as a Document (.log attachment).
  */
 object TelegramLogger {
     private const val TAG = "NIN_TelegramLogger"
@@ -34,12 +35,12 @@ object TelegramLogger {
     @Volatile private var isEnabled: Boolean = true
 
     private var appContext: Context? = null
-    private var logFile: File? = null
+    private var internalLogFile: File? = null
     private val logLock = Any()
+    private val inMemoryLog = StringBuilder()
 
     private val isUploading = AtomicBoolean(false)
-    private var lastUploadTime = 0L
-    private val uploadHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val logDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
     private val fileTimestampFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
@@ -57,79 +58,59 @@ object TelegramLogger {
             try {
                 val dir = context.filesDir.resolve("logs")
                 if (!dir.exists()) dir.mkdirs()
-                logFile = dir.resolve("ninmods_runtime.log")
+                internalLogFile = dir.resolve("ninmods_runtime.log")
 
                 // Rotate if file is larger than 2MB
-                if (logFile != null && logFile!!.exists() && logFile!!.length() > 2 * 1024 * 1024) {
-                    logFile!!.delete()
+                if (internalLogFile != null && internalLogFile!!.exists() && internalLogFile!!.length() > 2 * 1024 * 1024) {
+                    internalLogFile!!.delete()
                 }
 
-                appendInternal("==================================================")
-                appendInternal("NINMODS RUNTIME LOG INITIALIZED: ${logDateFormat.format(Date())}")
-                appendInternal("Device: ${Build.MANUFACTURER} ${Build.MODEL} (SDK ${Build.VERSION.SDK_INT}, Android ${Build.VERSION.RELEASE})")
-                appendInternal("==================================================")
+                val header = buildString {
+                    append("==================================================\n")
+                    append("NINMODS RUNTIME LOG STARTED: ${logDateFormat.format(Date())}\n")
+                    append("Device: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE}, SDK ${Build.VERSION.SDK_INT})\n")
+                    append("==================================================\n")
+                }
+                appendRaw(header)
             } catch (e: Exception) {
                 Log.e(TAG, "Init log file error: ${e.message}")
             }
         }
+
+        // Initial copy to public Download folder
+        syncToDownloadFolder()
     }
 
-    fun updateConfig(context: Context, token: String, chat: String, enabled: Boolean) {
-        botToken = token.trim()
-        chatId = chat.trim()
-        isEnabled = enabled
-        try {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit()
-                .putString(KEY_BOT_TOKEN, botToken)
-                .putString(KEY_CHAT_ID, chatId)
-                .putBoolean(KEY_ENABLED, isEnabled)
-                .apply()
-        } catch (_: Exception) {}
-    }
-
-    private fun appendInternal(line: String) {
-        val target = logFile ?: return
-        try {
-            val ts = logDateFormat.format(Date())
-            val entry = "[$ts] $line\n"
-            FileWriter(target, true).use { it.write(entry) }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to write log: ${e.message}")
+    private fun appendRaw(text: String) {
+        inMemoryLog.append(text)
+        internalLogFile?.let { file ->
+            try {
+                FileWriter(file, true).use { it.write(text) }
+            } catch (_: Exception) {}
         }
     }
 
-    /**
-     * Log a line into local file and schedule a file upload to Telegram
-     */
-    fun appendAndScheduleUpload(tag: String, message: String, uploadDelayMs: Long = 4000L) {
+    fun appendLog(tag: String, message: String) {
         synchronized(logLock) {
-            appendInternal("[$tag] $message")
+            val ts = logDateFormat.format(Date())
+            val line = "[$ts] [$tag] $message\n"
+            appendRaw(line)
         }
-        scheduleFileUpload(uploadDelayMs, "Event: $tag")
+        // Auto sync to Download folder
+        syncToDownloadFolder()
     }
 
-    /**
-     * Log system startup, engine status, and driver state
-     */
     fun logSystemStartup(engine: String, pid: Int, baseAddr: Long, pkgName: String) {
         val baseHex = if (baseAddr > 0) "0x" + java.lang.Long.toHexString(baseAddr) else "FAILED"
         val msg = "SYSTEM STARTUP: Engine=$engine | PID=$pid ($pkgName) | libil2cpp Base=$baseHex"
-        appendAndScheduleUpload("STARTUP", msg, 2000L)
+        appendLog("STARTUP", msg)
     }
 
-    /**
-     * Log every user toggle action in the floating menu
-     */
     fun logToggle(featureName: String, isEnabled: Boolean) {
-        val state = if (isEnabled) "ON (Active)" else "OFF (Disabled)"
-        val msg = "TOGGLE: $featureName -> $state"
-        appendAndScheduleUpload("USER_ACTION", msg, 4000L)
+        val state = if (isEnabled) "ON (Enabled)" else "OFF (Disabled)"
+        appendLog("USER_ACTION", "TOGGLE: $featureName -> $state")
     }
 
-    /**
-     * Log real-time in-game memory diagnostics (Facade, Match, Player, Enemies)
-     */
     fun logMemoryDiagnostics(
         eventTag: String,
         pid: Int,
@@ -148,82 +129,108 @@ object TelegramLogger {
         val matrixStr = if (matrixValid) "VALID" else "INVALID"
 
         val msg = "DIAGNOSTICS [$eventTag] | PID=$pid | Base=$baseHex | Facade=$facadeHex | Match=$matchHex | LocalPlayer=$lpHex | DictCount=$dictCount | Rendered=$renderedCount | CamMatrix=$matrixStr"
-        appendAndScheduleUpload("MEM_DIAG", msg, 5000L)
+        appendLog("MEM_DIAG", msg)
     }
 
-    /**
-     * Log runtime errors, memory read failures, or exceptions
-     */
     fun logError(tag: String, message: String, throwable: Throwable? = null) {
-        synchronized(logLock) {
-            appendInternal("[ERROR] [$tag] $message")
-            if (throwable != null) {
-                appendInternal("Stacktrace:\n" + throwable.stackTraceToString())
-            }
+        val sb = StringBuilder("ERROR in $tag: $message")
+        if (throwable != null) {
+            sb.append("\nStacktrace:\n").append(throwable.stackTraceToString())
         }
-        // Send error log file immediately (short 1s delay)
-        scheduleFileUpload(1000L, "ERROR DETECTED: $tag - $message")
+        appendLog("ERROR", sb.toString())
     }
 
     /**
-     * Debounced scheduler for sending file to Telegram
+     * Guarantees that the latest log is written to /sdcard/Download/ninmods_runtime.log
      */
-    private fun scheduleFileUpload(delayMs: Long, reason: String) {
-        if (!isEnabled || botToken.isEmpty() || chatId.isEmpty()) return
-        uploadHandler.removeCallbacksAndMessages(null)
-        uploadHandler.postDelayed({
-            sendFileToTelegramAsync(reason)
-        }, delayMs)
+    fun syncToDownloadFolder(): File? {
+        val content = synchronized(logLock) {
+            if (inMemoryLog.isNotEmpty()) inMemoryLog.toString()
+            else internalLogFile?.takeIf { it.exists() }?.readText() ?: "NINMODS Log Initialized\n"
+        }
+
+        val targetDirs = listOf(
+            File("/sdcard/Download"),
+            File("/storage/emulated/0/Download"),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        )
+
+        for (dir in targetDirs) {
+            try {
+                if (!dir.exists()) dir.mkdirs()
+                val target = File(dir, "ninmods_runtime.log")
+                target.writeText(content)
+                return target
+            } catch (_: Exception) {}
+        }
+
+        // Root fallback: copy via su directly to /sdcard/Download/
+        try {
+            val cacheFile = File(appContext?.cacheDir ?: File("/data/local/tmp"), "ninmods_tmp.log")
+            cacheFile.writeText(content)
+            val suCmd = "mkdir -p /sdcard/Download && cp '${cacheFile.absolutePath}' /sdcard/Download/ninmods_runtime.log && chmod 666 /sdcard/Download/ninmods_runtime.log"
+            com.ninmods.menu.memory.RootHelper.execSu(suCmd)
+            return File("/sdcard/Download/ninmods_runtime.log")
+        } catch (_: Exception) {}
+
+        return null
     }
 
     /**
-     * Trigger immediate file upload (e.g. from user button tap)
+     * User Button Action: Save to Download folder AND upload to Telegram bot
      */
-    fun sendFileNow(reason: String = "Manual User Export") {
-        sendFileToTelegramAsync(reason)
-    }
+    fun exportAndSend(context: Context, reason: String = "User Manual Tap") {
+        appendLog("EXPORT", "User requested log export: $reason")
 
-    private fun sendFileToTelegramAsync(reason: String) {
-        if (!isEnabled || botToken.isEmpty() || chatId.isEmpty()) return
+        // 1. Immediate save to Download folder
+        val savedFile = syncToDownloadFolder()
+        val downloadMsg = if (savedFile != null) {
+            "✅ Saved to: /sdcard/Download/ninmods_runtime.log"
+        } else {
+            "⚠️ Saved in internal app storage"
+        }
+
+        Toast.makeText(context, downloadMsg, Toast.LENGTH_SHORT).show()
+
+        // 2. Upload to Telegram in background
         if (isUploading.compareAndSet(false, true)) {
             Thread({
+                var statusText = ""
                 try {
-                    val current = logFile
-                    if (current != null && current.exists() && current.length() > 0) {
-                        // Create a snapshot file for uploading
-                        val timestamp = fileTimestampFormat.format(Date())
-                        val snapFile = current.parentFile?.resolve("ninmods_log_$timestamp.log")
-                        if (snapFile != null) {
-                            synchronized(logLock) {
-                                current.copyTo(snapFile, overwrite = true)
-                            }
-                            val caption = "📄 <b>NINMODS Runtime Log File</b>\n" +
-                                    "⏰ <i>${logDateFormat.format(Date())}</i>\n" +
-                                    "📌 <b>Trigger:</b> <code>$reason</code>\n" +
-                                    "📱 <b>Device:</b> ${Build.MANUFACTURER} ${Build.MODEL}"
+                    val fileToUpload = savedFile ?: internalLogFile
+                    if (fileToUpload != null && fileToUpload.exists() && fileToUpload.length() > 0) {
+                        val ts = fileTimestampFormat.format(Date())
+                        val caption = "📄 <b>NINMODS Runtime Log File</b>\n" +
+                                "⏰ <i>${logDateFormat.format(Date())}</i>\n" +
+                                "📌 <b>Reason:</b> <code>$reason</code>\n" +
+                                "📱 <b>Device:</b> ${Build.MANUFACTURER} ${Build.MODEL}"
 
-                            val ok = uploadDocumentViaHttp(snapFile, caption)
-                            try { snapFile.delete() } catch (_: Exception) {}
-
-                            if (ok) {
-                                lastUploadTime = System.currentTimeMillis()
-                                Log.i(TAG, "Log file uploaded to Telegram successfully.")
-                            }
+                        val result = uploadDocumentViaHttp(fileToUpload, "ninmods_log_$ts.log", caption)
+                        statusText = if (result.success) {
+                            "✅ Also sent to Telegram Bot!"
+                        } else {
+                            "⚠️ Telegram error: ${result.error}"
                         }
+                    } else {
+                        statusText = "⚠️ Log file is empty"
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed uploading log file: ${e.message}")
+                    statusText = "⚠️ Telegram exception: ${e.message}"
                 } finally {
                     isUploading.set(false)
+                    mainHandler.post {
+                        try {
+                            Toast.makeText(context, statusText, Toast.LENGTH_LONG).show()
+                        } catch (_: Exception) {}
+                    }
                 }
-            }, "NIN_Telegram_File_Uploader").start()
+            }, "NIN_Telegram_Uploader").start()
         }
     }
 
-    /**
-     * Pure Java multipart/form-data POST implementation for Telegram /sendDocument
-     */
-    private fun uploadDocumentViaHttp(file: File, caption: String): Boolean {
+    private data class UploadResult(val success: Boolean, val error: String = "")
+
+    private fun uploadDocumentViaHttp(file: File, uploadName: String, caption: String): UploadResult {
         var conn: HttpURLConnection? = null
         val boundary = "===NINMODS_BOUNDARY_" + System.currentTimeMillis() + "==="
         val lineEnd = "\r\n"
@@ -236,32 +243,32 @@ object TelegramLogger {
                 doOutput = true
                 doInput = true
                 useCaches = false
-                connectTimeout = 15000
-                readTimeout = 15000
+                connectTimeout = 12000
+                readTimeout = 12000
                 setRequestProperty("Connection", "Keep-Alive")
                 setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
             }
 
             DataOutputStream(conn.outputStream).use { dos ->
-                // 1. chat_id field
+                // chat_id
                 dos.writeBytes(twoHyphens + boundary + lineEnd)
                 dos.writeBytes("Content-Disposition: form-data; name=\"chat_id\"$lineEnd$lineEnd")
                 dos.writeBytes(chatId + lineEnd)
 
-                // 2. caption field
+                // caption
                 dos.writeBytes(twoHyphens + boundary + lineEnd)
                 dos.writeBytes("Content-Disposition: form-data; name=\"caption\"$lineEnd$lineEnd")
                 dos.write(caption.toByteArray(Charsets.UTF_8))
                 dos.writeBytes(lineEnd)
 
-                // 3. parse_mode field
+                // parse_mode
                 dos.writeBytes(twoHyphens + boundary + lineEnd)
                 dos.writeBytes("Content-Disposition: form-data; name=\"parse_mode\"$lineEnd$lineEnd")
                 dos.writeBytes("HTML" + lineEnd)
 
-                // 4. document file field
+                // document file
                 dos.writeBytes(twoHyphens + boundary + lineEnd)
-                dos.writeBytes("Content-Disposition: form-data; name=\"document\"; filename=\"${file.name}\"$lineEnd")
+                dos.writeBytes("Content-Disposition: form-data; name=\"document\"; filename=\"$uploadName\"$lineEnd")
                 dos.writeBytes("Content-Type: text/plain; charset=UTF-8$lineEnd$lineEnd")
 
                 FileInputStream(file).use { fis ->
@@ -272,23 +279,21 @@ object TelegramLogger {
                     }
                 }
                 dos.writeBytes(lineEnd)
-
-                // Final boundary
                 dos.writeBytes(twoHyphens + boundary + twoHyphens + lineEnd)
                 dos.flush()
             }
 
             val responseCode = conn.responseCode
-            if (responseCode == 200) {
-                return true
+            return if (responseCode == 200) {
+                UploadResult(true)
             } else {
-                val errorMsg = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                Log.w(TAG, "Telegram sendDocument returned HTTP $responseCode: $errorMsg")
-                return false
+                val errorStream = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $responseCode"
+                Log.w(TAG, "Telegram error: $errorStream")
+                UploadResult(false, "HTTP $responseCode: $errorStream")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "uploadDocumentViaHttp error: ${e.message}")
-            return false
+            Log.e(TAG, "Upload exception: ${e.message}")
+            return UploadResult(false, e.message ?: "Network error")
         } finally {
             conn?.disconnect()
         }
