@@ -68,5 +68,5 @@ jobs:
           fi
           gh release create "$RELEASE_TAG" \
             $ASSETS \
-            --title "NINMODS Release V43 ($RELEASE_TAG)" \
-            --notes "Official NINMODS release bundle containing both Main Menu App (V43) and Driver Loader (V41). Both APKs are 4-byte page-aligned and fully signed with v1+v2+v3 schemes."
+            --title "Release $RELEASE_TAG" \
+            --notes "Release bundle $RELEASE_TAG"
