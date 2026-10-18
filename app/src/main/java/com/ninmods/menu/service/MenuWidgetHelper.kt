@@ -38,6 +38,7 @@ object MenuWidgetHelper {
             setOnCheckedChangeListener { _, c ->
                 onVal(c)
                 PrefsHelper.saveAll()
+                com.ninmods.menu.logging.TelegramLogger.logToggle(lbl, c)
                 com.ninmods.menu.esp.EspOverlayService.updateService(ctx)
             }
         }
@@ -212,6 +213,29 @@ object MenuWidgetHelper {
         bottomRow.addView(libLbl)
         bottomRow.addView(libVal)
         card.addView(bottomRow)
+
+        val exportBtn = TextView(ctx).apply {
+            text = "📤 SEND LOG FILE TO BOT"
+            textSize = 8.5f
+            setTextColor(MenuColors.TEXT_WHITE)
+            gravity = Gravity.CENTER
+            setPadding(DpiHelper.dp(ctx, 6f), DpiHelper.dp(ctx, 3f), DpiHelper.dp(ctx, 6f), DpiHelper.dp(ctx, 3f))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.parseColor("#0288D1"))
+                cornerRadius = DpiHelper.dp(ctx, 3f).toFloat()
+            }
+            setOnClickListener {
+                com.ninmods.menu.logging.TelegramLogger.sendFileNow("User Menu Button Tap")
+                android.widget.Toast.makeText(ctx, "Sending log file to Telegram...", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = DpiHelper.dp(ctx, 4f)
+            }
+        }
+        card.addView(exportBtn)
 
         parent.addView(card)
 

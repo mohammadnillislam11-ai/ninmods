@@ -15,6 +15,18 @@ class NinApplication : Application() {
         super.onCreate()
         PrefsHelper.init(this)
         PrefsHelper.loadAll()
+        com.ninmods.menu.logging.TelegramLogger.init(this)
+
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            com.ninmods.menu.logging.TelegramLogger.logError(
+                "CRASH_HANDLER",
+                "Uncaught Exception in thread ${thread.name}: ${throwable.message}",
+                throwable
+            )
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
         createNotificationChannel()
     }
 

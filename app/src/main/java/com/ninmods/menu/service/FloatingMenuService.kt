@@ -51,6 +51,10 @@ class FloatingMenuService : Service() {
             val pid = com.ninmods.menu.memory.GameProcess.getGamePid()
             if (pid > 0) {
                 com.ninmods.menu.memory.MemoryReader.ensureAttached(pid)
+                val base = com.ninmods.menu.memory.MemoryReader.cachedBase
+                val mode = com.ninmods.menu.ipc.DriverStateReceiver.currentMode
+                val pkg = com.ninmods.menu.memory.GameProcess.detectedPackage
+                com.ninmods.menu.logging.TelegramLogger.logSystemStartup(mode, pid, base, pkg)
             }
         }.start()
 

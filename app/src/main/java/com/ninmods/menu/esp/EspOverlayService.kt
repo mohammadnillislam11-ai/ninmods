@@ -131,10 +131,11 @@ class EspOverlayService : Service() {
         private val COLOR_GREEN = Color.parseColor("#00E676")
         private val COLOR_YELLOW = Color.parseColor("#FFD600")
 
-        // 10 floats per entity: [0]left, [1]top, [2]w, [3]h, [4]lineX, [5]lineY, [6]dist, [7]hp, [8]isDying, [9]isOffScreen
         private val directRenderBuf = java.nio.ByteBuffer.allocateDirect(64 * 10 * 4).order(java.nio.ByteOrder.nativeOrder())
         private val floatBuf = directRenderBuf.asFloatBuffer()
         private val diagBuffer = LongArray(10)
+        private var lastDiagLogTime = 0L
+        private var lastMatchState = -1L
 
         private fun drawOutlinedText(canvas: Canvas, text: String, cx: Float, y: Float, color: Int, size: Float) {
             textStroke.textSize = size
@@ -202,6 +203,23 @@ class EspOverlayService : Service() {
                     AimState.lastUpdate = android.os.SystemClock.uptimeMillis()
                 } else {
                     AimState.hasTarget = false
+                }
+
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - lastDiagLogTime > 8000L || lastMatchState != diagBuffer[2]) {
+                    lastDiagLogTime = now
+                    lastMatchState = diagBuffer[2]
+                    com.ninmods.menu.logging.TelegramLogger.logMemoryDiagnostics(
+                        "IN_GAME_SCAN",
+                        gPid,
+                        diagBuffer[0],
+                        diagBuffer[1],
+                        diagBuffer[2],
+                        diagBuffer[3],
+                        diagBuffer[4],
+                        rendered,
+                        diagBuffer[5] == 1L
+                    )
                 }
             }
 
