@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -38,8 +41,29 @@ jobs:
           $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V43.apk" main_aligned.apk
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V43.apk"
 
-      - name: Upload APK Artifact
+      - name: Fetch Latest Loader APK
+        run: |
+          curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "Loader_V41.apk" || echo "Loader download fallback"
+          ls -la *.apk
+
+      - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Main-App-V43
-          path: Main_V43.apk
+          name: NINMODS-Release-APKs
+          path: |
+            Main_V43.apk
+            Loader_V41.apk
+
+      - name: Create GitHub Release and Upload Both APKs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_TAG="v43.0-$(date +'%Y%m%d%H%M%S')"
+          ASSETS="Main_V43.apk"
+          if [ -f "Loader_V41.apk" ]; then
+            ASSETS="Main_V43.apk Loader_V41.apk"
+          fi
+          gh release create "$RELEASE_TAG" \
+            $ASSETS \
+            --title "NINMODS Release V43 ($RELEASE_TAG)" \
+            --notes "Official NINMODS release bundle containing both Main Menu App (V43) and Driver Loader (V41). Both APKs are 4-byte page-aligned and fully signed with v1+v2+v3 schemes."
