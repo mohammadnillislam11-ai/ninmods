@@ -52,29 +52,15 @@ object GameProcess {
             }
         }
 
-        // Fast one-line root command checking normal Free Fire first, then MAX
-        val out = RootHelper.execSu(
-            "if p=$(pidof com.dts.freefireth 2>/dev/null); then echo \"TH:\$p\"; elif p=$(pidof com.dts.freefiremax 2>/dev/null); then echo \"MAX:\$p\"; fi"
-        ).trim()
-
-        if (out.startsWith("TH:")) {
-            val p = out.removePrefix("TH:").trim().split("\\s+".toRegex()).firstOrNull()?.toIntOrNull()
-            if (p != null && p > 0) {
-                lastPid = p
-                detectedPackage = GameConfig.GAME_PACKAGE_FF
-                GameConfig.isMax = false
-                ensureMapsDump(p)
-                return p
-            }
-        } else if (out.startsWith("MAX:")) {
-            val p = out.removePrefix("MAX:").trim().split("\\s+".toRegex()).firstOrNull()?.toIntOrNull()
-            if (p != null && p > 0) {
-                lastPid = p
-                detectedPackage = GameConfig.GAME_PACKAGE_MAX
-                GameConfig.isMax = true
-                ensureMapsDump(p)
-                return p
-            }
+        // Check only Normal Free Fire (com.dts.freefireth)
+        val out = RootHelper.execSu("pidof com.dts.freefireth 2>/dev/null").trim()
+        val p = out.split("\\s+".toRegex()).firstOrNull()?.toIntOrNull()
+        if (p != null && p > 0) {
+            lastPid = p
+            detectedPackage = GameConfig.GAME_PACKAGE_FF
+            GameConfig.isMax = false
+            ensureMapsDump(p)
+            return p
         }
 
         lastPid = -1

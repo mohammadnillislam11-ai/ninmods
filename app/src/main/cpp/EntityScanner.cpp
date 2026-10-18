@@ -43,14 +43,9 @@ static inline bool IsElfHeader(int fd, uint64_t handle, uint64_t addr) {
 
 static const uint64_t kCandidateFacades[] = {
     0x0A984D48ULL, // Free Fire Normal (com.dts.freefireth) Primary - Bull_Team & treasure
-    0x0AD6DC18ULL, // Free Fire MAX (com.dts.freefirethmax) Primary - CROSS SRC
-    0x0AD68E18ULL, // Free Fire MAX Secondary - CROSS SRC
     0x0C2132B8ULL, // Legacy Treasure Facade
     0x0AD5B288ULL, // Alternate 1.120
     0x0AD3532CULL, // Alternate 1.119
-    0x0AD6DE18ULL,
-    0x0AD6EE18ULL,
-    0x0AD6CE18ULL,
     0x0A3532CULL
 };
 
