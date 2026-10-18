@@ -209,6 +209,8 @@ Java_com_ninmods_menu_ipc_DriverBridge_nativeUpdateCombat(
         return;
     }
     base = resBase;
+    uint64_t stClass = ReadPtr(s_driverFd, h, facade + off->staticClassField, is64);
+    uint64_t baseGame = IsValidPtr(stClass, is64) ? stClass : facade;
 
     uint64_t lp = ReadPtr(s_driverFd, h, match + off->localPlayer, is64);
     if (!IsValidPtr(lp, is64) && off->localPlayerFallback != 0) {
