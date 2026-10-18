@@ -42,8 +42,11 @@ jobs:
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V43.apk"
 
       - name: Fetch Latest Loader APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "Loader_V41.apk" || echo "Loader download fallback"
+          mkdir -p loader_tmp
+          gh release download --repo mohammadnillislam11-ai/ninmods-kernel-builder --pattern "NINMODS_Driver_Loader.apk" --dir loader_tmp 2>/dev/null && cp loader_tmp/NINMODS_Driver_Loader.apk Loader_V41.apk || curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "Loader_V41.apk" || echo "Loader download fallback"
           ls -la *.apk
 
       - name: Upload APK Artifacts
