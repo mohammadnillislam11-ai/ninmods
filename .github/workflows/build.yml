@@ -61,6 +61,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          echo "Cleaning up all older releases..."
+          for old_tag in $(gh release list --limit 50 --json tagName -q '.[].tagName'); do
+            echo "Deleting old release: $old_tag"
+            gh release delete "$old_tag" --yes --cleanup-tag || true
+          done
+
           RELEASE_TAG="v43.0-$(date +'%Y%m%d%H%M%S')"
           ASSETS="Main_V43.apk"
           if [ -f "Loader_V41.apk" ]; then
