@@ -6,13 +6,14 @@ Vector3 GetTransformPosition(uint64_t transform, uint64_t handle, int driverFd) 
     if (transform == 0 || handle == 0) return pos;
 
     uint64_t transformObj = 0;
-    if (!DriverRead(driverFd, handle, transform + 0x10, &transformObj, sizeof(transformObj)) || transformObj == 0) {
-        if (!DriverRead(driverFd, handle, transform + 0x110, &transformObj, sizeof(transformObj)) || transformObj == 0) {
+    // Power Project exact: TransformObj = 0x110
+    if (!DriverRead(driverFd, handle, transform + 0x110, &transformObj, sizeof(transformObj)) || transformObj == 0) {
+        if (!DriverRead(driverFd, handle, transform + 0x10, &transformObj, sizeof(transformObj)) || transformObj == 0) {
             return pos;
         }
     }
 
-    uint64_t objFields[2] = {0, 0}; // 0x38: matrixValue, 0x40: indexValue
+    uint64_t objFields[2] = {0, 0}; // 0x38: matrixValue, 0x40: indexValue (Power exact)
     if (!DriverRead(driverFd, handle, transformObj + 0x38, objFields, sizeof(objFields))) {
         return pos;
     }
@@ -20,11 +21,11 @@ Vector3 GetTransformPosition(uint64_t transform, uint64_t handle, int driverFd) 
     const uint64_t indexValue = objFields[1];
     if (matrixValue == 0) return pos;
 
-    uint64_t matrixLists[2] = {0, 0}; // 0x18: matrixListValue, 0x20: matrixIndicesValue
-    if (!DriverRead(driverFd, handle, matrixValue + 0x18, matrixLists, sizeof(matrixLists)) || matrixLists[0] == 0) {
-        DriverRead(driverFd, handle, matrixValue + 0x108, &matrixLists[0], sizeof(uint64_t));
-        DriverRead(driverFd, handle, matrixValue + 0x20, &matrixLists[1], sizeof(uint64_t));
+    uint64_t matrixLists[2] = {0, 0}; // 0x108: matrixListValue, 0x20: matrixIndicesValue (Power exact)
+    if (!DriverRead(driverFd, handle, matrixValue + 0x108, &matrixLists[0], sizeof(uint64_t)) || matrixLists[0] == 0) {
+        DriverRead(driverFd, handle, matrixValue + 0x18, &matrixLists[0], sizeof(uint64_t));
     }
+    DriverRead(driverFd, handle, matrixValue + 0x20, &matrixLists[1], sizeof(uint64_t));
     const uint64_t matrixListValue = matrixLists[0];
     const uint64_t matrixIndicesValue = matrixLists[1];
     if (matrixListValue == 0 || matrixIndicesValue == 0) return pos;

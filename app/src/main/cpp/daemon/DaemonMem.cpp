@@ -238,8 +238,7 @@ uint64_t MasterMem::GetModuleBase(const char* name) {
         return m_il2cppBase;
     }
 
-    // 1. Kernel Mode IOCTL (Ring-0)
-    uint64_t kernelBase = 0;
+    // 1. Kernel Mode IOCTL (Ring-0) - Absolute Authority
     if (m_driverFd > 2) {
         char safe[256] = {0};
         strncpy(safe, name, sizeof(safe) - 1);
@@ -250,108 +249,48 @@ uint64_t MasterMem::GetModuleBase(const char* name) {
             0
         };
         if (ioctl(m_driverFd, IOCTL_MODULE_BASE, &req) == 0 && req.base != 0) {
-            kernelBase = req.base;
-            if (strcmp(name, "libil2cpp.so") != 0) {
-                return kernelBase;
+            if (strcmp(name, "libil2cpp.so") == 0) {
+                m_il2cppBase = req.base;
             }
+            return req.base;
         }
     }
 
-    // 2. Multi-segment ELF probing for libil2cpp.so
+    // 2. Power Project Verified Fallback: zeroOffsetCount == 2 on /proc/<pid>/maps
     char mapPath[64];
     snprintf(mapPath, sizeof(mapPath), "/proc/%d/maps", m_pid);
     FILE* fp = fopen(mapPath, "r");
-    if (!fp) {
-        fp = fopen("/data/data/com.ninmods.menu/cache/maps", "r");
-    }
-    if (!fp) {
-        fp = fopen("/data/user/0/com.ninmods.menu/cache/maps", "r");
-    }
-    if (!fp) {
-        fp = fopen("/data/local/tmp/maps", "r");
-    }
+    if (!fp) fp = fopen("/data/data/com.ninmods.menu/cache/maps", "r");
+    if (!fp) fp = fopen("/data/user/0/com.ninmods.menu/cache/maps", "r");
+    if (!fp) fp = fopen("/data/local/tmp/maps", "r");
 
     if (fp) {
         char line[512];
-        uint64_t elfBases[8] = {0};
-        int elfCount = 0;
-        uint64_t fallbackBase = 0;
-
-        if (kernelBase != 0) {
-            elfBases[elfCount++] = kernelBase;
-        }
-
+        uintptr_t base = 0;
+        int zeroOffsetCount = 0;
         while (fgets(line, sizeof(line), fp)) {
             if (strstr(line, name)) {
-                unsigned long long start = 0, offset = 0;
-                char perms[8] = {0};
-                if (sscanf(line, "%llx-%*llx %7s %llx", &start, perms, &offset) == 3 && offset == 0 && start != 0) {
-                    if (fallbackBase == 0) fallbackBase = static_cast<uint64_t>(start);
-                    uint64_t sAddr = static_cast<uint64_t>(start);
-                    if (is_elf_header(*this, sAddr)) {
-                        bool exists = false;
-                        for (int i = 0; i < elfCount; ++i) {
-                            if (elfBases[i] == sAddr) { exists = true; break; }
-                        }
-                        if (!exists && elfCount < 8) {
-                            elfBases[elfCount++] = sAddr;
+                uintptr_t start = 0, offset = 0;
+                char perms[5] = {0};
+                if (sscanf(line, "%lx-%*lx %4s %lx", &start, perms, &offset) == 3) {
+                    if (offset == 0) {
+                        zeroOffsetCount++;
+                        if (zeroOffsetCount == 2) {
+                            base = start;
+                            break;
                         }
                     }
                 }
             }
         }
         fclose(fp);
-
-        static const uint64_t kCandOffsets[] = {
-            0x0A984D48ULL, 0x0C2132B8ULL, 0x0AD6DC18ULL, 0x0AD68E18ULL, 0x0AD5B288ULL, 0x0AD3532CULL
-        };
-
-        for (int i = 0; i < elfCount; ++i) {
-            if (elfBases[i] == 0) continue;
-            for (uint64_t off : kCandOffsets) {
-                uint64_t facade = 0;
-                if (Read(elfBases[i] + off, &facade, sizeof(facade))) {
-                    if (facade >= 0x10000000ULL && facade <= 0x00007FFFFFFFF000ULL &&
-                        ((facade & 3ULL) == 0ULL) && ((facade & 0xFFFFFFFFULL) != 0ULL)) {
-                        uint64_t stClass = 0;
-                        Read(facade + 0xB8ULL, &stClass, sizeof(stClass));
-                        if (stClass >= 0x10000000ULL && ((stClass & 3ULL) == 0ULL) && ((stClass & 0xFFFFFFFFULL) != 0ULL)) {
-                            if (strcmp(name, "libil2cpp.so") == 0) {
-                                m_il2cppBase = elfBases[i];
-                            }
-                            return elfBases[i];
-                        }
-                    }
-                }
-            }
-        }
-
-        uint64_t resolved = 0;
-        if (kernelBase != 0) {
-            resolved = kernelBase;
-        } else if (elfCount > 1 && elfBases[1] != 0) {
-            resolved = elfBases[1]; // Bull_Team zeroOffsetCount == 2
-        } else if (elfCount > 0) {
-            resolved = elfBases[0];
-        } else {
-            resolved = fallbackBase;
-        }
-
-        if (resolved != 0) {
+        if (base != 0) {
             if (strcmp(name, "libil2cpp.so") == 0) {
-                m_il2cppBase = resolved;
+                m_il2cppBase = static_cast<uint64_t>(base);
             }
-            return resolved;
+            return static_cast<uint64_t>(base);
         }
     }
-
-    if (kernelBase != 0) {
-        if (strcmp(name, "libil2cpp.so") == 0) {
-            m_il2cppBase = kernelBase;
-        }
-        return kernelBase;
-    }
-
 
     return 0;
 }

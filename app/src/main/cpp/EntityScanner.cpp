@@ -176,8 +176,19 @@ bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffse
                 uint64_t liveBaseGame = 0;
                 uint64_t foundLp = 0;
 
+                // Path 0 (POWER PROJECT EXACT): stClass + 0xB (p2BaseGame) is BaseGame, BaseGame + 0x930 is Match
+                uint64_t ptrPower = ReadPtr(driverFd, handle, stClass + off->p2BaseGame, is64);
+                if (IsValidPtr(ptrPower, is64)) {
+                    uint64_t mFromPower = ReadPtr(driverFd, handle, ptrPower + off->currentMatch, is64);
+                    if (!IsValidPtr(mFromPower, is64)) mFromPower = ReadPtr(driverFd, handle, ptrPower + off->currentMatchFallback, is64);
+                    if (IsValidMatch(driverFd, handle, mFromPower, is64, foundLp)) {
+                        liveMatch = mFromPower;
+                        liveBaseGame = ptrPower;
+                    }
+                }
+
                 // Path 1: ninmods_offsets.h - stClass + 0x8 is CurrentMatchGame directly
-                if (IsValidMatch(driverFd, handle, ptr8, is64, foundLp)) {
+                if (liveMatch == 0 && IsValidMatch(driverFd, handle, ptr8, is64, foundLp)) {
                     liveMatch = ptr8;
                     liveBaseGame = IsValidPtr(ptr0, is64) ? ptr0 : stClass;
                 }

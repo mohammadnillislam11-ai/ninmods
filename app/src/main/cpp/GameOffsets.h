@@ -13,6 +13,7 @@ struct GameOffsets {
   uint64_t gameFacade;
   uint64_t gameFacadeInd;
   uint64_t staticClassField;
+  uint64_t p2BaseGame;
   uint64_t currentGame;
   uint64_t currentMatchGame;
   uint64_t currentMatch;
@@ -66,42 +67,43 @@ struct GameOffsets {
   uint64_t fixedDeltaTime;
 };
 
-// Free Fire Global Offsets (com.dts.freefireth) - Built from ninmods_offsets.h Live Dump & Verified Reference Pipeline
+// Free Fire Global Offsets (com.dts.freefireth) - Built from Power Project & ninmods_offsets.h
 static const GameOffsets kOffsetsFFGlobal = {
-    .gameFacade = 0x0A984D48ULL,           // Global GameFacade_c pointer (Normal Free Fire)
+    .gameFacade = 0x0A984D48ULL,           // Power: GameFacade = 0xA984D48
     .gameFacadeInd = 0x0C2132B8ULL,        // Alternate Facade fallback (0x0C2132B8)
-    .staticClassField = 0xB8ULL,           // IL2CPP StaticFields offset (Il2CppClass::static_fields)
+    .staticClassField = 0xB8ULL,           // Power: FacadeP2 = 0xB8
+    .p2BaseGame = 0xBULL,                  // Power: P2BaseGame = 0xB
     .currentGame = 0x0ULL,                 // ninmods_offsets.h: OFFSET_GameFacade_CurrentGame 0x0ULL
     .currentMatchGame = 0x8ULL,            // ninmods_offsets.h: OFFSET_GameFacade_CurrentMatchGame 0x8ULL
-    .currentMatch = 0x90ULL,               // BaseGame -> CurrentMatchGame pointer
-    .currentMatchFallback = 0x930ULL,      // Alternate match fallback offset
-    .matchRunning = 0xCCULL,               // Match running state (1 = in game)
-    .entityList = 0xC0ULL,                 // BaseGame entity dictionary
+    .currentMatch = 0x930ULL,              // Power: BaseGameMatch = 0x930
+    .currentMatchFallback = 0x90ULL,       // Alternate match fallback offset
+    .matchRunning = 0xCCULL,               // Power: MatchIsRunning = 0xCC (1 = in game)
+    .entityList = 0xC0ULL,                 // Power: BaseGameDictionary = 0xC0
     .entityListFallback = 0x148ULL,        // Alternate entity list offset
-    .localPlayer = 0xD8ULL,                // Match -> LocalPlayer pointer
+    .localPlayer = 0xD8ULL,                // Power: MatchLocalPlayer = 0xD8
     .localPlayerFallback = 0x94ULL,        // Match -> LocalPlayer fallback
-    .dictValues = 0x18ULL,                 // Dictionary values array pointer
-    .dictCount = 0x20ULL,                  // Dictionary count
-    .entryValue = 0x10ULL,                 // Entry value item offset (stride-24)
-    .entryStride = 0x18ULL,                // Entry struct size (stride-24)
-    .arrayHeader = 0x20ULL,                // Array elements start offset
-    .followCamera = 0x638ULL,              // FollowCamera pointer (LocalPlayer + 0x638)
-    .followCameraFallback = 0x698ULL,      // FollowCamera fallback
-    .camera = 0x30ULL,                     // Camera object pointer
+    .dictValues = 0x18ULL,                 // Power: MonoDictionary getValues() = +0x18
+    .dictCount = 0x20ULL,                  // Power: MonoDictionary getNumValues() = +0x20
+    .entryValue = 0x10ULL,                 // Power: EntryEnemyList = 0x10
+    .entryStride = 0x18ULL,                // Power: DictionaryEntrySize = 0x18
+    .arrayHeader = 0x20ULL,                // Power: Array header = +0x20
+    .followCamera = 0x38ULL,               // Power: FollowCamera = 0x38
+    .followCameraFallback = 0x638ULL,      // FollowCamera fallback
+    .camera = 0x30ULL,                     // Power: FollowCameraObj = 0x30
     .cameraFallback = 0x18ULL,             // Camera fallback
-    .intPtrCam = 0x10ULL,                  // IntPtrCam pointer
-    .camMatrix = 0x100ULL,                 // ViewMatrix offset
-    .camMatrixFallback = 0xBCULL,          // ViewMatrix fallback (0xBC / 0xD8)
+    .intPtrCam = 0x10ULL,                  // Power: CameraIntPtr = 0x10
+    .camMatrix = 0x10ULL,                  // Power: OFFSET_CAMERA_MATRIX_STR "0x10"
+    .camMatrixFallback = 0x100ULL,         // ViewMatrix fallback (0x100 / 0xBC)
     .playerData = 0x70ULL,                 // PlayerData pointer
     .playerDataCur = 0x10ULL,              // ReplicationData pointer
     .playerHp = 0x18ULL,                   // Health value offset
     .curHpPtr = 0x20ULL,                   // ReplicationItems pointer
     .playerIsDead = 0x7CULL,               // IsDead flag offset
-    .boneHead = 0x6A8ULL,                  // HeadBone pointer offset
-    .boneHip = 0x6B0ULL,                   // HipBone pointer offset
-    .boneRoot = 0x6D0ULL,                  // RootBone pointer offset
-    .aimRotation = 0x61CULL,               // AimRotation vector offset
-    .aimRotationFallback = 0x1A8CULL,      // AimRotation fallback
+    .boneHead = 0x6478ULL,                 // Power: Head = 0x6478
+    .boneHip = 0x6548ULL,                  // Power: Spine = 0x6548
+    .boneRoot = 0x60ULL,                   // Power: Feet = 0x60
+    .aimRotation = 0x5BCULL,               // Power: PlayerRotation = 0x5BC
+    .aimRotationFallback = 0x61CULL,       // AimRotation fallback
     .userControl = 0x4D8ULL,               // UserControl pointer
     .userControlFallback = 0xAA0ULL,       // UserControl fallback
     .attributes = 0x770ULL,                // Player attributes pointer
@@ -110,9 +112,9 @@ static const GameOffsets kOffsetsFFGlobal = {
     .ghostHack = 0x814ULL,                 // GhostHack state offset
     .flyState = 0x1F14ULL,                 // FlyState offset
     .flyStateFallback = 0x2098ULL,         // FlyState fallback
-    .isFiring = 0x7E0ULL,                  // IsFiring flag (or ninmods_offsets.h: 0x259 UGCStartFiring)
+    .isFiring = 0x7E0ULL,                  // Power: IsFiring = 0x7E0
     .isFiringFallback = 0x850ULL,          // IsFiring fallback
-    .aimInfo = 0x80ULL,                    // AimingInfo pointer offset
+    .aimInfo = 0x80ULL,                    // Power: AimingInfo = 0x80
     .uiInGameScene = 0x10ULL,              // UI scene offset
     .bigMapCtrl = 0x458ULL,                // BigMap controller offset
     .mapContentCtrl = 0xA8ULL,             // MapContent controller offset
