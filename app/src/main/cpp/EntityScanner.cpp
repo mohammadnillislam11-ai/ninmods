@@ -54,6 +54,11 @@ static const uint64_t kCandidateFacades[] = {
 static std::vector<uint64_t> GetCandidateBases(int pid, uint64_t handle, int driverFd, uint64_t primaryBase) {
     std::vector<uint64_t> bases;
 
+    // 1. Primary Base from Kernel Driver is ALWAYS tested first
+    if (primaryBase != 0 && IsElfHeader(driverFd, handle, primaryBase)) {
+        bases.push_back(primaryBase);
+    }
+
     const char* paths[] = {
         "/proc/%d/maps",
         "/data/data/com.ninmods.menu/cache/maps",
@@ -62,8 +67,8 @@ static std::vector<uint64_t> GetCandidateBases(int pid, uint64_t handle, int dri
         nullptr
     };
 
-    uint64_t elf1 = 0, elf2 = 0, elf3 = 0;
-    std::vector<uint64_t> discovered;
+    uint64_t elf1 = 0, elf2 = 0;
+    std::vector<uint64_t> zeroOffsets;
 
     for (int i = 0; paths[i] != nullptr; ++i) {
         char mapPath[128];
@@ -78,41 +83,44 @@ static std::vector<uint64_t> GetCandidateBases(int pid, uint64_t handle, int dri
         if (!fp) continue;
 
         char line[512];
+        int zeroCount = 0;
         while (fgets(line, sizeof(line), fp)) {
             if (strstr(line, "libil2cpp.so")) {
-                unsigned long long start = 0;
-                if (sscanf(line, "%llx-", &start) == 1 && start != 0) {
-                    uint64_t addr = static_cast<uint64_t>(start);
-                    if (IsElfHeader(driverFd, handle, addr)) {
-                        bool exists = false;
-                        for (uint64_t d : discovered) {
-                            if (d == addr) { exists = true; break; }
-                        }
-                        if (!exists) {
-                            discovered.push_back(addr);
-                            if (elf1 == 0) elf1 = addr;
-                            else if (elf2 == 0) elf2 = addr;
-                            else if (elf3 == 0) elf3 = addr;
+                unsigned long long start = 0, offset = 0;
+                char perms[8] = {0};
+                if (sscanf(line, "%llx-%*llx %7s %llx", &start, perms, &offset) == 3) {
+                    if (offset == 0 && start != 0) {
+                        uint64_t addr = static_cast<uint64_t>(start);
+                        if (IsElfHeader(driverFd, handle, addr)) {
+                            zeroCount++;
+                            zeroOffsets.push_back(addr);
+                            if (zeroCount == 1) elf1 = addr;
+                            else if (zeroCount == 2) elf2 = addr;
                         }
                     }
                 }
             }
         }
         fclose(fp);
-        if (!discovered.empty()) break;
+        if (!zeroOffsets.empty()) break;
     }
 
-    // In Android ELF multi-mappings (Bull_Team zeroOffsetCount == 2 & CROSS SRC return elf2),
-    // elf1 is the APK file mapping where static variables hold uninitialized float constants.
-    // elf2 is the live runtime loaded library image where static pointers are initialized.
-    if (elf2 != 0) bases.push_back(elf2);
-    if (primaryBase != 0 && primaryBase != elf2) bases.push_back(primaryBase);
-    if (elf1 != 0 && elf1 != elf2 && elf1 != primaryBase) bases.push_back(elf1);
-    for (uint64_t d : discovered) {
+    // Bull_Team pattern: If 2 zero-offset mappings exist, elf2 is the live runtime loaded library image
+    if (elf2 != 0) {
         bool exists = false;
-        for (uint64_t b : bases) {
-            if (b == d) { exists = true; break; }
-        }
+        for (uint64_t b : bases) { if (b == elf2) { exists = true; break; } }
+        if (!exists) bases.push_back(elf2);
+    }
+    // Then elf1 (first zero-offset mapping)
+    if (elf1 != 0) {
+        bool exists = false;
+        for (uint64_t b : bases) { if (b == elf1) { exists = true; break; } }
+        if (!exists) bases.push_back(elf1);
+    }
+    // Any remaining zero-offset ELF mappings
+    for (uint64_t d : zeroOffsets) {
+        bool exists = false;
+        for (uint64_t b : bases) { if (b == d) { exists = true; break; } }
         if (!exists) bases.push_back(d);
     }
 
@@ -227,58 +235,6 @@ bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffse
                     bestMatch = 0;
                     bestBaseGame = IsValidPtr(ptr0, is64) ? ptr0 : (IsValidPtr(ptr8, is64) ? ptr8 : stClass);
                 }
-            }
-
-            // Structure B: candFacade is direct singleton instance
-            uint64_t d0 = ReadPtr(driverFd, handle, candFacade + 0x0ULL, is64);
-            uint64_t d8 = ReadPtr(driverFd, handle, candFacade + 0x8ULL, is64);
-            uint64_t directMatch = 0;
-            uint64_t directBaseGame = 0;
-            uint64_t directLp = 0;
-
-            if (IsValidMatch(driverFd, handle, d8, is64, directLp)) {
-                directMatch = d8;
-                directBaseGame = IsValidPtr(d0, is64) ? d0 : candFacade;
-            } else if (IsValidPtr(d0, is64)) {
-                uint64_t mFrom0 = ReadPtr(driverFd, handle, d0 + 0x90ULL, is64);
-                if (!IsValidPtr(mFrom0, is64)) mFrom0 = ReadPtr(driverFd, handle, d0 + 0x930ULL, is64);
-                if (IsValidMatch(driverFd, handle, mFrom0, is64, directLp)) {
-                    directMatch = mFrom0;
-                    directBaseGame = d0;
-                }
-            }
-            if (directMatch == 0 && IsValidPtr(d8, is64)) {
-                uint64_t mFrom8 = ReadPtr(driverFd, handle, d8 + 0x90ULL, is64);
-                if (!IsValidPtr(mFrom8, is64)) mFrom8 = ReadPtr(driverFd, handle, d8 + 0x930ULL, is64);
-                if (IsValidMatch(driverFd, handle, mFrom8, is64, directLp)) {
-                    directMatch = mFrom8;
-                    directBaseGame = d8;
-                }
-            }
-            if (directMatch == 0) {
-                uint64_t mDirect = ReadPtr(driverFd, handle, candFacade + off->currentMatch, is64);
-                if (!IsValidPtr(mDirect, is64) && off->currentMatchFallback != 0) {
-                    mDirect = ReadPtr(driverFd, handle, candFacade + off->currentMatchFallback, is64);
-                }
-                if (IsValidMatch(driverFd, handle, mDirect, is64, directLp)) {
-                    directMatch = mDirect;
-                    directBaseGame = candFacade;
-                }
-            }
-
-            if (IsValidPtr(directMatch, is64)) {
-                inOutBase = testBase;
-                outFacade = candFacade;
-                outMatch = directMatch;
-                if (outBaseGame) *outBaseGame = directBaseGame;
-                return true;
-            }
-
-            if ((IsValidPtr(d0, is64) || IsValidPtr(d8, is64)) && bestFacade == 0) {
-                bestBase = testBase;
-                bestFacade = candFacade;
-                bestMatch = 0;
-                bestBaseGame = IsValidPtr(d0, is64) ? d0 : (IsValidPtr(d8, is64) ? d8 : candFacade);
             }
         }
     }

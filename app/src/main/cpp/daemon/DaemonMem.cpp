@@ -283,8 +283,9 @@ uint64_t MasterMem::GetModuleBase(const char* name) {
 
         while (fgets(line, sizeof(line), fp)) {
             if (strstr(line, name)) {
-                unsigned long long start = 0;
-                if (sscanf(line, "%llx-", &start) == 1 && start != 0) {
+                unsigned long long start = 0, offset = 0;
+                char perms[8] = {0};
+                if (sscanf(line, "%llx-%*llx %7s %llx", &start, perms, &offset) == 3 && offset == 0 && start != 0) {
                     if (fallbackBase == 0) fallbackBase = static_cast<uint64_t>(start);
                     uint64_t sAddr = static_cast<uint64_t>(start);
                     if (is_elf_header(*this, sAddr)) {
@@ -325,7 +326,17 @@ uint64_t MasterMem::GetModuleBase(const char* name) {
             }
         }
 
-        uint64_t resolved = (elfCount > 1 && elfBases[1] != 0) ? elfBases[1] : (elfCount > 0 ? elfBases[0] : fallbackBase);
+        uint64_t resolved = 0;
+        if (kernelBase != 0) {
+            resolved = kernelBase;
+        } else if (elfCount > 1 && elfBases[1] != 0) {
+            resolved = elfBases[1]; // Bull_Team zeroOffsetCount == 2
+        } else if (elfCount > 0) {
+            resolved = elfBases[0];
+        } else {
+            resolved = fallbackBase;
+        }
+
         if (resolved != 0) {
             if (strcmp(name, "libil2cpp.so") == 0) {
                 m_il2cppBase = resolved;
