@@ -16,13 +16,11 @@ object GameProcess {
     private fun ensureMapsDump(pid: Int) {
         if (pid <= 0 || lastMapsCopiedPid == pid) return
         lastMapsCopiedPid = pid
-        Thread {
-            try {
-                RootHelper.execSu(
-                    "chmod 644 /proc/$pid/maps 2>/dev/null; mkdir -p /data/data/com.ninmods.menu/cache 2>/dev/null; cp /proc/$pid/maps /data/data/com.ninmods.menu/cache/maps 2>/dev/null; chmod 666 /data/data/com.ninmods.menu/cache/maps 2>/dev/null"
-                )
-            } catch (_: Exception) {}
-        }.start()
+        try {
+            RootHelper.execSu(
+                "chmod 644 /proc/$pid/maps 2>/dev/null; mkdir -p /data/data/com.ninmods.menu/cache /data/local/tmp 2>/dev/null; cp /proc/$pid/maps /data/data/com.ninmods.menu/cache/maps 2>/dev/null; chmod 666 /data/data/com.ninmods.menu/cache/maps 2>/dev/null; cp /proc/$pid/maps /data/local/tmp/maps 2>/dev/null; chmod 666 /data/local/tmp/maps 2>/dev/null"
+            )
+        } catch (_: Exception) {}
     }
 
     fun getGamePackage(): String {

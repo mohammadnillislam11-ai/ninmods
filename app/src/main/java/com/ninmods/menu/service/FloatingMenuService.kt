@@ -52,7 +52,12 @@ class FloatingMenuService : Service() {
             if (pid > 0) {
                 com.ninmods.menu.memory.MemoryReader.ensureAttached(pid)
                 val base = com.ninmods.menu.memory.MemoryReader.cachedBase
-                val mode = com.ninmods.menu.ipc.DriverStateReceiver.currentMode
+                com.ninmods.menu.ipc.DriverStateReceiver.syncStateFromFile()
+                var mode = com.ninmods.menu.ipc.DriverStateReceiver.currentMode
+                if (mode == "NONE") {
+                    if (com.ninmods.menu.memory.MemoryReader.isKernelActive()) mode = "KERNEL_RT"
+                    else if (com.ninmods.menu.ipc.DaemonManager.isRunning()) mode = "ROOT_RAM"
+                }
                 val pkg = com.ninmods.menu.memory.GameProcess.detectedPackage
                 com.ninmods.menu.logging.TelegramLogger.logSystemStartup(mode, pid, base, pkg)
             }

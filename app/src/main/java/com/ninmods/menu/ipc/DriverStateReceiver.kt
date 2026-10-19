@@ -36,16 +36,26 @@ class DriverStateReceiver : BroadcastReceiver() {
 
         fun syncStateFromFile() {
             try {
+                var text = ""
                 val file = File(STATE_FILE_PATH)
                 if (file.exists() && file.canRead()) {
-                    val text = file.readText().trim()
-                    if (text.isNotEmpty()) {
-                        val json = JSONObject(text)
-                        val mode = json.optString("mode", "NONE")
-                        val status = json.optString("status", "STOPPED")
-                        if (mode.isNotEmpty() && status.isNotEmpty() && (mode != currentMode || status != currentStatus)) {
-                            updateState(mode, status)
-                        }
+                    text = file.readText().trim()
+                }
+                if (text.isEmpty()) {
+                    text = com.ninmods.menu.memory.RootHelper.execSu("cat $STATE_FILE_PATH 2>/dev/null").trim()
+                }
+                if (text.isNotEmpty() && text.startsWith("{")) {
+                    val json = JSONObject(text)
+                    val mode = json.optString("mode", "NONE")
+                    val status = json.optString("status", "STOPPED")
+                    if (mode.isNotEmpty() && status.isNotEmpty() && (mode != currentMode || status != currentStatus)) {
+                        updateState(mode, status)
+                    }
+                }
+                if (currentMode == "NONE" || currentStatus != "ACTIVE") {
+                    val hasDev = com.ninmods.menu.memory.RootHelper.execSu("test -e /dev/health_storage_service_alloc && echo 'YES' || test -e /dev/BYNb && echo 'YES' || echo 'NO'").trim()
+                    if (hasDev == "YES") {
+                        updateState("KERNEL_RT", "ACTIVE")
                     }
                 }
             } catch (e: Exception) {

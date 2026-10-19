@@ -43,6 +43,8 @@ static inline bool IsElfHeader(int fd, uint64_t handle, uint64_t addr) {
 
 static const uint64_t kCandidateFacades[] = {
     0x0A984D48ULL, // Free Fire Normal (com.dts.freefireth) Primary - Bull_Team & treasure
+    0x0AD6DC18ULL, // CROSS SRC FFMax
+    0x0AD68E18ULL, // CROSS SRC FFMaxInd
     0x0C2132B8ULL, // Legacy Treasure Facade
     0x0AD5B288ULL, // Alternate 1.120
     0x0AD3532CULL, // Alternate 1.119
@@ -51,25 +53,30 @@ static const uint64_t kCandidateFacades[] = {
 
 static std::vector<uint64_t> GetCandidateBases(int pid, uint64_t handle, int driverFd, uint64_t primaryBase) {
     std::vector<uint64_t> bases;
-    if (primaryBase != 0) bases.push_back(primaryBase);
 
     const char* paths[] = {
+        "/proc/%d/maps",
         "/data/data/com.ninmods.menu/cache/maps",
         "/data/user/0/com.ninmods.menu/cache/maps",
+        "/data/local/tmp/maps",
         nullptr
     };
-    char procPath[64];
-    snprintf(procPath, sizeof(procPath), "/proc/%d/maps", pid);
 
-    FILE* fp = fopen(procPath, "r");
-    if (!fp) {
-        for (int i = 0; paths[i] != nullptr; ++i) {
-            fp = fopen(paths[i], "r");
-            if (fp) break;
+    uint64_t elf1 = 0, elf2 = 0, elf3 = 0;
+    std::vector<uint64_t> discovered;
+
+    for (int i = 0; paths[i] != nullptr; ++i) {
+        char mapPath[128];
+        if (strstr(paths[i], "%d")) {
+            snprintf(mapPath, sizeof(mapPath), paths[i], pid);
+        } else {
+            strncpy(mapPath, paths[i], sizeof(mapPath) - 1);
+            mapPath[sizeof(mapPath) - 1] = '\0';
         }
-    }
 
-    if (fp) {
+        FILE* fp = fopen(mapPath, "r");
+        if (!fp) continue;
+
         char line[512];
         while (fgets(line, sizeof(line), fp)) {
             if (strstr(line, "libil2cpp.so")) {
@@ -78,34 +85,58 @@ static std::vector<uint64_t> GetCandidateBases(int pid, uint64_t handle, int dri
                     uint64_t addr = static_cast<uint64_t>(start);
                     if (IsElfHeader(driverFd, handle, addr)) {
                         bool exists = false;
-                        for (uint64_t b : bases) {
-                            if (b == addr) { exists = true; break; }
+                        for (uint64_t d : discovered) {
+                            if (d == addr) { exists = true; break; }
                         }
-                        if (!exists) bases.push_back(addr);
+                        if (!exists) {
+                            discovered.push_back(addr);
+                            if (elf1 == 0) elf1 = addr;
+                            else if (elf2 == 0) elf2 = addr;
+                            else if (elf3 == 0) elf3 = addr;
+                        }
                     }
                 }
             }
         }
         fclose(fp);
+        if (!discovered.empty()) break;
     }
+
+    // In Android ELF multi-mappings (Bull_Team zeroOffsetCount == 2 & CROSS SRC return elf2),
+    // elf1 is the APK file mapping where static variables hold uninitialized float constants.
+    // elf2 is the live runtime loaded library image where static pointers are initialized.
+    if (elf2 != 0) bases.push_back(elf2);
+    if (primaryBase != 0 && primaryBase != elf2) bases.push_back(primaryBase);
+    if (elf1 != 0 && elf1 != elf2 && elf1 != primaryBase) bases.push_back(elf1);
+    for (uint64_t d : discovered) {
+        bool exists = false;
+        for (uint64_t b : bases) {
+            if (b == d) { exists = true; break; }
+        }
+        if (!exists) bases.push_back(d);
+    }
+
+    if (bases.empty() && primaryBase != 0) bases.push_back(primaryBase);
 
     return bases;
 }
 
 static inline bool IsValidMatch(int fd, uint64_t handle, uint64_t match, bool is64, uint64_t& outLp) {
     if (!IsValidPtr(match, is64)) return false;
-    // Check localPlayer at 0xD8 (Bull_Team / CROSS SRC) or 0x94 (treasure)
-    uint64_t lp = ReadPtr(fd, handle, match + 0xD8ULL, is64);
-    if (!IsValidPtr(lp, is64)) lp = ReadPtr(fd, handle, match + 0x94ULL, is64);
-    if (IsValidPtr(lp, is64)) {
-        outLp = lp;
-        return true;
+    // Check localPlayer at 0xD8 (Bull_Team / CROSS SRC), 0xB0 (treasure), 0x94, or 0x90
+    static const uint64_t kLpOffsets[] = {0xD8ULL, 0xB0ULL, 0x94ULL, 0x90ULL};
+    for (uint64_t lpOff : kLpOffsets) {
+        uint64_t lp = ReadPtr(fd, handle, match + lpOff, is64);
+        if (IsValidPtr(lp, is64)) {
+            outLp = lp;
+            return true;
+        }
     }
-    // Check match running flag at 0xCC (1 = running)
+    // Check match running flag at 0xCC (Bull_Team: 1 = running) or 0xA4 (treasure: 1 = running)
     int running = ReadMem<int>(fd, handle, match + 0xCCULL);
-    if (running == 1) {
-        return true;
-    }
+    if (running == 1) return true;
+    running = ReadMem<int>(fd, handle, match + 0xA4ULL);
+    if (running == 1) return true;
     return false;
 }
 
@@ -266,7 +297,7 @@ bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffse
 static bool ReadCamMatrix(int fd, uint64_t handle, const GameOffsets* off, uint64_t lp, bool is64, Matrix4x4& outM, uint64_t stClass = 0) {
     if (!off) return false;
     if (lp != 0) {
-        static const uint64_t kFollowOffsets[] = {0x638ULL, 0x698ULL, 0x3E8ULL, 0x38ULL};
+        static const uint64_t kFollowOffsets[] = {0x638ULL, 0x698ULL, 0x3E8ULL, 0x38ULL, 0x5B0ULL};
         uint64_t follow = 0;
         for (uint64_t fOff : kFollowOffsets) {
             follow = ReadPtr(fd, handle, lp + fOff, is64);
@@ -278,11 +309,12 @@ static bool ReadCamMatrix(int fd, uint64_t handle, const GameOffsets* off, uint6
         if (IsValidPtr(follow, is64)) {
             uint64_t cam = ReadPtr(fd, handle, follow + off->camera, is64);
             if (!IsValidPtr(cam, is64)) cam = ReadPtr(fd, handle, follow + off->cameraFallback, is64);
+            if (!IsValidPtr(cam, is64)) cam = ReadPtr(fd, handle, follow + 0x28ULL, is64);
             if (!IsValidPtr(cam, is64)) cam = follow;
             if (IsValidPtr(cam, is64)) {
                 uint64_t intPtr = ReadPtr(fd, handle, cam + off->intPtrCam, is64);
                 if (IsValidPtr(intPtr, is64)) {
-                    static const uint64_t kMatrixOffsets[] = {0x100ULL, 0xBCULL, 0xE8ULL, 0x38ULL};
+                    static const uint64_t kMatrixOffsets[] = {0xD8ULL, 0x100ULL, 0xBCULL, 0xE8ULL, 0x10ULL, 0x38ULL};
                     for (uint64_t mOff : kMatrixOffsets) {
                         outM = ReadMem<Matrix4x4>(fd, handle, intPtr + mOff);
                         if (outM.m[0] != 0.0f || outM.m[5] != 0.0f || outM.m[10] != 0.0f) return true;
@@ -292,9 +324,9 @@ static bool ReadCamMatrix(int fd, uint64_t handle, const GameOffsets* off, uint6
         }
     }
 
-    // Direct matrix from staticClass (from treasure Offsets::ViewMatrix = 0xBC)
+    // Direct matrix from staticClass (from treasure Offsets::ViewMatrix = 0xBC or 0x100)
     if (IsValidPtr(stClass, is64)) {
-        static const uint64_t kStaticMatOffsets[] = {0xBCULL, 0x100ULL, 0xE8ULL};
+        static const uint64_t kStaticMatOffsets[] = {0xBCULL, 0x100ULL, 0xD8ULL, 0xE8ULL};
         for (uint64_t smOff : kStaticMatOffsets) {
             outM = ReadMem<Matrix4x4>(fd, handle, stClass + smOff);
             if (outM.m[0] != 0.0f || outM.m[5] != 0.0f || outM.m[10] != 0.0f) return true;
@@ -496,6 +528,10 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
             uint64_t entryAddr = valuesPtr + (i * off->entryStride);
             entityPtr = ReadPtr(driverFd, handle, entryAddr + off->entryValue, is64);
         }
+        // Fallback: treasure monoArray<V>* values format (stride 0x8)
+        if (!IsValidPtr(entityPtr, is64)) {
+            entityPtr = ReadPtr(driverFd, handle, valuesPtr + (i * 0x8ULL), is64);
+        }
         if (!IsValidPtr(entityPtr, is64) || (localPlayer != 0 && entityPtr == localPlayer)) continue;
 
         uint8_t isDead = ReadMem<uint8_t>(driverFd, handle, entityPtr + off->playerIsDead);
@@ -516,6 +552,19 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
         Vector3 headPos = (headBone != 0) ? GetNodePosition(headBone, handle, driverFd) : Vector3(0.0f, 0.0f, 0.0f);
         uint64_t rootBone = ReadPtr(driverFd, handle, entityPtr + off->boneRoot, is64);
         Vector3 toePos = (rootBone != 0) ? GetNodePosition(rootBone, handle, driverFd) : Vector3(0.0f, 0.0f, 0.0f);
+
+        // Fallback: Direct position from Bull_Team EnemyPosForce (0x900) or CROSS SRC Position (0x90)
+        if (headPos == Vector3::zero() && toePos == Vector3::zero()) {
+            Vector3 directPos = ReadMem<Vector3>(driverFd, handle, entityPtr + 0x900ULL);
+            if (directPos.y <= -500.0f || directPos.y >= 5000.0f || (directPos.x == 0.0f && directPos.y == 0.0f)) {
+                directPos = ReadMem<Vector3>(driverFd, handle, entityPtr + 0x90ULL);
+            }
+            if (directPos.y > -500.0f && directPos.y < 5000.0f && (directPos.x != 0.0f || directPos.z != 0.0f)) {
+                toePos = directPos;
+                headPos = directPos + Vector3(0.0f, 1.9f, 0.0f);
+            }
+        }
+
         if (headPos == Vector3::zero() && toePos != Vector3::zero()) {
             headPos = toePos + Vector3(0.0f, 1.9f, 0.0f);
         } else if (toePos == Vector3::zero() && headPos != Vector3::zero()) {
