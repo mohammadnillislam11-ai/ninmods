@@ -36,10 +36,13 @@ jobs:
 
       - name: Sign & Align APK
         run: |
+          VERSION=$(grep 'versionCode =' app/build.gradle.kts | head -n 1 | tr -cd '0-9')
+          if [ -z "$VERSION" ]; then VERSION="53"; fi
+          echo "Building Main_V${VERSION}.apk"
           keytool -genkey -v -keystore release.keystore -alias ninmods -keyalg RSA -keysize 2048 -validity 10000 -storepass ninmods123 -keypass ninmods123 -dname "CN=NINMODS, OU=Mobile, O=NIN, L=Dhaka, S=Dhaka, C=BD"
           $ANDROID_HOME/build-tools/34.0.0/zipalign -p -f 4 app/build/outputs/apk/debug/app-debug.apk main_aligned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V52.apk" main_aligned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V52.apk"
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V${VERSION}.apk" main_aligned.apk
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V${VERSION}.apk"
 
       - name: Fetch Latest Loader APK
         env:
@@ -54,23 +57,25 @@ jobs:
         with:
           name: NINMODS-Release-APKs
           path: |
-            Main_V52.apk
-            Loader_V45.apk
+            Main_V*.apk
+            Loader_*.apk
 
       - name: Create GitHub Release and Upload Both APKs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          VERSION=$(grep 'versionCode =' app/build.gradle.kts | head -n 1 | tr -cd '0-9')
+          if [ -z "$VERSION" ]; then VERSION="53"; fi
           echo "Cleaning up all older releases..."
           for old_tag in $(gh release list --limit 50 --json tagName -q '.[].tagName'); do
             echo "Deleting old release: $old_tag"
             gh release delete "$old_tag" --yes --cleanup-tag || true
           done
 
-          RELEASE_TAG="v52.0-$(date +'%Y%m%d%H%M%S')"
-          ASSETS="Main_V52.apk"
+          RELEASE_TAG="v${VERSION}.0-$(date +'%Y%m%d%H%M%S')"
+          ASSETS="Main_V${VERSION}.apk"
           if [ -f "Loader_V45.apk" ]; then
-            ASSETS="Main_V52.apk Loader_V45.apk"
+            ASSETS="Main_V${VERSION}.apk Loader_V45.apk"
           fi
           gh release create "$RELEASE_TAG" \
             $ASSETS \
