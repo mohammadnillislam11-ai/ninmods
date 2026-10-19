@@ -13,6 +13,8 @@ struct GameOffsets {
   uint64_t gameFacade;
   uint64_t gameFacadeInd;
   uint64_t staticClassField;
+  uint64_t currentGame;
+  uint64_t currentMatchGame;
   uint64_t currentMatch;
   uint64_t currentMatchFallback;
   uint64_t matchRunning;
@@ -65,6 +67,8 @@ static const GameOffsets kOffsetsFFGlobal = {
     .gameFacade = 0x0A984D48ULL,           // Bull_Team & treasure: GameFacade = 0xA984D48
     .gameFacadeInd = 0x0C2132B8ULL,        // Legacy treasure facade fallback
     .staticClassField = 0xB8ULL,           // Bull_Team: FacadeP2 = 0xB8
+    .currentGame = 0x0ULL,                 // ninmods_offsets.h: CurrentGame = 0x0 (BaseGame)
+    .currentMatchGame = 0x8ULL,            // ninmods_offsets.h: CurrentMatchGame = 0x8 (Direct Match)
     .currentMatch = 0x90ULL,               // Bull_Team: BaseGameMatch = 0x90
     .currentMatchFallback = 0x930ULL,      // Bull_Team offset.h: 0x930
     .matchRunning = 0xCCULL,               // Bull_Team: MatchIsRunning = 0xCC (1 = in match)

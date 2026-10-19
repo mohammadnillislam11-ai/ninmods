@@ -92,6 +92,23 @@ static std::vector<uint64_t> GetCandidateBases(int pid, uint64_t handle, int dri
     return bases;
 }
 
+static inline bool IsValidMatch(int fd, uint64_t handle, uint64_t match, bool is64, uint64_t& outLp) {
+    if (!IsValidPtr(match, is64)) return false;
+    // Check localPlayer at 0xD8 (Bull_Team / CROSS SRC) or 0x94 (treasure)
+    uint64_t lp = ReadPtr(fd, handle, match + 0xD8ULL, is64);
+    if (!IsValidPtr(lp, is64)) lp = ReadPtr(fd, handle, match + 0x94ULL, is64);
+    if (IsValidPtr(lp, is64)) {
+        outLp = lp;
+        return true;
+    }
+    // Check match running flag at 0xCC (1 = running)
+    int running = ReadMem<int>(fd, handle, match + 0xCCULL);
+    if (running == 1) {
+        return true;
+    }
+    return false;
+}
+
 bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffsets* off, bool is64,
                          uint64_t& inOutBase, uint64_t& outFacade, uint64_t& outMatch, uint64_t* outBaseGame) {
     if (!off || handle == 0) return false;
@@ -113,71 +130,124 @@ bool ResolveGamePointers(int pid, uint64_t handle, int driverFd, const GameOffse
             // Structure A: candFacade is Il2CppClass* (holds static fields)
             uint64_t stClass = ReadPtr(driverFd, handle, candFacade + off->staticClassField, is64);
             if (IsValidPtr(stClass, is64)) {
-                // Bull_Team & CROSS SRC: BaseGame is at stClass + 0x8 or stClass + 0x0
-                uint64_t baseGame = ReadPtr(driverFd, handle, stClass + 0x8ULL, is64);
-                if (!IsValidPtr(baseGame, is64)) {
-                    baseGame = ReadPtr(driverFd, handle, stClass + 0x0ULL, is64);
+                uint64_t ptr0 = ReadPtr(driverFd, handle, stClass + 0x0ULL, is64);
+                uint64_t ptr8 = ReadPtr(driverFd, handle, stClass + 0x8ULL, is64);
+
+                uint64_t liveMatch = 0;
+                uint64_t liveBaseGame = 0;
+                uint64_t foundLp = 0;
+
+                // Path 1: ninmods_offsets.h - stClass + 0x8 is CurrentMatchGame directly
+                if (IsValidMatch(driverFd, handle, ptr8, is64, foundLp)) {
+                    liveMatch = ptr8;
+                    liveBaseGame = IsValidPtr(ptr0, is64) ? ptr0 : stClass;
+                }
+                // Path 2: CROSS SRC / Bull_Team - ptr0 is BaseGame, and BaseGame + 0x90 is Match
+                if (liveMatch == 0 && IsValidPtr(ptr0, is64)) {
+                    uint64_t mFrom0 = ReadPtr(driverFd, handle, ptr0 + 0x90ULL, is64);
+                    if (!IsValidPtr(mFrom0, is64)) mFrom0 = ReadPtr(driverFd, handle, ptr0 + 0x930ULL, is64);
+                    if (IsValidMatch(driverFd, handle, mFrom0, is64, foundLp)) {
+                        liveMatch = mFrom0;
+                        liveBaseGame = ptr0;
+                    }
+                }
+                // Path 3: Bull_Team Server.cpp line 255 - ptr8 is BaseGame, and ptr8 + 0x90 is Match
+                if (liveMatch == 0 && IsValidPtr(ptr8, is64)) {
+                    uint64_t mFrom8 = ReadPtr(driverFd, handle, ptr8 + 0x90ULL, is64);
+                    if (!IsValidPtr(mFrom8, is64)) mFrom8 = ReadPtr(driverFd, handle, ptr8 + 0x930ULL, is64);
+                    if (IsValidMatch(driverFd, handle, mFrom8, is64, foundLp)) {
+                        liveMatch = mFrom8;
+                        liveBaseGame = ptr8;
+                    }
+                }
+                // Path 4: Direct match offset on stClass
+                if (liveMatch == 0) {
+                    uint64_t mDirect = ReadPtr(driverFd, handle, stClass + off->currentMatch, is64);
+                    if (!IsValidPtr(mDirect, is64) && off->currentMatchFallback != 0) {
+                        mDirect = ReadPtr(driverFd, handle, stClass + off->currentMatchFallback, is64);
+                    }
+                    if (IsValidMatch(driverFd, handle, mDirect, is64, foundLp)) {
+                        liveMatch = mDirect;
+                        liveBaseGame = IsValidPtr(ptr0, is64) ? ptr0 : stClass;
+                    }
+                }
+                // Path 5: Treasure pattern - stClass itself holds LocalPlayer at 0x94 and Dictionary at 0x68
+                if (liveMatch == 0) {
+                    uint64_t treasureLp = ReadPtr(driverFd, handle, stClass + 0x94ULL, is64);
+                    if (IsValidPtr(treasureLp, is64)) {
+                        liveMatch = stClass;
+                        liveBaseGame = stClass;
+                        foundLp = treasureLp;
+                    }
                 }
 
-                uint64_t m = 0;
-                if (IsValidPtr(baseGame, is64)) {
-                    m = ReadPtr(driverFd, handle, baseGame + 0x90ULL, is64);
-                    if (!IsValidPtr(m, is64)) m = ReadPtr(driverFd, handle, baseGame + 0x930ULL, is64);
-                    if (!IsValidPtr(m, is64)) m = ReadPtr(driverFd, handle, baseGame + 0x8ULL, is64);
-                }
-
-                if (!IsValidPtr(m, is64)) {
-                    m = ReadPtr(driverFd, handle, stClass + off->currentMatch, is64);
-                }
-                if (!IsValidPtr(m, is64) && off->currentMatchFallback != 0) {
-                    m = ReadPtr(driverFd, handle, stClass + off->currentMatchFallback, is64);
-                }
-
-                if (IsValidPtr(m, is64)) {
+                if (IsValidPtr(liveMatch, is64)) {
                     inOutBase = testBase;
                     outFacade = candFacade;
-                    outMatch = m;
-                    if (outBaseGame) *outBaseGame = IsValidPtr(baseGame, is64) ? baseGame : stClass;
+                    outMatch = liveMatch;
+                    if (outBaseGame) *outBaseGame = liveBaseGame;
                     return true;
                 }
 
-                if (IsValidPtr(baseGame, is64) && bestFacade == 0) {
+                // If not in match yet (e.g. in Lobby), save bestFacade and bestBaseGame
+                if ((IsValidPtr(ptr0, is64) || IsValidPtr(ptr8, is64)) && bestFacade == 0) {
                     bestBase = testBase;
                     bestFacade = candFacade;
                     bestMatch = 0;
-                    bestBaseGame = baseGame;
+                    bestBaseGame = IsValidPtr(ptr0, is64) ? ptr0 : (IsValidPtr(ptr8, is64) ? ptr8 : stClass);
                 }
             }
 
             // Structure B: candFacade is direct singleton instance
-            uint64_t directGame = ReadPtr(driverFd, handle, candFacade + 0x8ULL, is64);
-            if (!IsValidPtr(directGame, is64)) directGame = ReadPtr(driverFd, handle, candFacade + 0x0ULL, is64);
-
+            uint64_t d0 = ReadPtr(driverFd, handle, candFacade + 0x0ULL, is64);
+            uint64_t d8 = ReadPtr(driverFd, handle, candFacade + 0x8ULL, is64);
             uint64_t directMatch = 0;
-            if (IsValidPtr(directGame, is64)) {
-                directMatch = ReadPtr(driverFd, handle, directGame + 0x90ULL, is64);
-                if (!IsValidPtr(directMatch, is64)) directMatch = ReadPtr(driverFd, handle, directGame + 0x930ULL, is64);
+            uint64_t directBaseGame = 0;
+            uint64_t directLp = 0;
+
+            if (IsValidMatch(driverFd, handle, d8, is64, directLp)) {
+                directMatch = d8;
+                directBaseGame = IsValidPtr(d0, is64) ? d0 : candFacade;
+            } else if (IsValidPtr(d0, is64)) {
+                uint64_t mFrom0 = ReadPtr(driverFd, handle, d0 + 0x90ULL, is64);
+                if (!IsValidPtr(mFrom0, is64)) mFrom0 = ReadPtr(driverFd, handle, d0 + 0x930ULL, is64);
+                if (IsValidMatch(driverFd, handle, mFrom0, is64, directLp)) {
+                    directMatch = mFrom0;
+                    directBaseGame = d0;
+                }
             }
-            if (!IsValidPtr(directMatch, is64)) {
-                directMatch = ReadPtr(driverFd, handle, candFacade + off->currentMatch, is64);
+            if (directMatch == 0 && IsValidPtr(d8, is64)) {
+                uint64_t mFrom8 = ReadPtr(driverFd, handle, d8 + 0x90ULL, is64);
+                if (!IsValidPtr(mFrom8, is64)) mFrom8 = ReadPtr(driverFd, handle, d8 + 0x930ULL, is64);
+                if (IsValidMatch(driverFd, handle, mFrom8, is64, directLp)) {
+                    directMatch = mFrom8;
+                    directBaseGame = d8;
+                }
             }
-            if (!IsValidPtr(directMatch, is64) && off->currentMatchFallback != 0) {
-                directMatch = ReadPtr(driverFd, handle, candFacade + off->currentMatchFallback, is64);
+            if (directMatch == 0) {
+                uint64_t mDirect = ReadPtr(driverFd, handle, candFacade + off->currentMatch, is64);
+                if (!IsValidPtr(mDirect, is64) && off->currentMatchFallback != 0) {
+                    mDirect = ReadPtr(driverFd, handle, candFacade + off->currentMatchFallback, is64);
+                }
+                if (IsValidMatch(driverFd, handle, mDirect, is64, directLp)) {
+                    directMatch = mDirect;
+                    directBaseGame = candFacade;
+                }
             }
 
             if (IsValidPtr(directMatch, is64)) {
                 inOutBase = testBase;
                 outFacade = candFacade;
                 outMatch = directMatch;
-                if (outBaseGame) *outBaseGame = IsValidPtr(directGame, is64) ? directGame : candFacade;
+                if (outBaseGame) *outBaseGame = directBaseGame;
                 return true;
             }
 
-            if (IsValidPtr(directGame, is64) && bestFacade == 0) {
+            if ((IsValidPtr(d0, is64) || IsValidPtr(d8, is64)) && bestFacade == 0) {
                 bestBase = testBase;
                 bestFacade = candFacade;
                 bestMatch = 0;
-                bestBaseGame = directGame;
+                bestBaseGame = IsValidPtr(d0, is64) ? d0 : (IsValidPtr(d8, is64) ? d8 : candFacade);
             }
         }
     }
@@ -317,6 +387,19 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
     }
 
     if (match == 0) {
+        // Fallback: If match was 0 in lobby/transition, check if baseGame holds localPlayer directly (treasure pattern)
+        if (IsValidPtr(baseGame, is64)) {
+            uint64_t lpTest = ReadPtr(driverFd, handle, baseGame + off->localPlayer, is64);
+            if (!IsValidPtr(lpTest, is64) && off->localPlayerFallback != 0) {
+                lpTest = ReadPtr(driverFd, handle, baseGame + off->localPlayerFallback, is64);
+            }
+            if (IsValidPtr(lpTest, is64)) {
+                match = baseGame;
+            }
+        }
+    }
+
+    if (match == 0) {
         return 0;
     }
 
@@ -345,16 +428,19 @@ int ScanAndComputeEsp(int pid, uint64_t handle, int driverFd, bool isMax,
     int dictCount = dict ? ReadMem<int>(driverFd, handle, dict + off->dictCount) : 0;
     if (dictCount <= 0 || dictCount > 200) {
         uint64_t dictCandidates[] = {
-            match ? ReadPtr(driverFd, handle, match + off->entityList, is64) : 0,
-            baseGame ? ReadPtr(driverFd, handle, baseGame + 0xC0ULL, is64) : 0,
-            match ? ReadPtr(driverFd, handle, match + off->entityListFallback, is64) : 0,
-            baseGame ? ReadPtr(driverFd, handle, baseGame + 0x148ULL, is64) : 0,
+            baseGame ? ReadPtr(driverFd, handle, baseGame + off->entityList, is64) : 0,         // BaseGame + 0xC0 (Bull_Team / CROSS SRC)
+            match ? ReadPtr(driverFd, handle, match + off->entityList, is64) : 0,               // Match + 0xC0
+            baseGame ? ReadPtr(driverFd, handle, baseGame + 0x68ULL, is64) : 0,                 // Treasure Dictionary (0x68)
             match ? ReadPtr(driverFd, handle, match + 0x68ULL, is64) : 0,
-            baseGame ? ReadPtr(driverFd, handle, baseGame + 0x68ULL, is64) : 0
+            baseGame ? ReadPtr(driverFd, handle, baseGame + off->entityListFallback, is64) : 0, // 0x148
+            match ? ReadPtr(driverFd, handle, match + off->entityListFallback, is64) : 0
         };
         for (uint64_t candD : dictCandidates) {
             if (!IsValidPtr(candD, is64)) continue;
             int c = ReadMem<int>(driverFd, handle, candD + off->dictCount);
+            if (c <= 0 || c > 200) {
+                c = ReadMem<int>(driverFd, handle, candD + 0x18ULL); // Unity Dictionary size fallback
+            }
             if (c > 0 && c <= 200) {
                 dict = candD;
                 dictCount = c;
