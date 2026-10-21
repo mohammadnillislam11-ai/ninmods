@@ -2,8 +2,8 @@
 <resources>
     <string name="app_name">NINMODS</string>
     <string name="menu_title">NINMODS</string>
-    <string name="dashboard_subtitle">Tactical Game Engine v61.0</string>
-    <string name="app_tagline">Tactical Game Engine v61.0</string>
+    <string name="dashboard_subtitle">Tactical Game Engine v62.0</string>
+    <string name="app_tagline">Tactical Game Engine v62.0</string>
     
     <!-- Navigation Items -->
     <string name="nav_dashboard">DASHBOARD</string>

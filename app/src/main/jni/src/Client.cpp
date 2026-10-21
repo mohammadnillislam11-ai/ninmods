@@ -1,5 +1,7 @@
 #include <pthread.h>
 #include <jni.h>
+#include <cstdlib>
+#include <string>
 #include <src/Socket/client.h>
 #include "src/Includes/obfuscate.h"
 #include <sys/stat.h>
@@ -559,14 +561,7 @@ Java_power_cheats_Floater_Functions(JNIEnv *env, jclass clazz) {
 extern "C"
 JNIEXPORT void JNICALL
 Java_power_cheats_Floater_ChangesID(JNIEnv *env, jclass clazz, jint id, jint value) {
-
-    // Guard: only send if connected
-    if (!isConnected()) {
-        LOGD("WARNING: Socket not connected, ignoring toggle ID: %d", id);
-        // Still update local state if needed (e.g., ESP settings)
-        // ... (local state updates remain)
-        return;
-    }
+    bool enabled = (value != 0);
 
     if (!isButrulVersion()) {
         switch (id) {
@@ -588,24 +583,63 @@ Java_power_cheats_Floater_ChangesID(JNIEnv *env, jclass clazz, jint id, jint val
     }
     
     switch (id) {
-        case 1: Actived.activar = !Actived.activar; SendBool(3, Actived.activar); break;
-        case 2: pPlayer.aimbot = !pPlayer.aimbot; SendBool(5, pPlayer.aimbot); break;
-        case 3: pPlayer.fovawm = !pPlayer.fovawm; SendBool(22, pPlayer.fovawm); break;
-        case 6: pPlayer.aimbotlock = !pPlayer.aimbotlock; SendBool(54, pPlayer.aimbotlock); break;
-        case 8: pPlayer.silen4a = !pPlayer.silen4a; SendBool(57, pPlayer.silen4a); break;
-        case 61: pPlayer.silentAimHead = (value == 0); SendBool(61, pPlayer.silentAimHead); break;
-        case 62: pPlayer.targetByDistance = (value == 1); SendBool(62, pPlayer.targetByDistance); break;
-        case 63: pPlayer.aimMagnet = !pPlayer.aimMagnet; SendBool(63, pPlayer.aimMagnet); break;
-        case 9: pPlayer.AimFov = value; SendFloat(58, pPlayer.AimFov); break;
-        case 10: pPlayer.AimDistance = value; SendFloat(59, pPlayer.AimDistance); break;
-        case 70: pPlayer.headshotRate = value; SendInt(70, pPlayer.headshotRate); break;
-        case 71: pPlayer.ignoreBots = !pPlayer.ignoreBots; SendBool(71, pPlayer.ignoreBots); break;
-        case 72: pPlayer.ignoreKnocked = !pPlayer.ignoreKnocked; SendBool(72, pPlayer.ignoreKnocked); break;
-        case 11: pEspPlayer.espLinha = !pEspPlayer.espLinha; break;
-        case 12: pEspPlayer.espCaixa = !pEspPlayer.espCaixa; break;
-        case 13: pEspPlayer.espDistance = !pEspPlayer.espDistance; break;
-        case 14: pEspPlayer.espSkeleton = !pEspPlayer.espSkeleton; break;
-        case 15: pEspPlayer.espIden360 = !pEspPlayer.espIden360; break;
+        case 1: 
+            Actived.activar = enabled; 
+            if (isConnected()) SendBool(3, Actived.activar); 
+            break;
+        case 2: 
+            pPlayer.aimbot = enabled; 
+            if (isConnected()) SendBool(5, pPlayer.aimbot); 
+            break;
+        case 3: 
+            pPlayer.fovawm = enabled; 
+            if (isConnected()) SendBool(22, pPlayer.fovawm); 
+            break;
+        case 6: 
+            pPlayer.aimbotlock = enabled; 
+            if (isConnected()) SendBool(54, pPlayer.aimbotlock); 
+            break;
+        case 8: 
+            pPlayer.silen4a = enabled; 
+            if (isConnected()) SendBool(57, pPlayer.silen4a); 
+            break;
+        case 61: 
+            pPlayer.silentAimHead = (value == 0); 
+            if (isConnected()) SendBool(61, pPlayer.silentAimHead); 
+            break;
+        case 62: 
+            pPlayer.targetByDistance = (value == 1); 
+            if (isConnected()) SendBool(62, pPlayer.targetByDistance); 
+            break;
+        case 63: 
+            pPlayer.aimMagnet = enabled; 
+            if (isConnected()) SendBool(63, pPlayer.aimMagnet); 
+            break;
+        case 9: 
+            pPlayer.AimFov = (float)value; 
+            if (isConnected()) SendFloat(58, pPlayer.AimFov); 
+            break;
+        case 10: 
+            pPlayer.AimDistance = (float)value; 
+            if (isConnected()) SendFloat(59, pPlayer.AimDistance); 
+            break;
+        case 70: 
+            pPlayer.headshotRate = value; 
+            if (isConnected()) SendInt(70, pPlayer.headshotRate); 
+            break;
+        case 71: 
+            pPlayer.ignoreBots = enabled; 
+            if (isConnected()) SendBool(71, pPlayer.ignoreBots); 
+            break;
+        case 72: 
+            pPlayer.ignoreKnocked = enabled; 
+            if (isConnected()) SendBool(72, pPlayer.ignoreKnocked); 
+            break;
+        case 11: pEspPlayer.espLinha = enabled; break;
+        case 12: pEspPlayer.espCaixa = enabled; break;
+        case 13: pEspPlayer.espDistance = enabled; break;
+        case 14: pEspPlayer.espSkeleton = enabled; break;
+        case 15: pEspPlayer.espIden360 = enabled; break;
         case 16:
             if (value == 0) pEspPlayer.espColor = Color(255, 255, 255, 255);
             else if (value == 1) pEspPlayer.espColor = Color(0, 255, 0, 255);
@@ -620,20 +654,20 @@ Java_power_cheats_Floater_ChangesID(JNIEnv *env, jclass clazz, jint id, jint val
             break;
         case 17: pEspPlayer.boxType = static_cast<BoxType>(value); break;
         case 18: pEspPlayer.lineType = static_cast<LineType>(value); break;
-        case 19: pEspPlayer.espHealth = !pEspPlayer.espHealth; break;
+        case 19: pEspPlayer.espHealth = enabled; break;
         case 20: pEspPlayer.textSize = (float)value; break;
-        case 21: pEspPlayer.espName = !pEspPlayer.espName; break;
+        case 21: pEspPlayer.espName = enabled; break;
         case 22: pEspPlayer.thickness = (float)value; break;
-        case 23: pEspPlayer.espDrawCount = !pEspPlayer.espDrawCount; break;
+        case 23: pEspPlayer.espDrawCount = enabled; break;
         case 25: 
             pPlayer.gameSpeed = (float)value / 10.0f;
-            SendInt(25, value);
+            if (isConnected()) SendInt(25, value);
             break;
         case 60: 
-            pPlayer.SpeedHackV2 = !pPlayer.SpeedHackV2; // local toggle
-            SendBool(60, pPlayer.SpeedHackV2);
+            pPlayer.SpeedHackV2 = enabled;
+            if (isConnected()) SendBool(60, pPlayer.SpeedHackV2);
             break;
-        case 27: showFOVCircle = !showFOVCircle; break;
+        case 27: showFOVCircle = enabled; break;
         case 30: g_espLeftAdjust = (float)value; break;
         case 31: g_espRightAdjust = (float)value; break;
         case 32:
@@ -641,12 +675,11 @@ Java_power_cheats_Floater_ChangesID(JNIEnv *env, jclass clazz, jint id, jint val
             g_espRightAdjust = 0.0f;
             break;
         case 33:
-            SendBool(59, value != 0);
+            if (isConnected()) SendBool(59, value != 0);
             break;
         case 34:
-            SendFloat(60, (float)value);
+            if (isConnected()) SendFloat(60, (float)value);
             break;
-
     }
 }
 

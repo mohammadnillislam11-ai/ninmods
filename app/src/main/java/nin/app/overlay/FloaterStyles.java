@@ -43,39 +43,12 @@ public final class FloaterStyles {
         return bitmap;
     }
 
-    public static GradientDrawable createButtonBg(Context context, int color) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(dp(context, 22));
-        drawable.setColor(color);
-        drawable.setStroke(dp(context, 1), AppColors.withAlpha(AppColors.TEXT_WHITE, 0x33));
-        return drawable;
-    }
-
     public static GradientDrawable createCardBackground(Context context) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(dp(context, 26));
+        drawable.setCornerRadius(dp(context, 10));
         drawable.setColor(CardBackground);
-        drawable.setStroke(dp(context, 1), AppColors.withAlpha(AppColors.CYAN_BRIGHT, 0x66));
-        return drawable;
-    }
-
-    public static GradientDrawable createPanelBackground(Context context, int cornerDp) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(dp(context, cornerDp));
-        drawable.setColor(AppColors.PANEL_BACKGROUND);
-        drawable.setStroke(dp(context, 1), AppColors.withAlpha(AppColors.CYAN_STROKE, 0x55));
-        return drawable;
-    }
-
-    public static GradientDrawable createSolidBg(Context context, int color, int cornerDp) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(dp(context, cornerDp));
-        drawable.setColor(color);
-        drawable.setStroke(dp(context, 1), AppColors.MODE_CARD_BORDER);
         return drawable;
     }
 }
+

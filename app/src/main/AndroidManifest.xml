@@ -44,6 +44,11 @@
             android:exported="false"
             android:label="@string/mode_select_title" />
 
+        <activity
+            android:name="nin.app.core.DeviceInfoActivity"
+            android:exported="false"
+            android:label="Device Information" />
+
         <service
             android:name="nin.app.core.RootServices"
             android:process=":root"
