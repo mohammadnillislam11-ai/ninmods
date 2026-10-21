@@ -2,7 +2,6 @@ package nin.app.graphics;
 
 import nin.app.overlay.Floater;
 
-
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -23,9 +22,10 @@ public class ESPView extends View implements Runnable {
     Paint mFilledPaint2;
     Paint mTextPaint;
     Paint mTextPaint2;
-    Thread mThread;
-    int FPS = 60;
-    long sleepTime;
+    private Thread mThread;
+    private volatile boolean isRunning = true;
+    private static final int FPS = 60;
+    private final long sleepTime = 1000 / FPS;
     Date time;
     SimpleDateFormat formatter;
 
@@ -36,9 +36,23 @@ public class ESPView extends View implements Runnable {
         setBackgroundColor(Color.TRANSPARENT);
         time = new Date();
         formatter = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-        sleepTime = 1000 / FPS;
-        mThread = new Thread(this);
+        isRunning = true;
+        mThread = new Thread(this, "ESPViewRenderThread");
         mThread.start();
+    }
+
+    public void stop() {
+        isRunning = false;
+        if (mThread != null) {
+            mThread.interrupt();
+            mThread = null;
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        stop();
     }
 
     @Override
@@ -55,14 +69,21 @@ public class ESPView extends View implements Runnable {
     @Override
     public void run() {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
-        while (mThread.isAlive() && !mThread.isInterrupted()) {
+        while (isRunning && !Thread.currentThread().isInterrupted()) {
             try {
                 long t1 = System.currentTimeMillis();
                 postInvalidate();
                 long td = System.currentTimeMillis() - t1;
-                Thread.sleep(Math.max(Math.min(0, sleepTime - td), sleepTime));
+                long toSleep = sleepTime - td;
+                if (toSleep > 0) {
+                    Thread.sleep(toSleep);
+                } else {
+                    Thread.sleep(5);
+                }
             } catch (InterruptedException it) {
-                Log.e("OverlayThread", it.getMessage());
+                break;
+            } catch (Exception e) {
+                Log.e("ESPView", "Render error: " + e.getMessage());
             }
         }
     }
@@ -104,21 +125,35 @@ public class ESPView extends View implements Runnable {
         cvs.drawLine(fromX, fromY, toX, toY, mStrokePaint);
     }
 
-    public void DrawCircle(Canvas cvs, int a, int r, int g, int b, float stroke, float posX, float posY, float radius) {
-        mStrokePaint2.setColor(Color.rgb(r, g, b));
-        mStrokePaint2.setAlpha(a);
-        mStrokePaint2.setStrokeWidth(stroke);
-        cvs.drawCircle(posX, posY, radius, mStrokePaint2);
+    public void DrawCircle(Canvas cvs, int a, int r, int g, int b, float posX, float posY, float radius, boolean filled) {
+        if (filled) {
+            mFilledPaint.setColor(Color.rgb(r, g, b));
+            mFilledPaint.setAlpha(a);
+            cvs.drawCircle(posX, posY, radius, mFilledPaint);
+        } else {
+            mStrokePaint.setColor(Color.rgb(r, g, b));
+            mStrokePaint.setAlpha(a);
+            mStrokePaint.setStyle(Paint.Style.STROKE);
+            cvs.drawCircle(posX, posY, radius, mStrokePaint);
+        }
     }
 
-    public void DrawFilledCircle(Canvas cvs, int a, int r, int g, int b, float posX, float posY, float radius) {
-        mFilledPaint.setColor(Color.rgb(r, g, b));
-        mFilledPaint.setAlpha(a);
-        cvs.drawCircle(posX, posY, radius, mFilledPaint);
+    public void DrawBox(Canvas cvs, int a, int r, int g, int b, float lineWidth, float fromX, float fromY, float toX, float toY, boolean filled) {
+        if (filled) {
+            mFilledPaint.setColor(Color.rgb(r, g, b));
+            mFilledPaint.setAlpha(a);
+            cvs.drawRect(fromX, fromY, toX, toY, mFilledPaint);
+        } else {
+            mStrokePaint.setColor(Color.rgb(r, g, b));
+            mStrokePaint.setAlpha(a);
+            mStrokePaint.setStrokeWidth(lineWidth);
+            mStrokePaint.setStyle(Paint.Style.STROKE);
+            cvs.drawRect(fromX, fromY, toX, toY, mStrokePaint);
+        }
     }
 
     public void DrawName(Canvas cvs, int a, int r, int g, int b, String nametxt, int teamid, float posX, float posY, float size) {
-        mTextPaint.setARGB(a,r, g, b);
+        mTextPaint.setARGB(a, r, g, b);
         mTextPaint2.setColor(Color.argb(0x9A, 0, 0, 0));
         cvs.drawRect(posX - 120 - (size + 13), posY - 18 - size, posX + 50 + (size + 15), posY + 10, mTextPaint2);
         mTextPaint.setColor(Color.argb(255, 0, 255, 0));
@@ -126,7 +161,7 @@ public class ESPView extends View implements Runnable {
         mTextPaint.setTextSize(15 + size);
         mTextPaint.setColor(Color.WHITE);
         cvs.drawText(nametxt, posX, posY, mTextPaint);
-        cvs.drawText(" "+ teamid, posX - 134, posY, mTextPaint);
+        cvs.drawText(" " + teamid, posX - 134, posY, mTextPaint);
     }
 
     public void DrawFilledRect(Canvas cvs, int a, int r, int g, int b, float x, float y, float width, float height) {

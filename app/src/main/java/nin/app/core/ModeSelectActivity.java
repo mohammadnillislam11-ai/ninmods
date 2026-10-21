@@ -173,7 +173,7 @@ public class ModeSelectActivity extends Activity {
         setModeNative(mode);
 
         try {
-            new Floater(this);
+            Floater.start(this);
 
             Intent launchIntent = getPackageManager().getLaunchIntentForPackage("com.dts.freefireth");
             if (launchIntent != null) {

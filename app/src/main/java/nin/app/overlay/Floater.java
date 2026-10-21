@@ -5,12 +5,9 @@ import nin.app.core.Prefs;
 import nin.app.core.Utils;
 import nin.app.core.RootServices;
 import nin.app.graphics.ESPView;
-import nin.app.graphics.ParticleView;
 
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
-import android.animation.ObjectAnimator;
-import android.animation.ValueAnimator;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -85,7 +82,7 @@ public class Floater {
 
     static Context context;
     private static Utils utils;
-    static Floater activeFloater;
+    public static Floater activeFloater = null;
 
     private WindowManager windowManager;
     private WindowManager.LayoutParams windowManagerParams;
@@ -106,8 +103,64 @@ public class Floater {
     private final List<TextView> menuCategoryViews = new ArrayList<>();
     final Map<String, List<NativeControlItem>> nativeControlsByCategory = new LinkedHashMap<>();
     final Map<String, List<View>> categoryWidgetsByName = new LinkedHashMap<>();
-    String selectedCategoryName = "Memory";
-    private ParticleView snowParticleView;
+    String selectedCategoryName = "Aim";
+
+    // Strict Singleton & Lifecycle Control
+    public static synchronized void start(Context ctx) {
+        if (activeFloater != null && activeFloater.isAttached()) {
+            activeFloater.openMenu();
+            return;
+        }
+        if (activeFloater != null) {
+            activeFloater.destroyOverlay();
+        }
+        Context targetCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+        activeFloater = new Floater(targetCtx);
+    }
+
+    public static synchronized void stop() {
+        if (activeFloater != null) {
+            activeFloater.destroyOverlay();
+            activeFloater = null;
+        }
+    }
+
+    public static boolean isRunning() {
+        return activeFloater != null && activeFloater.isAttached();
+    }
+
+    public boolean isAttached() {
+        return rootFrame != null && rootFrame.isAttachedToWindow();
+    }
+
+    public synchronized void destroyOverlay() {
+        try {
+            if (windowManager != null) {
+                if (rootFrame != null) {
+                    try {
+                        windowManager.removeView(rootFrame);
+                    } catch (Exception ignored) {}
+                }
+                if (drawView != null) {
+                    drawView.stop();
+                    try {
+                        windowManager.removeView(drawView);
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+        activeFloater = null;
+    }
+
+    public void openMenu() {
+        if (collapsedRelative != null) collapsedRelative.setVisibility(View.GONE);
+        if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
+    }
+
+    public void closeMenu() {
+        if (menuLayout != null) menuLayout.setVisibility(View.GONE);
+        if (collapsedRelative != null) collapsedRelative.setVisibility(View.VISIBLE);
+    }
 
     private String str(int resId, String defaultVal) {
         if (context != null) {
@@ -185,9 +238,12 @@ public class Floater {
     }
 
     public Floater(Context globContext) {
-        context = globContext;
-        utils = new Utils(context);
+        if (activeFloater != null && activeFloater != this) {
+            activeFloater.destroyOverlay();
+        }
         activeFloater = this;
+        context = globContext.getApplicationContext() != null ? globContext.getApplicationContext() : globContext;
+        utils = new Utils(context);
         initNativeControls();
         onCreate();
     }
@@ -218,7 +274,7 @@ public class Floater {
                 PixelFormat.TRANSLUCENT);
         windowManagerParams.gravity = Gravity.TOP | Gravity.LEFT;
         windowManagerParams.x = 0;
-        windowManagerParams.y = 100;
+        windowManagerParams.y = 120;
 
         windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         DrawCanvas();
@@ -233,8 +289,8 @@ public class Floater {
         SCREEN_HEIGHT = screenHeight;
 
         boolean isLandscape = screenWidth > screenHeight;
-        int maxMenuWidth = isLandscape ? (int) (screenWidth * 0.55f) : (int) (screenWidth * 0.92f);
-        int maxMenuHeight = isLandscape ? (int) (screenHeight * 0.8f) : (int) (screenHeight * 0.7f);
+        int menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 380 : 340), (int) (screenWidth * 0.92f));
+        int menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 380 : 420), (int) (screenHeight * 0.82f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -250,12 +306,21 @@ public class Floater {
         collapsedRelative.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
-        collapsedRelative.setAlpha(0.95f);
+        collapsedRelative.setAlpha(0.96f);
         collapsedRelative.setVisibility(View.VISIBLE);
 
         String base64Icon = getBase64Icon();
         logoImagem = new ImageView(context);
-        logoImagem.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 55), FloaterStyles.dp(context, 45)));
+        logoImagem.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 50), FloaterStyles.dp(context, 50)));
+        logoImagem.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logoImagem.setPadding(FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 4));
+        
+        GradientDrawable logoBg = new GradientDrawable();
+        logoBg.setShape(GradientDrawable.OVAL);
+        logoBg.setColor(AppColors.CARD_BACKGROUND);
+        logoBg.setStroke(FloaterStyles.dp(context, 2), AppColors.PRIMARY);
+        logoImagem.setBackground(logoBg);
+
         if (base64Icon != null && !base64Icon.isEmpty()) {
             Bitmap iconBitmap = FloaterStyles.base64ToBitmap(base64Icon);
             if (iconBitmap != null) logoImagem.setImageBitmap(iconBitmap);
@@ -264,50 +329,38 @@ public class Floater {
             logoImagem.setImageBitmap(FloaterStyles.createDefaultIcon());
         }
 
+        // Main Menu Layout (Standard Clean Margins & Padding)
         menuLayout = new LinearLayout(context);
-        menuLayout.setLayoutParams(new LinearLayout.LayoutParams(
-                Math.min(FloaterStyles.dp(context, isLandscape ? 420 : 360), maxMenuWidth),
-                maxMenuHeight));
+        menuLayout.setLayoutParams(new LinearLayout.LayoutParams(menuWidth, menuHeight));
         menuLayout.setVisibility(View.GONE);
         menuLayout.setOrientation(LinearLayout.VERTICAL);
         menuLayout.setBackground(FloaterStyles.createCardBackground(context));
         menuLayout.setPadding(FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 8));
 
-        snowParticleView = new ParticleView(context);
-        RelativeLayout.LayoutParams snowParams = new RelativeLayout.LayoutParams(
-                Math.min(FloaterStyles.dp(context, isLandscape ? 560 : 430), maxMenuWidth),
-                maxMenuHeight
-        );
-        snowParticleView.setLayoutParams(snowParams);
-        snowParticleView.setVisibility(View.GONE);
-        snowParticleView.setAlpha(0.72f);
-        snowParticleView.setClickable(false);
-        snowParticleView.setFocusable(false);
-
-        // Header block
+        // 1. Header Block
         LinearLayout headerBlock = new LinearLayout(context);
         headerBlock.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         headerBlock.setOrientation(LinearLayout.VERTICAL);
-        headerBlock.setPadding(FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 8));
-        GradientDrawable headerBg = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{AppColors.PANEL_HEADER_START, AppColors.PANEL_HEADER_END}
-        );
-        headerBg.setCornerRadius(FloaterStyles.dp(context, 20));
-        headerBg.setStroke(FloaterStyles.dp(context, 1), AppColors.withAlpha(AppColors.CYAN_STROKE, 0x66));
+        headerBlock.setPadding(FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 6));
+        
+        GradientDrawable headerBg = new GradientDrawable();
+        headerBg.setShape(GradientDrawable.RECTANGLE);
+        headerBg.setCornerRadius(FloaterStyles.dp(context, 12));
+        headerBg.setColor(AppColors.PANEL_HEADER_START);
+        headerBg.setStroke(FloaterStyles.dp(context, 1), AppColors.CYAN_STROKE);
         headerBlock.setBackground(headerBg);
 
+        // Header Top Row (Logo, Title, Minimize & Close)
         LinearLayout headerRow = new LinearLayout(context);
-        headerRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 44)));
+        headerRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 38)));
         headerRow.setOrientation(LinearLayout.HORIZONTAL);
         headerRow.setGravity(Gravity.CENTER_VERTICAL);
 
         ImageView menuLogo = new ImageView(context);
-        menuLogo.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 36), FloaterStyles.dp(context, 36)));
+        menuLogo.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 28), FloaterStyles.dp(context, 28)));
         menuLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        String b64 = getBase64Icon();
-        if (b64 != null && !b64.isEmpty()) {
-            Bitmap b = FloaterStyles.base64ToBitmap(b64);
+        if (base64Icon != null && !base64Icon.isEmpty()) {
+            Bitmap b = FloaterStyles.base64ToBitmap(base64Icon);
             if (b != null) menuLogo.setImageBitmap(b);
             else menuLogo.setImageBitmap(FloaterStyles.createDefaultIcon());
         } else {
@@ -315,116 +368,107 @@ public class Floater {
         }
         headerRow.addView(menuLogo);
 
-        LinearLayout brandContainer = new LinearLayout(context);
-        brandContainer.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        brandContainer.setOrientation(LinearLayout.VERTICAL);
-        brandContainer.setPadding(FloaterStyles.dp(context, 8), 0, 0, 0);
-
         TextView brand = new TextView(context);
-        brand.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        brandLp.leftMargin = FloaterStyles.dp(context, 8);
+        brand.setLayoutParams(brandLp);
         brand.setText(str(nin.app.R.string.app_name, "NINMODS"));
-        brand.setTextColor(AppColors.TEXT_WHITE);
-        brand.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        brand.setTextColor(AppColors.PRIMARY);
+        brand.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        brandContainer.addView(brand);
-        headerRow.addView(brandContainer);
+        headerRow.addView(brand);
 
-        Button closeBtn = new Button(context);
-        LinearLayout.LayoutParams safeParams = new LinearLayout.LayoutParams(FloaterStyles.dp(context, 62), FloaterStyles.dp(context, 26));
-        safeParams.setMargins(0, 0, FloaterStyles.dp(context, 6), 0);
-        closeBtn.setLayoutParams(safeParams);
-        closeBtn.setText(str(nin.app.R.string.btn_safe, "SAFE"));
+        // Minimize Button
+        TextView minBtn = new TextView(context);
+        LinearLayout.LayoutParams minLp = new LinearLayout.LayoutParams(FloaterStyles.dp(context, 28), FloaterStyles.dp(context, 28));
+        minLp.rightMargin = FloaterStyles.dp(context, 6);
+        minBtn.setLayoutParams(minLp);
+        minBtn.setText("—");
+        minBtn.setTextColor(AppColors.TEXT_WHITE);
+        minBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        minBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        minBtn.setGravity(Gravity.CENTER);
+        GradientDrawable minBg = new GradientDrawable();
+        minBg.setColor(AppColors.BTN_HIDE_BG);
+        minBg.setCornerRadius(FloaterStyles.dp(context, 8));
+        minBg.setStroke(FloaterStyles.dp(context, 1), AppColors.CYAN_STROKE);
+        minBtn.setBackground(minBg);
+        minBtn.setOnClickListener(v -> closeMenu());
+        headerRow.addView(minBtn);
+
+        // Close Button
+        TextView closeBtn = new TextView(context);
+        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(FloaterStyles.dp(context, 28), FloaterStyles.dp(context, 28));
+        closeBtn.setLayoutParams(closeLp);
+        closeBtn.setText("✕");
         closeBtn.setTextColor(AppColors.TEXT_WHITE);
-        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8);
-        closeBtn.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        GradientDrawable cBg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{AppColors.BTN_SAFE_START, AppColors.BTN_SAFE_END});
-        cBg.setCornerRadius(FloaterStyles.dp(context, 13));
-        cBg.setStroke(FloaterStyles.dp(context, 1), AppColors.withAlpha(AppColors.CYAN_STROKE, 0x88));
-        closeBtn.setBackground(cBg);
+        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        closeBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        closeBtn.setGravity(Gravity.CENTER);
+        GradientDrawable closeBg = new GradientDrawable();
+        closeBg.setColor(AppColors.BTN_HIDE_BG);
+        closeBg.setCornerRadius(FloaterStyles.dp(context, 8));
+        closeBg.setStroke(FloaterStyles.dp(context, 1), AppColors.CYAN_STROKE);
+        closeBtn.setBackground(closeBg);
+        closeBtn.setOnClickListener(v -> destroyOverlay());
         headerRow.addView(closeBtn);
-
-        TextView closeHeaderIcon = new TextView(context);
-        LinearLayout.LayoutParams closeIconParams = new LinearLayout.LayoutParams(
-                FloaterStyles.dp(context, 26),
-                FloaterStyles.dp(context, 26)
-        );
-        closeHeaderIcon.setLayoutParams(closeIconParams);
-        closeHeaderIcon.setText("✕");
-        closeHeaderIcon.setTextColor(AppColors.TEXT_WHITE);
-        closeHeaderIcon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        closeHeaderIcon.setTypeface(Typeface.DEFAULT_BOLD);
-        closeHeaderIcon.setGravity(Gravity.CENTER);
-        GradientDrawable closeIconBg = new GradientDrawable();
-        closeIconBg.setShape(GradientDrawable.OVAL);
-        closeIconBg.setColor(AppColors.BTN_HIDE_BG);
-        closeIconBg.setStroke(FloaterStyles.dp(context, 1), AppColors.CYAN_STROKE);
-        closeHeaderIcon.setBackground(closeIconBg);
-        closeHeaderIcon.setOnClickListener(v -> FloaterAnimations.animateMenuClose(menuLayout, collapsedRelative, null, null));
-        headerRow.addView(closeHeaderIcon);
 
         headerBlock.addView(headerRow);
 
+        // Status Sub-Row
         LinearLayout statusRow = new LinearLayout(context);
         statusRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         statusRow.setOrientation(LinearLayout.HORIZONTAL);
-        statusRow.setPadding(0, FloaterStyles.dp(context, 6), 0, 0);
+        statusRow.setPadding(0, FloaterStyles.dp(context, 4), 0, 0);
         statusRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView safeMode = new TextView(context);
-        safeMode.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        safeMode.setText(str(nin.app.R.string.status_safe_mode, "SAFE MODE"));
-        safeMode.setTextColor(AppColors.TEXT_SAFE_MODE);
-        safeMode.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        safeMode.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        statusRow.addView(safeMode);
-
-        TextView online = new TextView(context);
-        online.setText("ONLINE");
-        online.setTextColor(AppColors.ONLINE_GREEN);
-        online.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        online.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        statusRow.addView(online);
+        TextView engineStatus = new TextView(context);
+        engineStatus.setText("• ENGINE: ONLINE (RT / IPC)");
+        engineStatus.setTextColor(AppColors.ONLINE_GREEN);
+        engineStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        engineStatus.setTypeface(Typeface.DEFAULT_BOLD);
+        statusRow.addView(engineStatus);
         headerBlock.addView(statusRow);
+
         menuLayout.addView(headerBlock);
 
-        // Category Tab Bar
+        // 2. Category Tab Bar (Horizontal Scroll)
         HorizontalScrollView tabScroller = new HorizontalScrollView(context);
-        tabScroller.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 46)));
+        LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 42));
+        tabLp.topMargin = FloaterStyles.dp(context, 6);
+        tabScroller.setLayoutParams(tabLp);
         tabScroller.setHorizontalScrollBarEnabled(false);
         tabScroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        tabScroller.setPadding(0, FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 4));
 
         firstSectionMenuContainer = new LinearLayout(context);
         firstSectionMenuContainer.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
         firstSectionMenuContainer.setOrientation(LinearLayout.HORIZONTAL);
+        firstSectionMenuContainer.setGravity(Gravity.CENTER_VERTICAL);
         tabScroller.addView(firstSectionMenuContainer);
         menuLayout.addView(tabScroller);
+
         rebuildFirstSectionMenus();
 
-        // Main Content Area
+        // 3. Main Content Area (Feature List inside Body)
         LinearLayout mainPanel = new LinearLayout(context);
-        LinearLayout.LayoutParams mainParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        LinearLayout.LayoutParams mainParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
         mainParams.topMargin = FloaterStyles.dp(context, 6);
         mainPanel.setLayoutParams(mainParams);
         mainPanel.setOrientation(LinearLayout.VERTICAL);
-        mainPanel.setBackground(FloaterStyles.createPanelBackground(context, 20));
-        mainPanel.setPadding(FloaterStyles.dp(context, 12), FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 12), FloaterStyles.dp(context, 10));
+        mainPanel.setBackground(FloaterStyles.createPanelBackground(context, 14));
+        mainPanel.setPadding(FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 8));
 
         secondSectionTitle = new TextView(context);
-        secondSectionTitle.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 30)));
-        secondSectionTitle.setText("SAFE MENU");
-        GradientDrawable titleBarBg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{AppColors.TITLE_BAR_START, AppColors.TITLE_BAR_END});
-        titleBarBg.setCornerRadius(FloaterStyles.dp(context, 15));
-        titleBarBg.setStroke(FloaterStyles.dp(context, 1), AppColors.withAlpha(AppColors.CYAN_STROKE, 0x77));
-        secondSectionTitle.setBackground(titleBarBg);
+        secondSectionTitle.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 26)));
+        secondSectionTitle.setText("AIM CONTROLS");
         secondSectionTitle.setTextColor(AppColors.CYAN_LIGHT);
-        secondSectionTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        secondSectionTitle.setGravity(Gravity.CENTER);
+        secondSectionTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        secondSectionTitle.setGravity(Gravity.CENTER_VERTICAL);
         secondSectionTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         mainPanel.addView(secondSectionTitle);
 
         mainScroll = new ScrollView(context);
-        mainScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        mainScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
         mainScroll.setVerticalScrollBarEnabled(false);
 
         funcsListLayout = new LinearLayout(context);
@@ -433,77 +477,86 @@ public class Floater {
         secondSectionContainer = funcsListLayout;
         mainScroll.addView(funcsListLayout);
         mainPanel.addView(mainScroll);
+
+        // 4. Footer Action Buttons
+        LinearLayout footerButtons = new LinearLayout(context);
+        LinearLayout.LayoutParams footerParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 40));
+        footerParams.topMargin = FloaterStyles.dp(context, 6);
+        footerButtons.setLayoutParams(footerParams);
+        footerButtons.setOrientation(LinearLayout.HORIZONTAL);
+        footerButtons.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button hideBtn = new Button(context);
+        LinearLayout.LayoutParams hideParams = new LinearLayout.LayoutParams(0, FloaterStyles.dp(context, 38), 1.0f);
+        hideParams.rightMargin = FloaterStyles.dp(context, 6);
+        hideBtn.setLayoutParams(hideParams);
+        hideBtn.setText(str(nin.app.R.string.btn_hide, "MINIMIZE"));
+        hideBtn.setAllCaps(false);
+        hideBtn.setTextColor(AppColors.TEXT_WHITE);
+        hideBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        hideBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable hideBg = new GradientDrawable();
+        hideBg.setColor(AppColors.BTN_HIDE_BG);
+        hideBg.setCornerRadius(FloaterStyles.dp(context, 8));
+        hideBg.setStroke(FloaterStyles.dp(context, 1), AppColors.CYAN_STROKE);
+        hideBtn.setBackground(hideBg);
+        hideBtn.setOnClickListener(v -> closeMenu());
+        footerButtons.addView(hideBtn);
+
+        Button closeBottomBtn = new Button(context);
+        LinearLayout.LayoutParams closeBottomParams = new LinearLayout.LayoutParams(0, FloaterStyles.dp(context, 38), 1.0f);
+        closeBottomBtn.setLayoutParams(closeBottomParams);
+        closeBottomBtn.setText(str(nin.app.R.string.btn_close, "CLOSE"));
+        closeBottomBtn.setAllCaps(false);
+        closeBottomBtn.setTextColor(AppColors.TEXT_WHITE);
+        closeBottomBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        closeBottomBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable closeBottomBg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{AppColors.BTN_CLOSE_START, AppColors.BTN_CLOSE_END});
+        closeBottomBg.setCornerRadius(FloaterStyles.dp(context, 8));
+        closeBottomBg.setStroke(FloaterStyles.dp(context, 1), AppColors.CYAN_STROKE);
+        closeBottomBtn.setBackground(closeBottomBg);
+        closeBottomBtn.setOnClickListener(v -> destroyOverlay());
+        footerButtons.addView(closeBottomBtn);
+
+        mainPanel.addView(footerButtons);
         menuLayout.addView(mainPanel);
 
         populateSecondSection(selectedCategoryName);
 
-        LinearLayout collapsedRow = new LinearLayout(context);
-        collapsedRow.setLayoutParams(new RelativeLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        collapsedRow.setOrientation(LinearLayout.HORIZONTAL);
-        collapsedRow.setGravity(Gravity.CENTER_VERTICAL);
-        collapsedRow.addView(logoImagem);
-
-        TextView hideFloaterBtn = new TextView(context);
-        LinearLayout.LayoutParams hideLp = new LinearLayout.LayoutParams(
-                FloaterStyles.dp(context, 24),
-                FloaterStyles.dp(context, 24)
-        );
-        hideLp.setMargins(FloaterStyles.dp(context, 6), 0, 0, 0);
-        hideFloaterBtn.setLayoutParams(hideLp);
-        hideFloaterBtn.setText("✕");
-        hideFloaterBtn.setTextColor(AppColors.TEXT_WHITE);
-        hideFloaterBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        hideFloaterBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        hideFloaterBtn.setGravity(Gravity.CENTER);
-        GradientDrawable hBg = new GradientDrawable();
-        hBg.setShape(GradientDrawable.OVAL);
-        hBg.setColor(AppColors.BTN_HIDE_BG);
-        hBg.setStroke(FloaterStyles.dp(context, 1), AppColors.CYAN_STROKE);
-        hideFloaterBtn.setBackground(hBg);
-        hideFloaterBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                collapsedRelative.setVisibility(View.GONE);
-                menuLayout.setVisibility(View.GONE);
-                if (rootFrame != null) {
-                    rootFrame.setVisibility(View.GONE);
-                }
-            }
-        });
-        collapsedRow.addView(hideFloaterBtn);
-
-        collapsedRelative.addView(collapsedRow);
+        collapsedRelative.addView(logoImagem);
         rootRelative.addView(collapsedRelative);
         rootRelative.addView(menuLayout);
-        rootRelative.addView(snowParticleView);
         rootFrame.addView(rootRelative);
-        windowManager.addView(rootFrame, windowManagerParams);
+
+        // Add to WindowManager safely
+        try {
+            if (rootFrame.getParent() == null) {
+                windowManager.addView(rootFrame, windowManagerParams);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         rootFrame.setOnTouchListener(createOnTouchListener());
         logoImagem.setOnTouchListener(createOnTouchListener());
         logoImagem.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                FloaterAnimations.animateMenuOpen(collapsedRelative, menuLayout, null);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    view.animate().scaleX(0.8f).scaleY(0.8f).setDuration(100)
-                            .withEndAction(() -> view.animate().scaleX(1f).scaleY(1f).setDuration(100));
-                }
+                openMenu();
             }
         });
-
-        FloaterAnimations.startCollapsedPulse(logoImagem);
 
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
             @Override
             public void run() {
-                Functions();
-                ftKZXivSr(context);
+                try {
+                    Functions();
+                    ftKZXivSr(context);
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
             }
-        }, 5000);
+        }, 3000);
     }
 
     public void addWidgetToCurrentCategory(View widget) {
@@ -528,11 +581,11 @@ public class Floater {
         final TextView item = new TextView(context);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                FloaterStyles.dp(context, 34)
+                FloaterStyles.dp(context, 32)
         );
         params.setMargins(0, 0, FloaterStyles.dp(context, 6), 0);
         item.setLayoutParams(params);
-        item.setPadding(FloaterStyles.dp(context, 16), 0, FloaterStyles.dp(context, 16), 0);
+        item.setPadding(FloaterStyles.dp(context, 12), 0, FloaterStyles.dp(context, 12), 0);
         item.setGravity(Gravity.CENTER);
         item.setText(categoryName);
         item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
@@ -584,7 +637,7 @@ public class Floater {
         }
     }
 
-    void rebuildFirstSectionMenus() {
+    public void rebuildFirstSectionMenus() {
         if (firstSectionMenuContainer == null) return;
         firstSectionMenuContainer.removeAllViews();
         menuCategoryViews.clear();
@@ -604,10 +657,10 @@ public class Floater {
             Object tag = tab.getTag();
             boolean isSelected = tag != null && tag.toString().equals(selectedCategory);
             GradientDrawable tabBg = new GradientDrawable();
-            tabBg.setCornerRadius(FloaterStyles.dp(context, 17));
+            tabBg.setCornerRadius(FloaterStyles.dp(context, 8));
             if (isSelected) {
                 tabBg.setColor(AppColors.TAB_SELECTED_BG);
-                tabBg.setStroke(FloaterStyles.dp(context, 1), AppColors.CYAN_GLOW);
+                tabBg.setStroke(FloaterStyles.dp(context, 1), AppColors.PRIMARY);
                 tab.setTextColor(AppColors.TEXT_WHITE);
             } else {
                 tabBg.setColor(AppColors.TAB_UNSELECTED_BG);
@@ -666,7 +719,7 @@ public class Floater {
                         int yDiff = (int) (event.getRawY() - initialTouchY);
                         if (Math.abs(xDiff) < 10 && Math.abs(yDiff) < 10) {
                             if (v == logoImagem) {
-                                FloaterAnimations.animateMenuOpen(collapsedRelative, menuLayout, null);
+                                openMenu();
                             }
                         }
                         return true;
@@ -677,6 +730,7 @@ public class Floater {
     }
 
     public void DrawCanvas() {
+        if (drawView != null && drawView.isAttachedToWindow()) return;
         int layoutFlag = getLayoutType();
         drawView = new ESPView(context);
         windowManagerDrawViewParams = new WindowManager.LayoutParams(-1, -1, layoutFlag, 56, -3);
@@ -684,7 +738,11 @@ public class Floater {
         windowManagerDrawViewParams.x = 0;
         windowManagerDrawViewParams.y = 0;
         windowManagerDrawViewParams.alpha = 0.8f;
-        windowManager.addView(drawView, windowManagerDrawViewParams);
+        try {
+            windowManager.addView(drawView, windowManagerDrawViewParams);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     // Static bridge methods called by JNI

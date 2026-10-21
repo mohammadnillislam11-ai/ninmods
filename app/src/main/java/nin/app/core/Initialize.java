@@ -79,7 +79,7 @@ public class Initialize {
                                             @Override
                                             public void run() {
                                                 Toast.makeText(context, "Menu Initialized!", Toast.LENGTH_SHORT).show();
-                                                new Floater(context);
+                                                Floater.start(context);
                                             }
                                         });
                                     } else {
