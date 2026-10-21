@@ -1,0 +1,101 @@
+name: Build Main App APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK & NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'build-tools;34.0.0 platforms;android-34 ndk;24.0.8215888'
+
+      - name: Build Native Daemon & Gradle APK
+        run: |
+          chmod +x gradlew
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/24.0.8215888" >> local.properties
+          
+          # Compile native daemon executable directly with ndk-build
+          $ANDROID_HOME/ndk/24.0.8215888/ndk-build -C app/src/main/jni
+          mkdir -p app/src/main/assets
+          if [ -f "app/src/main/libs/arm64-v8a/Titoo" ]; then
+            echo "Copying arm64-v8a Titoo to assets"
+            cp -f app/src/main/libs/arm64-v8a/Titoo app/src/main/assets/Titoo
+          fi
+          if [ -f "app/src/main/libs/x86_64/Titoo1" ]; then
+            echo "Copying x86_64 Titoo1 to assets"
+            cp -f app/src/main/libs/x86_64/Titoo1 app/src/main/assets/Titoo1
+          fi
+
+          # Build APK with Gradle
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Sign & Align APK
+        run: |
+          APK_SRC=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          echo "Found APK at: $APK_SRC"
+          VERSION=$(grep 'versionCode' app/build.gradle | head -n 1 | tr -cd '0-9')
+          if [ -z "$VERSION" ]; then VERSION="55"; fi
+          echo "Building Main_V${VERSION}.apk"
+          if [ ! -f "release.keystore" ]; then
+            keytool -genkey -v -keystore release.keystore -alias ninmods -keyalg RSA -keysize 2048 -validity 10000 -storepass ninmods123 -keypass ninmods123 -dname "CN=NINMODS, OU=Mobile, O=NIN, L=Dhaka, S=Dhaka, C=BD"
+          fi
+          $ANDROID_HOME/build-tools/34.0.0/zipalign -p -f 4 "$APK_SRC" main_aligned.apk
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V${VERSION}.apk" main_aligned.apk
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V${VERSION}.apk"
+
+      - name: Fetch Latest Loader APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p loader_tmp
+          gh release download --repo mohammadnillislam11-ai/ninmods-kernel-builder --pattern "NINMODS_Driver_Loader.apk" --dir loader_tmp 2>/dev/null && cp loader_tmp/NINMODS_Driver_Loader.apk Loader_V45.apk || curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "Loader_V45.apk" || echo "Loader download fallback"
+          ls -la *.apk
+
+      - name: Upload APK Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NINMODS-Release-APKs
+          path: |
+            Main_V*.apk
+            Loader_*.apk
+
+      - name: Create GitHub Release and Upload Both APKs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(grep 'versionCode' app/build.gradle | head -n 1 | tr -cd '0-9')
+          if [ -z "$VERSION" ]; then VERSION="55"; fi
+          echo "Cleaning up all older releases..."
+          for old_tag in $(gh release list --limit 50 --json tagName -q '.[].tagName'); do
+            echo "Deleting old release: $old_tag"
+            gh release delete "$old_tag" --yes --cleanup-tag || true
+          done
+
+          RELEASE_TAG="v${VERSION}.0-$(date +'%Y%m%d%H%M%S')"
+          ASSETS="Main_V${VERSION}.apk"
+          if [ -f "Loader_V45.apk" ]; then
+            ASSETS="Main_V${VERSION}.apk Loader_V45.apk"
+          fi
+          gh release create "$RELEASE_TAG" \
+            $ASSETS \
+            --title "Release $RELEASE_TAG" \
+            --notes "NINMODS Release $RELEASE_TAG with Advanced Dashboard Architecture and Native Floating Overlay"

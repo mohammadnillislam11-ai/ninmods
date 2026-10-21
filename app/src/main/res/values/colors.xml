@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="particle_glow_1">#3000F2FF</color>
+    <color name="particle_glow_2">#307000FF</color>
+    <color name="snow_particle">#C7D1FF</color>
+    <color name="text_close">#FCE8FC</color>
+    <color name="white">#FFFFFF</color>
+    
+    <color name="nin_primary">#E637E6</color>
+    <color name="nin_accent">#F76BF7</color>
+    <color name="nin_neon_blue">#3A88FF</color>
+    <color name="nin_bg_dark">#E60B0312</color>
+    <color name="nin_card_bg">#F21C0A29</color>
+    <color name="nin_surface">#150821</color>
+    <color name="nin_text_primary">#FCEEFC</color>
+    <color name="nin_text_secondary">#D99ED9</color>
+    <color name="nin_text_accent">#F76BF7</color>
+    <color name="nin_border_glow">#4D1C59</color>
+    <color name="nin_border_subtle">#2B0E38</color>
+    <color name="nin_switch_track_on">#16D8FF</color>
+    <color name="nin_switch_track_off">#2C3A4A</color>
+</resources>

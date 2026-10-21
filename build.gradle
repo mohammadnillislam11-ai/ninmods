@@ -1,0 +1,30 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.2.1'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+// 🔥 FORCE REMOVE LOGSENDER (MAIN FIX)
+subprojects {
+    afterEvaluate { project ->
+        project.configurations.all {
+            exclude group: 'com.itsaky.androidide', module: 'logsender'
+        }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
