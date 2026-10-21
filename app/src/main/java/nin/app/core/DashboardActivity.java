@@ -342,7 +342,7 @@ public class DashboardActivity extends Activity {
             } else {
                 items[i].setBackground(null);
                 items[i].setTextColor(AppColors.WHITE);
-                items[i].setTypeface(Typeface.NORMAL);
+                items[i].setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             }
         }
     }
