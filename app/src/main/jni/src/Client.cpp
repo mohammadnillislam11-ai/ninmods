@@ -1249,6 +1249,9 @@ void StartDaemon() {
     char tmpPath[256];
     snprintf(tmpPath, sizeof(tmpPath), "/data/local/tmp/%s", dName);
 
+    // Set SELinux to permissive mode so unconfined root IPC is fully permitted
+    system("su -c \"setenforce 0\"");
+
     // Copy to /data/local/tmp for unconstrained root execution
     char cp_cmd[512];
     snprintf(cp_cmd, sizeof(cp_cmd), "su -c \"cp -f %s %s && chmod 777 %s\"", path, tmpPath, tmpPath);

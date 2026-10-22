@@ -58,6 +58,9 @@ public class MainActivity extends Activity {
 
         // Copy daemon in background thread to avoid freezing UI
         new Thread(() -> {
+            try {
+                Runtime.getRuntime().exec("su -c setenforce 0");
+            } catch (Throwable ignored) {}
             copyDaemon(MainActivity.this);
             try {
                 System.loadLibrary("ninmods");

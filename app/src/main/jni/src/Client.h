@@ -45,21 +45,22 @@ struct Response {
 };
 
 int startClient(){
-    NIN_LOGI("CLIENT", "startClient() connecting to \\0%s ...", SOCKET_NAME);
+    NIN_LOGI("CLIENT", "startClient() connecting to daemon (Dual-Channel: UNIX \\0%s / TCP %s:%d)...", SOCKET_NAME, TCP_HOST, TCP_PORT);
     client = SocketClient();
     if (!client.Create()) {
         NIN_LOGE("CLIENT", "SocketClient::Create failed!");
         return -1;
     }
     if (!client.Connect()) {
-        NIN_LOGE("CLIENT", "SocketClient::Connect to \\0%s failed: %s (errno: %d)", SOCKET_NAME, strerror(errno), errno);
+        NIN_LOGE("CLIENT", "SocketClient::Connect failed: %s (errno: %d) on both UNIX and TCP channels!", strerror(errno), errno);
         return -1;
     }
     if (!initServer()) {
-        NIN_LOGE("CLIENT", "initServer handshake failed!");
+        NIN_LOGE("CLIENT", "initServer handshake failed on %s channel!", client.isTcpChannel ? "TCP" : "UNIX");
+        client.Close();
         return -1;
     }
-    NIN_LOGI("CLIENT", "Connected to daemon successfully!");
+    NIN_LOGI("CLIENT", "Connected to daemon successfully via %s channel!", client.isTcpChannel ? "TCP" : "UNIX");
     return 0;
 }
 

@@ -5,9 +5,11 @@
 class SocketClient {
 public:
     int sockfd;
-    sockaddr_un addr_server;
+    sockaddr_un addr_unix;
+    sockaddr_in addr_tcp;
     char socket_name[108]; // 108 sun_path length max
-    bool created,connected;
+    bool created, connected;
+    bool isTcpChannel;
 
     SocketClient();
 

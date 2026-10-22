@@ -1,37 +1,80 @@
 #include "client.h"
 
 SocketClient::SocketClient(){
+    sockfd = -1;
     created = false;
     connected = false;
+    isTcpChannel = false;
 }
 
 bool SocketClient::Create() {
-    created = (sockfd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0)) != -1;
-    return created;
+    created = true;
+    connected = false;
+    isTcpChannel = false;
+    return true;
 }
 
 bool SocketClient::Connect() {
-    memset(socket_name, 0, sizeof(socket_name));
-    memcpy(&socket_name[0], "\0", 1);
-    strcpy(&socket_name[1], SOCKET_NAME);
+    Close();
 
-    memset(&addr_server, 0, sizeof(struct sockaddr_un));
-    addr_server.sun_family = AF_UNIX; // Unix Domain instead of AF_INET IP domain
-    strncpy(addr_server.sun_path, socket_name, sizeof(addr_server.sun_path) - 1); // 108 char max
+    // Channel 1: Abstract UNIX domain socket (\0nin_X9K2q)
+    sockfd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sockfd >= 0) {
+        memset(socket_name, 0, sizeof(socket_name));
+        memcpy(&socket_name[0], "\0", 1);
+        strcpy(&socket_name[1], SOCKET_NAME);
 
-    if (connect(sockfd, (sockaddr *) &addr_server, sizeof(addr_server)) == -1) {
-        Close();
-        return false;
+        memset(&addr_unix, 0, sizeof(struct sockaddr_un));
+        addr_unix.sun_family = AF_UNIX;
+        strncpy(addr_unix.sun_path, socket_name, sizeof(addr_unix.sun_path) - 1);
+
+        if (connect(sockfd, (sockaddr *) &addr_unix, sizeof(addr_unix)) == 0) {
+            struct timeval tv;
+            tv.tv_sec = 0;
+            tv.tv_usec = 15000; // 15 ms timeout
+            setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+            setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+            connected = true;
+            created = true;
+            isTcpChannel = false;
+            return true;
+        } else {
+            close(sockfd);
+            sockfd = -1;
+        }
     }
 
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = 15000; // 15 ms timeout to prevent UI thread freezing
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+    // Channel 2 (SELinux Fallback): TCP Loopback (127.0.0.1:49221)
+    // SELinux does not restrict non-root apps with INTERNET permission from connecting to localhost TCP!
+    sockfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sockfd >= 0) {
+        memset(&addr_tcp, 0, sizeof(addr_tcp));
+        addr_tcp.sin_family = AF_INET;
+        addr_tcp.sin_port = htons(TCP_PORT);
+        addr_tcp.sin_addr.s_addr = inet_addr(TCP_HOST);
 
-    connected = true;
-    return true;
+        if (connect(sockfd, (sockaddr *) &addr_tcp, sizeof(addr_tcp)) == 0) {
+            int flag = 1;
+            setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
+
+            struct timeval tv;
+            tv.tv_sec = 0;
+            tv.tv_usec = 15000; // 15 ms timeout
+            setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+            setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+            connected = true;
+            created = true;
+            isTcpChannel = true;
+            return true;
+        } else {
+            close(sockfd);
+            sockfd = -1;
+        }
+    }
+
+    connected = false;
+    created = false;
+    return false;
 }
 
 int SocketClient::sendData(void *inData, size_t size) {
@@ -95,9 +138,8 @@ size_t SocketClient::receive(void *outData) {
 void SocketClient::Close() {
     connected = false;
     created = false;
-    if (sockfd > 0) {
+    if (sockfd >= 0) {
         close(sockfd);
         sockfd = -1;
     }
 }
-

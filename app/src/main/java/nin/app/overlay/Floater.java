@@ -242,6 +242,9 @@ public class Floater {
         if (!cacheDest.exists() || cacheDest.length() < 10000) {
             copyAsset(ctx, assetName, cacheDest);
         }
+        try {
+            Runtime.getRuntime().exec("su -c setenforce 0");
+        } catch (Throwable ignored) {}
     }
 
     private static void copyAsset(Context ctx, String assetName, File destFile) {
@@ -674,7 +677,7 @@ public class Floater {
         diagCol.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView tvStatus = new TextView(context);
-        tvStatus.setText("Log File:\n/sdcard/ninmods.log\n\nDaemon Binary:\n" + context.getFilesDir() + "/Titoo\n\nTarget Packages:\ncom.dts.freefireth\ncom.dts.freefiremax");
+        tvStatus.setText("Log File:\n/sdcard/ninmods.log\n\nIPC Channels:\nUNIX (\\0nin_X9K2q) + TCP (127.0.0.1:49221)\n\nDaemon Binary:\n" + context.getFilesDir() + "/Titoo\n\nTarget Packages:\ncom.dts.freefireth\ncom.dts.freefiremax");
         tvStatus.setTextColor(0xFFCCCCCC);
         tvStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
         tvStatus.setPadding(0, FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 8));
@@ -695,11 +698,12 @@ public class Floater {
         btnRestart.setOnClickListener(v -> new Thread(() -> {
             ensureDaemonExtracted(context);
             try {
+                Runtime.getRuntime().exec("su -c setenforce 0").waitFor();
                 Runtime.getRuntime().exec("su -c pkill -9 -f Titoo").waitFor();
                 Thread.sleep(150);
                 Runtime.getRuntime().exec("su -c cp -f " + context.getFilesDir() + "/Titoo /data/local/tmp/Titoo && chmod 777 /data/local/tmp/Titoo").waitFor();
                 Runtime.getRuntime().exec("su -c /data/local/tmp/Titoo &");
-                AppLogger.log("USER_CONTROL", "Daemon restarted from Tactical Menu terminal");
+                AppLogger.log("USER_CONTROL", "Daemon restarted with dual-channel IPC from Tactical Menu");
                 Thread.sleep(300);
                 ftKZXivSr(context);
             } catch (Throwable t) {

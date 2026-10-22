@@ -613,10 +613,10 @@ int main(int argc, char*argv[]){
     std::thread(UpdateAimMagnetFast).detach();
 
     if (InitServer() != 0) {
-        NIN_LOGE("DAEMON", "InitServer() failed to bind/listen on \\0%s!", SOCKET_NAME);
+        NIN_LOGE("DAEMON", "InitServer() failed to bind/listen on dual channels!");
         return 1;
     }
-    NIN_LOGI("DAEMON", "InitServer() listening on abstract socket \\0%s", SOCKET_NAME);
+    NIN_LOGI("DAEMON", "InitServer() listening on dual channels (UNIX: \\0%s, TCP: %s:%d)", SOCKET_NAME, TCP_HOST, TCP_PORT);
 
     while (true) {
         NIN_LOGI("DAEMON", "Waiting for client connection...");
