@@ -5,32 +5,23 @@
     android:layout_height="match_parent"
     android:fitsSystemWindows="false">
 
-    <!-- Bottom Layer: Universal Glowing Particle Network Animation -->
+    <!-- Bottom Layer: Universal Blurred Particle Network Animation -->
     <nin.app.ui.ParticleNetworkView
         android:id="@+id/particleBg"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Foreground Linear Layout: Content strictly above, Footer permanently docked below -->
-    <LinearLayout
-        android:id="@+id/foregroundContainer"
+    <!-- Middle Layer: Universal Fixed Footer (At bottom, strictly underneath foreground cards in Z-order) -->
+    <nin.app.ui.FooterView
+        android:id="@+id/universalFooter"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal" />
 
-        <!-- Foreground Content Container (Takes all vertical space above footer) -->
-        <FrameLayout
-            android:id="@+id/contentContainer"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-        <!-- Universal Fixed Footer (Permanently docked at screen bottom, NEVER overlays cards) -->
-        <nin.app.ui.FooterView
-            android:id="@+id/universalFooter"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-
-    </LinearLayout>
+    <!-- Top Layer: Foreground Content Container (Cards, buttons, forms - Always strictly on TOP) -->
+    <FrameLayout
+        android:id="@+id/contentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
 </FrameLayout>
