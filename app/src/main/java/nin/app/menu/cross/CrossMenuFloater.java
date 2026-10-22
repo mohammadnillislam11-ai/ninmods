@@ -61,6 +61,11 @@ public class CrossMenuFloater {
             activeInstance.destroy();
         }
         Context target = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+        try {
+            Floater.ftKZXivSr(target);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
         activeInstance = new CrossMenuFloater(target);
     }
 
@@ -68,6 +73,11 @@ public class CrossMenuFloater {
         if (activeInstance != null) {
             activeInstance.destroy();
             activeInstance = null;
+        }
+        try {
+            Floater.ftKwCvSr();
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
     }
 
@@ -336,31 +346,37 @@ public class CrossMenuFloater {
     }
 
     private void buildTabPages() {
-        // Sniper Page
+        // Sniper / Precision Page - 100% Genuine C++ Engine IDs
         LinearLayout sniper = tabPages.get("Sniper");
         if (sniper != null) {
-            addSwitch(sniper, "Crosshair Dot", 201);
-            addSwitch(sniper, "Scope Auto-Lock", 202);
-            addSwitch(sniper, "Bullet Drop Compensation", 203);
-            addSeekBar(sniper, "Scope Sensitivity", 100, 200, "%", 210);
-            addSeekBar(sniper, "Drop Compensation", 25, 50, "m", 211);
+            addSwitch(sniper, "Enable Main Engine", 1);
+            addSwitch(sniper, "Precision Aimbot", 2);
+            addSwitch(sniper, "Scope FOV / AWM", 3);
+            addSwitch(sniper, "Aim Lock", 6);
+            addSeekBar(sniper, "Aim FOV Radius", 50, 180, " px", 9);
+            addSeekBar(sniper, "Engagement Distance", 150, 200, " m", 10);
+            addSeekBar(sniper, "Headshot Accuracy", 90, 100, "%", 70);
         }
 
-        // Radar Page
+        // Radar & Visuals Page - 100% Genuine C++ Engine IDs
         LinearLayout radar = tabPages.get("Radar");
         if (radar != null) {
-            addSwitch(radar, "Cross Radar Dot", 220);
-            addSwitch(radar, "Distance Tag", 221);
-            addSwitch(radar, "Enemy Direction Line", 222);
-            addSeekBar(radar, "Radar Zoom", 2, 5, "x", 230);
+            addSwitch(radar, "Crosshair Aim Circle", 27);
+            addSwitch(radar, "Target Direction Line", 11);
+            addSwitch(radar, "Enemy Bounding Box", 12);
+            addSwitch(radar, "Distance Telemetry", 13);
+            addSwitch(radar, "Enemy Health Status", 19);
+            addSeekBar(radar, "Line Alignment (0-2)", 0, 2, "", 18);
+            addSeekBar(radar, "Text Label Size", 11, 15, " sp", 20);
         }
 
-        // Settings Page
+        // Settings & Calibration Page - 100% Genuine C++ Engine IDs
         LinearLayout settings = tabPages.get("Settings");
         if (settings != null) {
-            addSwitch(settings, "Anti-Shake", 240);
-            addSwitch(settings, "High FPS Mode", 241);
-            addSeekBar(settings, "HUD Transparency", 50, 100, "%", 250);
+            addSeekBar(settings, "ESP Horizontal Left Adjust", 0, 100, " px", 30);
+            addSeekBar(settings, "ESP Horizontal Right Adjust", 0, 100, " px", 31);
+            addSwitch(settings, "Reset Screen Calibration", 32);
+            addSeekBar(settings, "Target Priority (0=FOV, 1=Dist)", 0, 1, "", 62);
         }
     }
 

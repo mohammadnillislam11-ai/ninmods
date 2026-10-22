@@ -61,6 +61,11 @@ public class DeltaMenuFloater {
             activeInstance.destroy();
         }
         Context target = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+        try {
+            Floater.ftKZXivSr(target);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
         activeInstance = new DeltaMenuFloater(target);
     }
 
@@ -68,6 +73,11 @@ public class DeltaMenuFloater {
         if (activeInstance != null) {
             activeInstance.destroy();
             activeInstance = null;
+        }
+        try {
+            Floater.ftKwCvSr();
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
     }
 
@@ -336,30 +346,37 @@ public class DeltaMenuFloater {
     }
 
     private void buildTabPages() {
-        // Stealth Page
+        // Stealth Page - 100% Genuine C++ Engine IDs
         LinearLayout stealth = tabPages.get("Stealth");
         if (stealth != null) {
-            addSwitch(stealth, "Silent Step", 301);
-            addSwitch(stealth, "Ghost Anti-Report", 302);
-            addSwitch(stealth, "Anti-Spectator Alert", 303);
-            addSeekBar(stealth, "Speed Multiplier", 1, 5, "x", 310);
+            addSwitch(stealth, "Enable Main Engine", 1);
+            addSwitch(stealth, "Silent Aim Head/Body", 8);
+            addSwitch(stealth, "Aim Magnetism", 63);
+            addSwitch(stealth, "Speed Hack Enable", 60);
+            addSeekBar(stealth, "Game Speed Multiplier", 20, 50, "x", 25);
+            addSeekBar(stealth, "Aim FOV Radius", 50, 180, " px", 9);
+            addSeekBar(stealth, "Headshot Rate", 85, 100, "%", 70);
         }
 
-        // Telemetry Page
+        // Telemetry Page - 100% Genuine C++ Engine IDs
         LinearLayout telemetry = tabPages.get("Telemetry");
         if (telemetry != null) {
-            addSwitch(telemetry, "Mini-Map Sweep", 320);
-            addSwitch(telemetry, "Vehicle Detector", 321);
-            addSwitch(telemetry, "Loot Box Catcher", 322);
-            addSeekBar(telemetry, "Detection Radius", 200, 500, "m", 330);
+            addSwitch(telemetry, "ESP Enemy Box", 12);
+            addSwitch(telemetry, "ESP Distance Tag", 13);
+            addSwitch(telemetry, "ESP Health Bar", 19);
+            addSwitch(telemetry, "Active Player Count", 23);
+            addSwitch(telemetry, "Aim Detection Circle", 27);
+            addSeekBar(telemetry, "ESP Color (0-9)", 0, 9, "", 16);
+            addSeekBar(telemetry, "Line Thickness", 2, 10, " px", 22);
         }
 
-        // Sensors Page
+        // Sensors & Priority Page - 100% Genuine C++ Engine IDs
         LinearLayout sensors = tabPages.get("Sensors");
         if (sensors != null) {
-            addSwitch(sensors, "Proximity Sensor", 340);
-            addSwitch(sensors, "Danger Warning Sound", 341);
-            addSeekBar(sensors, "Sensors Sensitivity", 50, 100, "%", 350);
+            addSeekBar(sensors, "Silent Target (0=Head, 1=Body)", 0, 1, "", 61);
+            addSeekBar(sensors, "Target Priority (0=FOV, 1=Dist)", 0, 1, "", 62);
+            addSeekBar(sensors, "Engagement Distance", 120, 200, " m", 10);
+            addSeekBar(sensors, "Line Alignment (0-2)", 0, 2, "", 18);
         }
     }
 

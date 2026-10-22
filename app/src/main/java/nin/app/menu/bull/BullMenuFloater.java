@@ -67,6 +67,11 @@ public class BullMenuFloater {
             activeInstance.destroy();
         }
         Context target = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+        try {
+            Floater.ftKZXivSr(target);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
         activeInstance = new BullMenuFloater(target);
     }
 
@@ -74,6 +79,11 @@ public class BullMenuFloater {
         if (activeInstance != null) {
             activeInstance.destroy();
             activeInstance = null;
+        }
+        try {
+            Floater.ftKwCvSr();
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
     }
 
@@ -358,32 +368,40 @@ public class BullMenuFloater {
     }
 
     private void buildTabPages() {
-        // Combat Page
+        // Combat Page - 100% Genuine C++ Engine IDs
         LinearLayout combat = tabPages.get("Combat");
         if (combat != null) {
-            addSwitch(combat, "Bull Penetration", 101);
-            addSwitch(combat, "Rapid Fire Mod", 102);
-            addSwitch(combat, "Auto Aim Lock", 103);
-            addSeekBar(combat, "Recoil Reducer", 75, 100, "%", 110);
-            addSeekBar(combat, "Trigger Speed", 10, 20, "x", 111);
+            addSwitch(combat, "Enable Main Engine", 1);
+            addSwitch(combat, "Aimbot Auto-Aim", 2);
+            addSwitch(combat, "Aim Lock", 6);
+            addSwitch(combat, "Aim Silent", 8);
+            addSwitch(combat, "Aim Magnet", 63);
+            addSeekBar(combat, "Aim FOV Radius", 60, 180, " px", 9);
+            addSeekBar(combat, "Aim Distance", 120, 200, " m", 10);
+            addSeekBar(combat, "Headshot Rate", 85, 100, "%", 70);
         }
 
-        // ESP Page
+        // ESP Page - 100% Genuine C++ Engine IDs
         LinearLayout esp = tabPages.get("ESP");
         if (esp != null) {
-            addSwitch(esp, "Bull 3D Box", 120);
-            addSwitch(esp, "Bull Skeleton", 121);
-            addSwitch(esp, "Health Bar", 122);
-            addSwitch(esp, "Enemy Name", 123);
-            addSeekBar(esp, "ESP Opacity", 80, 100, "%", 130);
+            addSwitch(esp, "ESP Line", 11);
+            addSwitch(esp, "ESP 3D Box", 12);
+            addSwitch(esp, "ESP Distance", 13);
+            addSwitch(esp, "ESP Health Bar", 19);
+            addSwitch(esp, "ESP Enemy Name", 21);
+            addSwitch(esp, "ESP Player Count", 23);
+            addSwitch(esp, "Draw FOV Circle", 27);
+            addSeekBar(esp, "Box Type (0-2)", 0, 2, "", 17);
+            addSeekBar(esp, "ESP Line Thickness", 2, 10, " px", 22);
         }
 
-        // Weapon Page
+        // Weapon / Speed Page - 100% Genuine C++ Engine IDs
         LinearLayout weapon = tabPages.get("Weapon");
         if (weapon != null) {
-            addSwitch(weapon, "Instant Reload", 140);
-            addSwitch(weapon, "Wide Crosshair", 141);
-            addSeekBar(weapon, "Bullet Speed", 50, 100, "%", 150);
+            addSwitch(weapon, "Speed Hack Enable", 60);
+            addSeekBar(weapon, "Game Speed Multiplier", 20, 50, "x", 25);
+            addSeekBar(weapon, "Silent Target (0=Head, 1=Body)", 0, 1, "", 61);
+            addSeekBar(weapon, "Target Priority (0=FOV, 1=Dist)", 0, 1, "", 62);
         }
     }
 

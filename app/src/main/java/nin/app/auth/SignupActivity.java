@@ -81,8 +81,8 @@ public class SignupActivity extends Activity {
 
         // 1. Logo
         ImageView logo = new ImageView(this);
-        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(56), dp(56));
-        logoLp.bottomMargin = dp(10);
+        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(96), dp(96));
+        logoLp.bottomMargin = dp(12);
         logo.setLayoutParams(logoLp);
         logo.setImageResource(R.drawable.nin_logo);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -182,21 +182,25 @@ public class SignupActivity extends Activity {
 
         board.addView(linksRow);
 
-        // 10. Official Version Footer
+        centerContainer.addView(board);
+        scrollView.addView(centerContainer);
+        root.addView(scrollView);
+
+        // 10. Official Version Footer pinned at screen bottom (Zero overlap with card content)
         TextView footerVersion = new TextView(this);
-        LinearLayout.LayoutParams fvLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        fvLp.topMargin = dp(32);
-        fvLp.bottomMargin = dp(8);
+        FrameLayout.LayoutParams fvLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        );
+        fvLp.bottomMargin = dp(16);
         footerVersion.setLayoutParams(fvLp);
+        footerVersion.setGravity(Gravity.CENTER);
         footerVersion.setText("V" + getString(R.string.app_version));
         footerVersion.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         footerVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         footerVersion.setTypeface(Typeface.DEFAULT_BOLD);
-        board.addView(footerVersion);
-
-        centerContainer.addView(board);
-        scrollView.addView(centerContainer);
-        root.addView(scrollView);
+        root.addView(footerVersion);
 
         setContentView(root);
     }

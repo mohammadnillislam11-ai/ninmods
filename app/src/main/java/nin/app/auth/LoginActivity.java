@@ -89,8 +89,8 @@ public class LoginActivity extends Activity {
 
         // 1. Logo
         ImageView logo = new ImageView(this);
-        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(56), dp(56));
-        logoLp.bottomMargin = dp(10);
+        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(96), dp(96));
+        logoLp.bottomMargin = dp(12);
         logo.setLayoutParams(logoLp);
         logo.setImageResource(R.drawable.nin_logo);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -131,15 +131,20 @@ public class LoginActivity extends Activity {
         etPassword.setLayoutParams(passLp);
         board.addView(etPassword);
 
-        // 6. Remember Me Checkbox Row
-        cbRemember = new CheckBox(this);
-        LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(
+        // 6. Remember Me & Forgot Password Row (Positioned side-by-side above Login button per user screenshot)
+        LinearLayout rememberRow = new LinearLayout(this);
+        rememberRow.setOrientation(LinearLayout.HORIZONTAL);
+        rememberRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams remRowLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        cbLp.topMargin = dp(8);
-        cbLp.bottomMargin = dp(2);
-        cbRemember.setLayoutParams(cbLp);
+        remRowLp.topMargin = dp(8);
+        remRowLp.bottomMargin = dp(2);
+        rememberRow.setLayoutParams(remRowLp);
+
+        // Left: Remember Me Checkbox
+        cbRemember = new CheckBox(this);
         cbRemember.setText(" Remember Me");
         cbRemember.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         cbRemember.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
@@ -156,7 +161,27 @@ public class LoginActivity extends Activity {
             if (!savedUser.isEmpty()) etUsername.setText(savedUser);
             if (!savedPass.isEmpty()) etPassword.setText(savedPass);
         }
-        board.addView(cbRemember);
+        rememberRow.addView(cbRemember);
+
+        // Spacer to push Forgot Password to the far right
+        View spacer = new View(this);
+        spacer.setLayoutParams(new LinearLayout.LayoutParams(0, 1, 1.0f));
+        rememberRow.addView(spacer);
+
+        // Right: Forgot Password Link
+        TextView resetPassLink = new TextView(this);
+        resetPassLink.setText("Forgot Password?");
+        resetPassLink.setTextColor(AppColors.MAGENTA_LIGHT);
+        resetPassLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        resetPassLink.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        resetPassLink.setPadding(dp(4), dp(4), dp(4), dp(4));
+        resetPassLink.setOnClickListener(v -> {
+            Intent intent = new Intent(LoginActivity.this, ResetPasswordActivity.class);
+            startActivity(intent);
+        });
+        rememberRow.addView(resetPassLink);
+
+        board.addView(rememberRow);
 
         // 7. Login Button
         loginBtn = new Button(this);
@@ -191,15 +216,12 @@ public class LoginActivity extends Activity {
         progressBar.setVisibility(View.GONE);
         board.addView(progressBar);
 
-        // 9. Navigation Links (Signup & Reset Password)
-        LinearLayout linksRow = new LinearLayout(this);
-        LinearLayout.LayoutParams linksLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        linksLp.topMargin = dp(16);
-        linksRow.setLayoutParams(linksLp);
-        linksRow.setOrientation(LinearLayout.VERTICAL);
-        linksRow.setGravity(Gravity.CENTER);
-
+        // 9. Navigation Link (Signup)
         TextView signUpLink = new TextView(this);
+        LinearLayout.LayoutParams suLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        suLp.topMargin = dp(16);
+        suLp.gravity = Gravity.CENTER_HORIZONTAL;
+        signUpLink.setLayoutParams(suLp);
         signUpLink.setText("Don't have an account? Sign Up");
         signUpLink.setTextColor(AppColors.MAGENTA_LIGHT);
         signUpLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
@@ -209,37 +231,27 @@ public class LoginActivity extends Activity {
             Intent intent = new Intent(LoginActivity.this, SignupActivity.class);
             startActivity(intent);
         });
-        linksRow.addView(signUpLink);
-
-        TextView resetPassLink = new TextView(this);
-        resetPassLink.setText("Forgot Password? Reset");
-        resetPassLink.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        resetPassLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        resetPassLink.setGravity(Gravity.CENTER);
-        resetPassLink.setPadding(0, dp(6), 0, dp(6));
-        resetPassLink.setOnClickListener(v -> {
-            Intent intent = new Intent(LoginActivity.this, ResetPasswordActivity.class);
-            startActivity(intent);
-        });
-        linksRow.addView(resetPassLink);
-
-        board.addView(linksRow);
-
-        // 10. Official Version Footer
-        TextView footerVersion = new TextView(this);
-        LinearLayout.LayoutParams fvLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        fvLp.topMargin = dp(32);
-        fvLp.bottomMargin = dp(8);
-        footerVersion.setLayoutParams(fvLp);
-        footerVersion.setText("V" + getString(R.string.app_version));
-        footerVersion.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        footerVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        footerVersion.setTypeface(Typeface.DEFAULT_BOLD);
-        board.addView(footerVersion);
+        board.addView(signUpLink);
 
         centerContainer.addView(board);
         scrollView.addView(centerContainer);
         root.addView(scrollView);
+
+        // 10. Official Version Footer pinned at screen bottom (Zero overlap with card content)
+        TextView footerVersion = new TextView(this);
+        FrameLayout.LayoutParams fvLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        );
+        fvLp.bottomMargin = dp(16);
+        footerVersion.setLayoutParams(fvLp);
+        footerVersion.setGravity(Gravity.CENTER);
+        footerVersion.setText("V" + getString(R.string.app_version));
+        footerVersion.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        footerVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        footerVersion.setTypeface(Typeface.DEFAULT_BOLD);
+        root.addView(footerVersion);
 
         setContentView(root);
     }
