@@ -50,7 +50,7 @@ public class SidebarView {
         sideHeader.addView(sTitle);
 
         TextView sSub = new TextView(context);
-        sSub.setText("Tactical Suite v63.0");
+        sSub.setText("Tactical Suite v64.0");
         sSub.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         sSub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         sSub.setPadding(0, dp(context, 2), 0, 0);
@@ -84,7 +84,7 @@ public class SidebarView {
         // Sidebar Footer
         TextView footer = new TextView(context);
         footer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        footer.setText("Version 63.0 (Official Build)");
+        footer.setText("Version 64.0 (Official Build)");
         footer.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         footer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         footer.setGravity(Gravity.CENTER);

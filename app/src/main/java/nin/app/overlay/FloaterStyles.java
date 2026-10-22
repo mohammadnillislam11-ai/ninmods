@@ -16,6 +16,15 @@ public final class FloaterStyles {
     public static final int DarkBackground = AppColors.DARK_BACKGROUND;
     public static final int CardBackground = AppColors.CARD_BACKGROUND;
 
+    public static final int ColorDarkBg = 0xFF11121C;
+    public static final int ColorSidebarBg = 0xFF0D0E17;
+    public static final int ColorBorder = 0xFF1E2030;
+    public static final int ColorAccentBlue = 0xFF2962FF;
+    public static final int ColorSectionTitle = 0xFF3D5AFE;
+    public static final int ColorTextMuted = 0xFF8C8FA1;
+    public static final int ColorButtonDark = 0xFF1E2030;
+    public static final int ColorButtonStroke = 0xFF2C2F46;
+
     private FloaterStyles() {}
 
     public static int dp(Context context, int value) {
@@ -39,7 +48,7 @@ public final class FloaterStyles {
 
     public static Bitmap createDefaultIcon() {
         Bitmap bitmap = Bitmap.createBitmap(55, 45, Bitmap.Config.ARGB_8888);
-        bitmap.eraseColor(PrimaryColor);
+        bitmap.eraseColor(0xFF2962FF);
         return bitmap;
     }
 
@@ -47,7 +56,42 @@ public final class FloaterStyles {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setShape(GradientDrawable.RECTANGLE);
         drawable.setCornerRadius(dp(context, 10));
-        drawable.setColor(CardBackground);
+        drawable.setColor(ColorDarkBg);
+        drawable.setStroke(dp(context, 1), ColorBorder);
+        return drawable;
+    }
+
+    public static GradientDrawable createActiveTabDrawable(Context context) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setCornerRadius(dp(context, 6));
+        drawable.setColor(ColorAccentBlue);
+        return drawable;
+    }
+
+    public static GradientDrawable createInactiveTabDrawable(Context context) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setCornerRadius(dp(context, 6));
+        drawable.setColor(0x00000000);
+        return drawable;
+    }
+
+    public static GradientDrawable createSelectorBtnDrawable(Context context) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setCornerRadius(dp(context, 4));
+        drawable.setColor(ColorButtonDark);
+        drawable.setStroke(dp(context, 1), ColorButtonStroke);
+        return drawable;
+    }
+
+    public static GradientDrawable createBadgeDrawable(Context context) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setCornerRadius(dp(context, 4));
+        drawable.setColor(ColorButtonDark);
+        drawable.setStroke(dp(context, 1), ColorAccentBlue);
         return drawable;
     }
 }
