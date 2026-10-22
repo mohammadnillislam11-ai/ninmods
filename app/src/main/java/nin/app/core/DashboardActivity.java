@@ -6,6 +6,8 @@ import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -66,13 +68,74 @@ public class DashboardActivity extends BaseActivity {
         buildInterface();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (drawerLayout != null && !drawerLayout.isDrawerOpen(Gravity.START)) {
+            if (Build.VERSION.SDK_INT >= 31) {
+                if (mainContainer != null) mainContainer.setRenderEffect(null);
+                if (getFooterView() != null) getFooterView().setRenderEffect(null);
+            }
+        }
+    }
+
     private void buildInterface() {
         drawerLayout = new DrawerLayout(this);
         drawerLayout.setLayoutParams(new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
-        drawerLayout.setScrimColor(Color.parseColor("#B3000000")); // Deep 70% black dim scrim behind open drawer
+        drawerLayout.setScrimColor(Color.parseColor("#80000000")); // Clean 50% dark dim scrim behind open drawer
+
+        // Hardware-accelerated full screen blur behind the sidebar when opened
+        drawerLayout.addDrawerListener(new DrawerLayout.DrawerListener() {
+            @Override
+            public void onDrawerSlide(View drawerView, float slideOffset) {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    if (slideOffset > 0.02f) {
+                        float radius = Math.max(1.0f, slideOffset * 25.0f);
+                        RenderEffect blurEffect = RenderEffect.createBlurEffect(
+                                radius, radius, Shader.TileMode.CLAMP
+                        );
+                        mainContainer.setRenderEffect(blurEffect);
+                        if (getFooterView() != null) {
+                            getFooterView().setRenderEffect(blurEffect);
+                        }
+                    } else {
+                        mainContainer.setRenderEffect(null);
+                        if (getFooterView() != null) {
+                            getFooterView().setRenderEffect(null);
+                        }
+                    }
+                }
+            }
+
+            @Override
+            public void onDrawerOpened(View drawerView) {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    RenderEffect blurEffect = RenderEffect.createBlurEffect(
+                            25.0f, 25.0f, Shader.TileMode.CLAMP
+                    );
+                    mainContainer.setRenderEffect(blurEffect);
+                    if (getFooterView() != null) {
+                        getFooterView().setRenderEffect(blurEffect);
+                    }
+                }
+            }
+
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    mainContainer.setRenderEffect(null);
+                    if (getFooterView() != null) {
+                        getFooterView().setRenderEffect(null);
+                    }
+                }
+            }
+
+            @Override
+            public void onDrawerStateChanged(int newState) {}
+        });
 
         // Main Layout Container (Transparent so blurred particle animation shines through)
         mainContainer = new LinearLayout(this);
