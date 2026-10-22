@@ -284,7 +284,7 @@ public class DashboardContentView {
         pName.setText(pkg + " • " + desc);
         pName.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         pName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        pName.setPadding(0, dp(context, 2), 0, dp(12));
+        pName.setPadding(0, dp(context, 2), 0, dp(context, 12));
         card.addView(pName);
 
         Button launchBtn = new Button(context);
