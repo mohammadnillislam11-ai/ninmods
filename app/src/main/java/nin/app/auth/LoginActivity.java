@@ -2,9 +2,11 @@ package nin.app.auth;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.util.TypedValue;
@@ -12,10 +14,12 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -23,12 +27,21 @@ import android.widget.Toast;
 import nin.app.R;
 import nin.app.core.AppColors;
 import nin.app.core.DashboardActivity;
+import nin.app.core.Prefs;
+import nin.app.ui.TacticalGraphicBackground;
 
 public class LoginActivity extends Activity {
 
+    private static final String PREF_REMEMBER_ME = "pref_auth_remember_me";
+    private static final String PREF_SAVED_USERNAME = "pref_auth_saved_username";
+    private static final String PREF_SAVED_PASSWORD = "pref_auth_saved_password";
+
     private EditText etUsername;
     private EditText etPassword;
+    private CheckBox cbRemember;
     private TextView tvError;
+    private Button loginBtn;
+    private ProgressBar progressBar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,12 +56,8 @@ public class LoginActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        // Dark gradient background
-        GradientDrawable screenBg = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{AppColors.MAGENTA_SCREEN_BG, AppColors.BLACK}
-        );
-        root.setBackground(screenBg);
+        // Rich Cyber Matrix Tactical Graphic Body Background (Zero Plain Black)
+        root.setBackground(new TacticalGraphicBackground(this));
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setLayoutParams(new FrameLayout.LayoutParams(
@@ -58,6 +67,7 @@ public class LoginActivity extends Activity {
         scrollView.setFillViewport(true);
         scrollView.setVerticalScrollBarEnabled(false);
 
+        // Center Container with tight horizontal margins to minimize unused side spaces
         LinearLayout centerContainer = new LinearLayout(this);
         centerContainer.setLayoutParams(new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -65,12 +75,12 @@ public class LoginActivity extends Activity {
         ));
         centerContainer.setOrientation(LinearLayout.VERTICAL);
         centerContainer.setGravity(Gravity.CENTER);
-        centerContainer.setPadding(dp(24), dp(36), dp(24), dp(36));
+        centerContainer.setPadding(dp(16), dp(28), dp(16), dp(20));
 
-        // Main Board Column (Direct on board - No Card box)
+        // Main Board Column (Direct on board - stretches to fill screen width cleanly)
         LinearLayout board = new LinearLayout(this);
         LinearLayout.LayoutParams boardLp = new LinearLayout.LayoutParams(
-                dp(320),
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
         board.setLayoutParams(boardLp);
@@ -94,36 +104,64 @@ public class LoginActivity extends Activity {
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleLp.bottomMargin = dp(24);
+        titleLp.bottomMargin = dp(16);
         title.setLayoutParams(titleLp);
         board.addView(title);
 
-        // 3. Username Field
+        // 3. Error Label (Strictly positioned ABOVE Username input field per user explicit instruction)
+        tvError = new TextView(this);
+        LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        errLp.bottomMargin = dp(12);
+        tvError.setLayoutParams(errLp);
+        tvError.setTextColor(Color.parseColor("#FF5252"));
+        tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvError.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tvError.setGravity(Gravity.CENTER);
+        tvError.setVisibility(View.GONE);
+        board.addView(tvError);
+
+        // 4. Username Field
         etUsername = createInputField("Username", InputType.TYPE_CLASS_TEXT);
         board.addView(etUsername);
 
-        // 4. Password Field
+        // 5. Password Field
         etPassword = createInputField("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) etPassword.getLayoutParams();
         passLp.topMargin = dp(12);
         etPassword.setLayoutParams(passLp);
         board.addView(etPassword);
 
-        // 5. Error Label
-        tvError = new TextView(this);
-        LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        errLp.topMargin = dp(8);
-        tvError.setLayoutParams(errLp);
-        tvError.setTextColor(Color.parseColor("#FF5252"));
-        tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        tvError.setGravity(Gravity.CENTER);
-        tvError.setVisibility(View.GONE);
-        board.addView(tvError);
+        // 6. Remember Me Checkbox Row
+        cbRemember = new CheckBox(this);
+        LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        cbLp.topMargin = dp(8);
+        cbLp.bottomMargin = dp(2);
+        cbRemember.setLayoutParams(cbLp);
+        cbRemember.setText(" Remember Me");
+        cbRemember.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        cbRemember.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cbRemember.setButtonTintList(ColorStateList.valueOf(AppColors.MAGENTA_PRIMARY));
+        }
 
-        // 6. Login Button
-        Button loginBtn = new Button(this);
+        // Restore saved Remember Me state & credentials
+        boolean savedRemember = Prefs.with(this).readBoolean(PREF_REMEMBER_ME, false);
+        cbRemember.setChecked(savedRemember);
+        if (savedRemember) {
+            String savedUser = Prefs.with(this).readString(PREF_SAVED_USERNAME, "");
+            String savedPass = Prefs.with(this).readString(PREF_SAVED_PASSWORD, "");
+            if (!savedUser.isEmpty()) etUsername.setText(savedUser);
+            if (!savedPass.isEmpty()) etPassword.setText(savedPass);
+        }
+        board.addView(cbRemember);
+
+        // 7. Login Button
+        loginBtn = new Button(this);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
-        btnLp.topMargin = dp(18);
+        btnLp.topMargin = dp(14);
         loginBtn.setLayoutParams(btnLp);
         loginBtn.setText("LOGIN");
         loginBtn.setTextColor(AppColors.WHITE);
@@ -139,7 +177,21 @@ public class LoginActivity extends Activity {
         loginBtn.setOnClickListener(v -> performLogin());
         board.addView(loginBtn);
 
-        // 7. Navigation Links (Signup & Reset Password)
+        // 8. Official Android Native Circular Loading Component
+        progressBar = new ProgressBar(this);
+        LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(dp(36), dp(36));
+        pbLp.gravity = Gravity.CENTER_HORIZONTAL;
+        pbLp.topMargin = dp(14);
+        pbLp.bottomMargin = dp(4);
+        progressBar.setLayoutParams(pbLp);
+        progressBar.setIndeterminate(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            progressBar.setIndeterminateTintList(ColorStateList.valueOf(AppColors.MAGENTA_PRIMARY));
+        }
+        progressBar.setVisibility(View.GONE);
+        board.addView(progressBar);
+
+        // 9. Navigation Links (Signup & Reset Password)
         LinearLayout linksRow = new LinearLayout(this);
         LinearLayout.LayoutParams linksLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         linksLp.topMargin = dp(16);
@@ -173,6 +225,18 @@ public class LoginActivity extends Activity {
 
         board.addView(linksRow);
 
+        // 10. Official Version Footer
+        TextView footerVersion = new TextView(this);
+        LinearLayout.LayoutParams fvLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fvLp.topMargin = dp(32);
+        fvLp.bottomMargin = dp(8);
+        footerVersion.setLayoutParams(fvLp);
+        footerVersion.setText("V" + getString(R.string.app_version));
+        footerVersion.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        footerVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        footerVersion.setTypeface(Typeface.DEFAULT_BOLD);
+        board.addView(footerVersion);
+
         centerContainer.addView(board);
         scrollView.addView(centerContainer);
         root.addView(scrollView);
@@ -202,25 +266,60 @@ public class LoginActivity extends Activity {
     }
 
     private void performLogin() {
-        String username = etUsername.getText() != null ? etUsername.getText().toString().trim() : "";
-        String password = etPassword.getText() != null ? etPassword.getText().toString().trim() : "";
+        final String username = etUsername.getText() != null ? etUsername.getText().toString().trim() : "";
+        final String password = etPassword.getText() != null ? etPassword.getText().toString().trim() : "";
 
         if (username.isEmpty() || password.isEmpty()) {
             showError("Please enter both username and password.");
             return;
         }
 
-        if (AuthManager.verifyLogin(username, password)) {
-            tvError.setVisibility(View.GONE);
-            AuthManager.setLoggedIn(this, true);
-            Toast.makeText(this, "Login successful!", Toast.LENGTH_SHORT).show();
+        // Hide errors and trigger Android default loading component
+        tvError.setVisibility(View.GONE);
+        loginBtn.setVisibility(View.GONE);
+        progressBar.setVisibility(View.VISIBLE);
+        etUsername.setEnabled(false);
+        etPassword.setEnabled(false);
 
-            Intent intent = new Intent(this, DashboardActivity.class);
-            startActivity(intent);
-            finish();
-        } else {
-            showError("Invalid credentials! Please try again.");
-        }
+        // Forward credentials to Node.js /api/v2/auth/login endpoint
+        AuthApiController.login(this, username, password, new AuthApiController.ApiCallback() {
+            @Override
+            public void onSuccess(String message) {
+                if (isFinishing()) return;
+                progressBar.setVisibility(View.GONE);
+                loginBtn.setVisibility(View.VISIBLE);
+                etUsername.setEnabled(true);
+                etPassword.setEnabled(true);
+
+                // Save or clear Remember Me state
+                if (cbRemember != null && cbRemember.isChecked()) {
+                    Prefs.with(LoginActivity.this).writeBoolean(PREF_REMEMBER_ME, true);
+                    Prefs.with(LoginActivity.this).writeString(PREF_SAVED_USERNAME, username);
+                    Prefs.with(LoginActivity.this).writeString(PREF_SAVED_PASSWORD, password);
+                } else {
+                    Prefs.with(LoginActivity.this).writeBoolean(PREF_REMEMBER_ME, false);
+                    Prefs.with(LoginActivity.this).writeString(PREF_SAVED_USERNAME, "");
+                    Prefs.with(LoginActivity.this).writeString(PREF_SAVED_PASSWORD, "");
+                }
+
+                AuthManager.setLoggedIn(LoginActivity.this, true);
+                Toast.makeText(LoginActivity.this, message, Toast.LENGTH_SHORT).show();
+
+                Intent intent = new Intent(LoginActivity.this, DashboardActivity.class);
+                startActivity(intent);
+                finish();
+            }
+
+            @Override
+            public void onError(String errorMessage) {
+                if (isFinishing()) return;
+                progressBar.setVisibility(View.GONE);
+                loginBtn.setVisibility(View.VISIBLE);
+                etUsername.setEnabled(true);
+                etPassword.setEnabled(true);
+                showError(errorMessage);
+            }
+        });
     }
 
     private void showError(String message) {

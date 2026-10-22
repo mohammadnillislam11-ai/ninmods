@@ -29,6 +29,7 @@ public class DashboardContentView {
 
     public static final String PKG_FF_GLOBAL = "com.dts.freefireth";
     public static final String PKG_FF_MAX = "com.dts.freefiremax";
+    public static final String PKG_FF_INDIA = "com.dts.freefirein";
 
     public interface DashboardListener {
         void onBrandMenuClick(IMenuProject menu);
@@ -53,8 +54,8 @@ public class DashboardContentView {
         container.setOrientation(LinearLayout.VERTICAL);
         container.setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 24));
 
-        // 1. Available Tactical Menus (Responsive 4-item single row series)
-        TextView menusHeader = createSectionHeader(context, "AVAILABLE TACTICAL MENUS");
+        // 1. Available Mods (Responsive 4-item single row series)
+        TextView menusHeader = createSectionHeader(context, "AVAILABLE MODS");
         container.addView(menusHeader);
         container.addView(createBrandMenuGrid(context, listener));
 
@@ -261,7 +262,7 @@ public class DashboardContentView {
         return card;
     }
 
-    // Dynamic Installed Games Section (Zero Buttons, Auto-Detected from Device)
+    // Dynamic Installed Games Section (Shows ONLY actually installed games, zero package names)
     private static View createInstalledGamesSection(Context context, final DashboardListener listener) {
         LinearLayout container = new LinearLayout(context);
         LinearLayout.LayoutParams containerLp = new LinearLayout.LayoutParams(
@@ -272,35 +273,42 @@ public class DashboardContentView {
         container.setLayoutParams(containerLp);
         container.setOrientation(LinearLayout.VERTICAL);
 
-        // Free Fire Global
-        container.addView(createClickableGameItem(context, PKG_FF_GLOBAL, "Free Fire", listener));
+        String[] candidatePackages = new String[]{PKG_FF_GLOBAL, PKG_FF_MAX, PKG_FF_INDIA};
+        int installedCount = 0;
 
-        // Free Fire MAX
-        container.addView(createClickableGameItem(context, PKG_FF_MAX, "Free Fire MAX", listener));
+        for (String pkg : candidatePackages) {
+            View gameCard = createClickableGameItem(context, pkg, listener);
+            if (gameCard != null) {
+                container.addView(gameCard);
+                installedCount++;
+            }
+        }
+
+        if (installedCount == 0) {
+            TextView emptyTv = new TextView(context);
+            emptyTv.setText("No supported games installed on this device");
+            emptyTv.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+            emptyTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            emptyTv.setPadding(0, dp(context, 6), 0, dp(context, 8));
+            container.addView(emptyTv);
+        }
 
         return container;
     }
 
-    private static View createClickableGameItem(Context context, final String packageName, String defaultName, final DashboardListener listener) {
+    private static View createClickableGameItem(Context context, final String packageName, final DashboardListener listener) {
         PackageManager pm = context.getPackageManager();
-        boolean isInstalled = false;
-        String gameTitle = defaultName;
-        Drawable gameIcon = null;
-
+        ApplicationInfo appInfo;
         try {
-            ApplicationInfo appInfo = pm.getApplicationInfo(packageName, 0);
-            isInstalled = true;
-            CharSequence label = pm.getApplicationLabel(appInfo);
-            if (label != null && !TextUtils.isEmpty(label)) {
-                gameTitle = label.toString();
-            }
-            gameIcon = pm.getApplicationIcon(appInfo);
+            appInfo = pm.getApplicationInfo(packageName, 0);
         } catch (PackageManager.NameNotFoundException ignored) {
-            isInstalled = false;
+            // Strictly DO NOT create card if game is not installed on device per user requirement
+            return null;
         }
 
-        final boolean finalIsInstalled = isInstalled;
-        final String finalGameTitle = gameTitle;
+        CharSequence label = pm.getApplicationLabel(appInfo);
+        final String finalGameTitle = (label != null && !TextUtils.isEmpty(label)) ? label.toString() : "Tactical Game";
+        Drawable gameIcon = pm.getApplicationIcon(appInfo);
 
         LinearLayout card = new LinearLayout(context);
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
@@ -318,64 +326,49 @@ public class DashboardContentView {
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setColor(AppColors.MAGENTA_CARD);
         cardBg.setCornerRadius(dp(context, 10));
-        if (finalIsInstalled) {
-            cardBg.setStroke(dp(context, 1), AppColors.withAlpha(AppColors.MAGENTA_PRIMARY, 100));
-        }
+        cardBg.setStroke(dp(context, 1), AppColors.withAlpha(AppColors.MAGENTA_PRIMARY, 100));
         card.setBackground(cardBg);
 
-        // App Icon
+        // Official App Icon from Installed Game
         ImageView iconView = new ImageView(context);
         LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(context, 44), dp(context, 44));
         iconLp.rightMargin = dp(context, 12);
         iconView.setLayoutParams(iconLp);
         if (gameIcon != null) {
             iconView.setImageDrawable(gameIcon);
-        } else {
-            iconView.setImageResource(R.drawable.nin_logo);
         }
         iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         card.addView(iconView);
 
-        // Title and Package Details
-        LinearLayout textCol = new LinearLayout(context);
-        textCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-        textCol.setOrientation(LinearLayout.VERTICAL);
-
+        // Title ONLY - 100% Dynamic from PackageManager, zero package name text per user request
         TextView titleTv = new TextView(context);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        titleTv.setLayoutParams(titleLp);
         titleTv.setText(finalGameTitle);
         titleTv.setTextColor(AppColors.WHITE);
         titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         titleTv.setTypeface(Typeface.DEFAULT_BOLD);
-        textCol.addView(titleTv);
-
-        TextView pkgTv = new TextView(context);
-        pkgTv.setText(packageName);
-        pkgTv.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        pkgTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        pkgTv.setPadding(0, dp(context, 2), 0, 0);
-        textCol.addView(pkgTv);
-
-        card.addView(textCol);
+        card.addView(titleTv);
 
         // Installation Status Chip (Zero buttons, clean status pill)
         TextView statusPill = new TextView(context);
-        statusPill.setText(finalIsInstalled ? "INSTALLED" : "NOT INSTALLED");
-        statusPill.setTextColor(finalIsInstalled ? 0xFF00E676 : 0xFF888888);
+        statusPill.setText("INSTALLED");
+        statusPill.setTextColor(0xFF00E676);
         statusPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
         statusPill.setTypeface(Typeface.DEFAULT_BOLD);
         statusPill.setPadding(dp(context, 8), dp(context, 4), dp(context, 8), dp(context, 4));
 
         GradientDrawable pillBg = new GradientDrawable();
-        pillBg.setColor(finalIsInstalled ? 0x2200E676 : 0x22888888);
+        pillBg.setColor(0x2200E676);
         pillBg.setCornerRadius(dp(context, 6));
-        pillBg.setStroke(dp(context, 1), finalIsInstalled ? 0x6600E676 : 0x44888888);
+        pillBg.setStroke(dp(context, 1), 0x6600E676);
         statusPill.setBackground(pillBg);
         card.addView(statusPill);
 
         // Click directly opens confirmation dialog
         card.setOnClickListener(v -> {
             if (listener != null) {
-                listener.onGameClick(packageName, finalGameTitle, finalIsInstalled);
+                listener.onGameClick(packageName, finalGameTitle, true);
             }
         });
 

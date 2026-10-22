@@ -1,9 +1,11 @@
 package nin.app.auth;
 
 import android.app.Activity;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.util.TypedValue;
@@ -15,12 +17,14 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import nin.app.R;
 import nin.app.core.AppColors;
+import nin.app.ui.TacticalGraphicBackground;
 
 public class SignupActivity extends Activity {
 
@@ -28,6 +32,8 @@ public class SignupActivity extends Activity {
     private EditText etPassword;
     private EditText etConfirmPassword;
     private TextView tvError;
+    private Button signupBtn;
+    private ProgressBar progressBar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,12 +48,8 @@ public class SignupActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        // Dark gradient background matching Login
-        GradientDrawable screenBg = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{AppColors.MAGENTA_SCREEN_BG, AppColors.BLACK}
-        );
-        root.setBackground(screenBg);
+        // Rich Cyber Matrix Tactical Graphic Body Background (Zero Plain Black)
+        root.setBackground(new TacticalGraphicBackground(this));
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setLayoutParams(new FrameLayout.LayoutParams(
@@ -57,6 +59,7 @@ public class SignupActivity extends Activity {
         scrollView.setFillViewport(true);
         scrollView.setVerticalScrollBarEnabled(false);
 
+        // Center Container with tight horizontal margins to minimize unused side spaces
         LinearLayout centerContainer = new LinearLayout(this);
         centerContainer.setLayoutParams(new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -64,12 +67,12 @@ public class SignupActivity extends Activity {
         ));
         centerContainer.setOrientation(LinearLayout.VERTICAL);
         centerContainer.setGravity(Gravity.CENTER);
-        centerContainer.setPadding(dp(24), dp(36), dp(24), dp(36));
+        centerContainer.setPadding(dp(16), dp(28), dp(16), dp(20));
 
-        // Main Board Column (Direct on board - No Card box)
+        // Main Board Column (Stretches to fill screen width cleanly)
         LinearLayout board = new LinearLayout(this);
         LinearLayout.LayoutParams boardLp = new LinearLayout.LayoutParams(
-                dp(320),
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
         board.setLayoutParams(boardLp);
@@ -93,43 +96,44 @@ public class SignupActivity extends Activity {
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleLp.bottomMargin = dp(24);
+        titleLp.bottomMargin = dp(16);
         title.setLayoutParams(titleLp);
         board.addView(title);
 
-        // 3. Username Field
+        // 3. Error Label (Strictly positioned ABOVE Username input field per user explicit instruction)
+        tvError = new TextView(this);
+        LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        errLp.bottomMargin = dp(12);
+        tvError.setLayoutParams(errLp);
+        tvError.setTextColor(Color.parseColor("#FF5252"));
+        tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvError.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tvError.setGravity(Gravity.CENTER);
+        tvError.setVisibility(View.GONE);
+        board.addView(tvError);
+
+        // 4. Username Field
         etUsername = createInputField("Username", InputType.TYPE_CLASS_TEXT);
         board.addView(etUsername);
 
-        // 4. Password Field
+        // 5. Password Field
         etPassword = createInputField("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) etPassword.getLayoutParams();
         passLp.topMargin = dp(12);
         etPassword.setLayoutParams(passLp);
         board.addView(etPassword);
 
-        // 5. Confirm Password Field
+        // 6. Confirm Password Field
         etConfirmPassword = createInputField("Confirm Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         LinearLayout.LayoutParams confPassLp = (LinearLayout.LayoutParams) etConfirmPassword.getLayoutParams();
         confPassLp.topMargin = dp(12);
         etConfirmPassword.setLayoutParams(confPassLp);
         board.addView(etConfirmPassword);
 
-        // 6. Error Label
-        tvError = new TextView(this);
-        LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        errLp.topMargin = dp(8);
-        tvError.setLayoutParams(errLp);
-        tvError.setTextColor(Color.parseColor("#FF5252"));
-        tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        tvError.setGravity(Gravity.CENTER);
-        tvError.setVisibility(View.GONE);
-        board.addView(tvError);
-
         // 7. Sign Up Button
-        Button signupBtn = new Button(this);
+        signupBtn = new Button(this);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
-        btnLp.topMargin = dp(18);
+        btnLp.topMargin = dp(16);
         signupBtn.setLayoutParams(btnLp);
         signupBtn.setText("SIGN UP");
         signupBtn.setTextColor(AppColors.WHITE);
@@ -145,7 +149,21 @@ public class SignupActivity extends Activity {
         signupBtn.setOnClickListener(v -> performSignup());
         board.addView(signupBtn);
 
-        // 8. Navigation Link (Back to Login)
+        // 8. Official Android Native Circular Loading Component
+        progressBar = new ProgressBar(this);
+        LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(dp(36), dp(36));
+        pbLp.gravity = Gravity.CENTER_HORIZONTAL;
+        pbLp.topMargin = dp(16);
+        pbLp.bottomMargin = dp(4);
+        progressBar.setLayoutParams(pbLp);
+        progressBar.setIndeterminate(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            progressBar.setIndeterminateTintList(ColorStateList.valueOf(AppColors.MAGENTA_PRIMARY));
+        }
+        progressBar.setVisibility(View.GONE);
+        board.addView(progressBar);
+
+        // 9. Navigation Link (Back to Login)
         LinearLayout linksRow = new LinearLayout(this);
         LinearLayout.LayoutParams linksLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         linksLp.topMargin = dp(16);
@@ -153,16 +171,28 @@ public class SignupActivity extends Activity {
         linksRow.setOrientation(LinearLayout.VERTICAL);
         linksRow.setGravity(Gravity.CENTER);
 
-        TextView loginLink = new TextView(this);
-        loginLink.setText("Already have an account? Login");
-        loginLink.setTextColor(AppColors.MAGENTA_LIGHT);
-        loginLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        loginLink.setGravity(Gravity.CENTER);
-        loginLink.setPadding(0, dp(6), 0, dp(6));
-        loginLink.setOnClickListener(v -> finish());
-        linksRow.addView(loginLink);
+        TextView backToLoginLink = new TextView(this);
+        backToLoginLink.setText("Already have an account? Login");
+        backToLoginLink.setTextColor(AppColors.MAGENTA_LIGHT);
+        backToLoginLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        backToLoginLink.setGravity(Gravity.CENTER);
+        backToLoginLink.setPadding(0, dp(6), 0, dp(6));
+        backToLoginLink.setOnClickListener(v -> finish());
+        linksRow.addView(backToLoginLink);
 
         board.addView(linksRow);
+
+        // 10. Official Version Footer
+        TextView footerVersion = new TextView(this);
+        LinearLayout.LayoutParams fvLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fvLp.topMargin = dp(32);
+        fvLp.bottomMargin = dp(8);
+        footerVersion.setLayoutParams(fvLp);
+        footerVersion.setText("V" + getString(R.string.app_version));
+        footerVersion.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        footerVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        footerVersion.setTypeface(Typeface.DEFAULT_BOLD);
+        board.addView(footerVersion);
 
         centerContainer.addView(board);
         scrollView.addView(centerContainer);
@@ -193,23 +223,64 @@ public class SignupActivity extends Activity {
     }
 
     private void performSignup() {
-        String username = etUsername.getText() != null ? etUsername.getText().toString().trim() : "";
-        String password = etPassword.getText() != null ? etPassword.getText().toString().trim() : "";
-        String confirm = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString().trim() : "";
+        final String username = etUsername.getText() != null ? etUsername.getText().toString().trim() : "";
+        final String password = etPassword.getText() != null ? etPassword.getText().toString().trim() : "";
+        final String confirmPassword = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString().trim() : "";
 
-        if (username.isEmpty() || password.isEmpty() || confirm.isEmpty()) {
+        if (username.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
             showError("Please fill in all fields.");
             return;
         }
 
-        if (!password.equals(confirm)) {
+        if (username.length() < 3) {
+            showError("Username must be at least 3 characters.");
+            return;
+        }
+
+        if (password.length() < 4) {
+            showError("Password must be at least 4 characters.");
+            return;
+        }
+
+        if (!password.equals(confirmPassword)) {
             showError("Passwords do not match.");
             return;
         }
 
+        // Hide errors and trigger Android default loading component
         tvError.setVisibility(View.GONE);
-        Toast.makeText(this, "Account created successfully! Please login.", Toast.LENGTH_SHORT).show();
-        finish();
+        signupBtn.setVisibility(View.GONE);
+        progressBar.setVisibility(View.VISIBLE);
+        etUsername.setEnabled(false);
+        etPassword.setEnabled(false);
+        etConfirmPassword.setEnabled(false);
+
+        // Forward registration to Node.js /api/v2/auth/register endpoint
+        AuthApiController.register(this, username, password, new AuthApiController.ApiCallback() {
+            @Override
+            public void onSuccess(String message) {
+                if (isFinishing()) return;
+                progressBar.setVisibility(View.GONE);
+                signupBtn.setVisibility(View.VISIBLE);
+                etUsername.setEnabled(true);
+                etPassword.setEnabled(true);
+                etConfirmPassword.setEnabled(true);
+
+                Toast.makeText(SignupActivity.this, message, Toast.LENGTH_LONG).show();
+                finish();
+            }
+
+            @Override
+            public void onError(String errorMessage) {
+                if (isFinishing()) return;
+                progressBar.setVisibility(View.GONE);
+                signupBtn.setVisibility(View.VISIBLE);
+                etUsername.setEnabled(true);
+                etPassword.setEnabled(true);
+                etConfirmPassword.setEnabled(true);
+                showError(errorMessage);
+            }
+        });
     }
 
     private void showError(String message) {

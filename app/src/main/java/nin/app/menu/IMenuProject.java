@@ -1,12 +1,11 @@
 package nin.app.menu;
 
 import android.content.Context;
-import nin.app.overlay.Floater;
 
 /**
  * Universal contract for modular tactical menu projects.
  * Enforces strict isolation: each brand or menu implementation resides
- * in its own dedicated package folder.
+ * in its own dedicated package folder with its own distinct floating UI.
  */
 public interface IMenuProject {
 
@@ -49,9 +48,4 @@ public interface IMenuProject {
      * Check if this menu overlay is currently active and attached.
      */
     boolean isRunning();
-
-    /**
-     * Populate brand-specific controls, switches, seekbars, and buttons for this brand's menu.
-     */
-    void configureBrandOptions(Floater floater, Context context);
 }

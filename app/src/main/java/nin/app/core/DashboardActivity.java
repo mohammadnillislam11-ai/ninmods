@@ -19,6 +19,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -30,6 +31,7 @@ import android.widget.Toast;
 
 import androidx.drawerlayout.widget.DrawerLayout;
 
+import nin.app.auth.AuthApiController;
 import nin.app.auth.AuthConstants;
 import nin.app.auth.AuthManager;
 import nin.app.menu.IMenuProject;
@@ -162,12 +164,20 @@ public class DashboardActivity extends Activity {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         FrameLayout dialogRoot = new FrameLayout(this);
+        dialogRoot.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
         dialogRoot.setPadding(dp(16), dp(16), dp(16), dp(16));
 
         LinearLayout card = new LinearLayout(this);
-        card.setLayoutParams(new FrameLayout.LayoutParams(dp(320), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        card.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+        ));
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(22), dp(24), dp(22), dp(20));
+        card.setPadding(dp(20), dp(22), dp(20), dp(18));
 
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setColor(AppColors.MAGENTA_CARD);
@@ -187,7 +197,7 @@ public class DashboardActivity extends Activity {
 
         // 2. Title
         TextView title = new TextView(this);
-        title.setText(menu.getDisplayName(this) + " ACCESS KEY");
+        title.setText(menu.getDisplayName(this) + " KEY");
         title.setTextColor(AppColors.WHITE);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
@@ -196,14 +206,25 @@ public class DashboardActivity extends Activity {
 
         // 3. Subtitle
         TextView subtitle = new TextView(this);
-        subtitle.setText("Enter tactical key to launch " + menu.getDisplayName(this));
+        subtitle.setText("Enter key to launch " + menu.getDisplayName(this));
         subtitle.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setPadding(0, dp(4), 0, dp(14));
         card.addView(subtitle);
 
-        // 4. Key Input Field
+        // 4. Error text (Strictly positioned ABOVE Key input field per user explicit instruction)
+        final TextView tvError = new TextView(this);
+        LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        errLp.bottomMargin = dp(8);
+        tvError.setLayoutParams(errLp);
+        tvError.setTextColor(Color.parseColor("#FF5252"));
+        tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvError.setGravity(Gravity.CENTER);
+        tvError.setVisibility(View.GONE);
+        card.addView(tvError);
+
+        // 5. Key Input Field
         final EditText etKey = new EditText(this);
         etKey.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
         etKey.setHint("Enter Key (e.g. " + AuthConstants.DEV_FREE_LICENSE_KEY + ")");
@@ -219,16 +240,6 @@ public class DashboardActivity extends Activity {
         inputBg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
         etKey.setBackground(inputBg);
         card.addView(etKey);
-
-        // 5. Error text (initially hidden)
-        final TextView tvError = new TextView(this);
-        LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        errLp.topMargin = dp(6);
-        tvError.setLayoutParams(errLp);
-        tvError.setTextColor(Color.parseColor("#FF5252"));
-        tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        tvError.setVisibility(View.GONE);
-        card.addView(tvError);
 
         // 6. Dev Free Key Hint
         TextView tvDevHint = new TextView(this);
@@ -277,11 +288,13 @@ public class DashboardActivity extends Activity {
             btnVerify.setVisibility(View.GONE);
             progressBar.setVisibility(View.VISIBLE);
 
-            // Simulate authentic network handshake (1.2s)
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                if (!dialog.isShowing()) return;
+            etKey.setEnabled(false);
 
-                if (AuthManager.verifyLicenseKey(inputKey)) {
+            // Forward license key to Node.js /api/v2/license/verify endpoint
+            AuthApiController.verifyLicenseKey(DashboardActivity.this, inputKey, menu.getId(), new AuthApiController.ApiCallback() {
+                @Override
+                public void onSuccess(String message) {
+                    if (!dialog.isShowing()) return;
                     dialog.dismiss();
 
                     // Check overlay permission
@@ -295,13 +308,18 @@ public class DashboardActivity extends Activity {
 
                     Toast.makeText(DashboardActivity.this, menu.getDisplayName(DashboardActivity.this) + " Launched!", Toast.LENGTH_SHORT).show();
                     MenuRouter.launchMenu(DashboardActivity.this, menu.getId());
-                } else {
+                }
+
+                @Override
+                public void onError(String errorMessage) {
+                    if (!dialog.isShowing()) return;
                     progressBar.setVisibility(View.GONE);
                     btnVerify.setVisibility(View.VISIBLE);
-                    tvError.setText("Invalid Key! Please enter a valid test key (" + AuthConstants.DEV_FREE_LICENSE_KEY + ").");
+                    etKey.setEnabled(true);
+                    tvError.setText(errorMessage);
                     tvError.setVisibility(View.VISIBLE);
                 }
-            }, 1200);
+            });
         });
         card.addView(btnVerify);
 
@@ -320,8 +338,19 @@ public class DashboardActivity extends Activity {
         dialogRoot.addView(card);
         dialog.setContentView(dialogRoot);
         if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            Window window = dialog.getWindow();
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            window.setGravity(Gravity.CENTER);
+
+            // Official Android Native Background Blur and Dim Component
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.70f);
+
+            if (Build.VERSION.SDK_INT >= 31) { // Android 12+ (Build.VERSION_CODES.S)
+                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                window.getAttributes().setBlurBehindRadius(dp(20));
+            }
         }
         dialog.show();
     }

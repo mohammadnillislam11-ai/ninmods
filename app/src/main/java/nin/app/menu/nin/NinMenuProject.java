@@ -5,7 +5,6 @@ import android.content.Context;
 import nin.app.R;
 import nin.app.core.Prefs;
 import nin.app.menu.IMenuProject;
-import nin.app.overlay.Floater;
 
 /**
  * NIN Tactical Menu Project Implementation.
@@ -49,21 +48,16 @@ public class NinMenuProject implements IMenuProject {
 
     @Override
     public void launch(Context context) {
-        Floater.start(context);
+        NinMenuFloater.start(context);
     }
 
     @Override
     public void stop(Context context) {
-        Floater.stop();
+        NinMenuFloater.stop();
     }
 
     @Override
     public boolean isRunning() {
-        return Floater.isRunning();
-    }
-
-    @Override
-    public void configureBrandOptions(Floater floater, Context context) {
-        // Native C++ Functions() and ftKZXivSr(context) configure NIN options
+        return NinMenuFloater.isRunning();
     }
 }

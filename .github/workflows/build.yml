@@ -52,8 +52,8 @@ jobs:
         run: |
           APK_SRC=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
           echo "Found APK at: $APK_SRC"
-          VERSION=$(grep 'versionCode' app/build.gradle | head -n 1 | tr -cd '0-9')
-          if [ -z "$VERSION" ]; then VERSION="55"; fi
+          VERSION=$(grep '<string name="version_code">' app/src/main/res/values/version.xml | tr -cd '0-9')
+          if [ -z "$VERSION" ]; then VERSION="78"; fi
           echo "Building Main_V${VERSION}.apk"
           if [ ! -f "release.keystore" ]; then
             keytool -genkey -v -keystore release.keystore -alias ninmods -keyalg RSA -keysize 2048 -validity 10000 -storepass ninmods123 -keypass ninmods123 -dname "CN=NINMODS, OU=Mobile, O=NIN, L=Dhaka, S=Dhaka, C=BD"
@@ -82,8 +82,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(grep 'versionCode' app/build.gradle | head -n 1 | tr -cd '0-9')
-          if [ -z "$VERSION" ]; then VERSION="55"; fi
+          VERSION=$(grep '<string name="version_code">' app/src/main/res/values/version.xml | tr -cd '0-9')
+          if [ -z "$VERSION" ]; then VERSION="78"; fi
           echo "Cleaning up all older releases..."
           for old_tag in $(gh release list --limit 50 --json tagName -q '.[].tagName'); do
             echo "Deleting old release: $old_tag"
