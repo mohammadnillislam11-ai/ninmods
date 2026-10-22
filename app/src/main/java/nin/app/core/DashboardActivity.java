@@ -89,37 +89,46 @@ public class DashboardActivity extends BaseActivity {
 
         // Hardware-accelerated full screen blur behind the sidebar when opened
         drawerLayout.addDrawerListener(new DrawerLayout.DrawerListener() {
+            private RenderEffect cachedDrawerBlur = null;
+            private boolean isBlurred = false;
+
             @Override
             public void onDrawerSlide(View drawerView, float slideOffset) {
                 if (Build.VERSION.SDK_INT >= 31) {
-                    if (slideOffset > 0.02f) {
-                        float radius = Math.max(1.0f, slideOffset * 25.0f);
-                        RenderEffect blurEffect = RenderEffect.createBlurEffect(
-                                radius, radius, Shader.TileMode.CLAMP
-                        );
-                        mainContainer.setRenderEffect(blurEffect);
-                        if (getFooterView() != null) {
-                            getFooterView().setRenderEffect(blurEffect);
+                    if (slideOffset > 0.05f && !isBlurred) {
+                        if (cachedDrawerBlur == null) {
+                            cachedDrawerBlur = RenderEffect.createBlurEffect(
+                                    18.0f, 18.0f, Shader.TileMode.CLAMP
+                            );
                         }
-                    } else {
+                        mainContainer.setRenderEffect(cachedDrawerBlur);
+                        if (getFooterView() != null) {
+                            getFooterView().setRenderEffect(cachedDrawerBlur);
+                        }
+                        isBlurred = true;
+                    } else if (slideOffset <= 0.05f && isBlurred) {
                         mainContainer.setRenderEffect(null);
                         if (getFooterView() != null) {
                             getFooterView().setRenderEffect(null);
                         }
+                        isBlurred = false;
                     }
                 }
             }
 
             @Override
             public void onDrawerOpened(View drawerView) {
-                if (Build.VERSION.SDK_INT >= 31) {
-                    RenderEffect blurEffect = RenderEffect.createBlurEffect(
-                            25.0f, 25.0f, Shader.TileMode.CLAMP
-                    );
-                    mainContainer.setRenderEffect(blurEffect);
-                    if (getFooterView() != null) {
-                        getFooterView().setRenderEffect(blurEffect);
+                if (Build.VERSION.SDK_INT >= 31 && !isBlurred) {
+                    if (cachedDrawerBlur == null) {
+                        cachedDrawerBlur = RenderEffect.createBlurEffect(
+                                18.0f, 18.0f, Shader.TileMode.CLAMP
+                        );
                     }
+                    mainContainer.setRenderEffect(cachedDrawerBlur);
+                    if (getFooterView() != null) {
+                        getFooterView().setRenderEffect(cachedDrawerBlur);
+                    }
+                    isBlurred = true;
                 }
             }
 
@@ -130,6 +139,7 @@ public class DashboardActivity extends BaseActivity {
                     if (getFooterView() != null) {
                         getFooterView().setRenderEffect(null);
                     }
+                    isBlurred = false;
                 }
             }
 

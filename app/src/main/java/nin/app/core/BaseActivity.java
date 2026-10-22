@@ -134,6 +134,8 @@ public abstract class BaseActivity extends Activity {
         return true;
     }
 
+    private android.graphics.RenderEffect cachedModalBlur = null;
+
     /**
      * Applies full-screen hardware-accelerated blur across the entire activity layout
      * (background, content, and footer) when modal popups/dialogs are displayed.
@@ -143,10 +145,12 @@ public abstract class BaseActivity extends Activity {
         if (baseRoot == null) return;
         if (Build.VERSION.SDK_INT >= 31) { // Android 12+ (Build.VERSION_CODES.S)
             if (enable) {
-                android.graphics.RenderEffect blurEffect = android.graphics.RenderEffect.createBlurEffect(
-                        25.0f, 25.0f, android.graphics.Shader.TileMode.CLAMP
-                );
-                baseRoot.setRenderEffect(blurEffect);
+                if (cachedModalBlur == null) {
+                    cachedModalBlur = android.graphics.RenderEffect.createBlurEffect(
+                            18.0f, 18.0f, android.graphics.Shader.TileMode.CLAMP
+                    );
+                }
+                baseRoot.setRenderEffect(cachedModalBlur);
             } else {
                 baseRoot.setRenderEffect(null);
             }

@@ -26,25 +26,25 @@ public class ParticleNetworkView extends View {
     // TUNING CONFIGURATION - VIBRANT PINK / MAGENTA CYBER GLOW
     // ═══════════════════════════════════════════════════════════════
     public static final int BG_COLOR = 0xFF0B0312;          // Deep near-black with subtle purple/pink base
-    public static final int LINE_BASE_COLOR = 0x00F76BF7;   // Neon Pink line base (#F76BF7)
-    public static final float LINK_DISTANCE_DP = 140.0f;     // Connection threshold distance
+    public static final float LINK_DISTANCE_DP = 110.0f;     // Connection threshold distance
     public static final float MIN_SPEED_DP = 0.12f;          // Minimum particle speed per frame
-    public static final float MAX_SPEED_DP = 0.75f;          // Maximum particle speed per frame
-    public static final float BLUR_RADIUS_DP = 18.0f;        // Rich deep pink frosted bokeh blur radius
-    public static final float MIN_RADIUS_DP = 2.2f;          // Particle minimum radius
-    public static final float MAX_RADIUS_DP = 4.8f;          // Particle maximum radius
+    public static final float MAX_SPEED_DP = 0.65f;          // Maximum particle speed per frame
+    public static final float BLUR_RADIUS_PX = 8.0f;         // Fast, silky hardware blur radius
+    public static final float MIN_RADIUS_DP = 2.4f;          // Particle minimum radius
+    public static final float MAX_RADIUS_DP = 4.6f;          // Particle maximum radius
     public static final float LINE_STROKE_DP = 1.2f;         // Connecting line stroke width
-    public static final int MIN_PARTICLES = 22;              // Lower bound for small screens
-    public static final int MAX_PARTICLES = 65;              // Upper bound to prevent overdraw
-    public static final float AREA_PER_PARTICLE = 20000.0f;  // Screen area per particle ratio
+    public static final int MIN_PARTICLES = 16;              // Lower bound
+    public static final int MAX_PARTICLES = 26;              // Optimal bound for 60/120 FPS
+    public static final float AREA_PER_PARTICLE = 55000.0f;  // Balanced constellation distribution
+    public static final int MAX_DRAW_LINES = 120;            // Max batch line count
 
     // ═══════════════════════════════════════════════════════════════
     // STATE & PRE-ALLOCATED OBJECTS (ZERO ALLOCATIONS IN onDraw)
     // ═══════════════════════════════════════════════════════════════
-    private final Paint bgPaint = new Paint();
     private final Paint ambientGlowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint particlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint[] particlePaints = new Paint[3];
+    private final float[] linesBuffer = new float[MAX_DRAW_LINES * 4];
     private final Random random = new Random();
 
     private float density = 1.0f;
@@ -52,7 +52,6 @@ public class ParticleNetworkView extends View {
     private float linkDistanceSq;
     private float minSpeedPx;
     private float maxSpeedPx;
-    private float blurRadiusPx;
     private float lineStrokePx;
 
     private int viewWidth = 0;
@@ -68,7 +67,7 @@ public class ParticleNetworkView extends View {
         float vx;
         float vy;
         float radiusPx;
-        int color;
+        int paintIndex;
     }
 
     public ParticleNetworkView(Context context) {
@@ -92,29 +91,43 @@ public class ParticleNetworkView extends View {
         linkDistanceSq = linkDistancePx * linkDistancePx;
         minSpeedPx = MIN_SPEED_DP * density;
         maxSpeedPx = MAX_SPEED_DP * density;
-        blurRadiusPx = Math.max(1.0f, BLUR_RADIUS_DP * density);
         lineStrokePx = Math.max(0.5f, LINE_STROKE_DP * density);
-
-        bgPaint.setColor(BG_COLOR);
-        bgPaint.setStyle(Paint.Style.FILL);
 
         ambientGlowPaint.setStyle(Paint.Style.FILL);
 
-        particlePaint.setStyle(Paint.Style.FILL);
-
+        // Pre-configured line paint (Glowing neon pink with 20% alpha)
         linePaint.setStyle(Paint.Style.STROKE);
         linePaint.setStrokeWidth(lineStrokePx);
+        linePaint.setColor(0x33F76BF7);
+
+        // Pre-configured 3-tier particle glow palette
+        // 0: Neon Fuchsia Pink (#F76BF7)
+        particlePaints[0] = new Paint(Paint.ANTI_ALIAS_FLAG);
+        particlePaints[0].setStyle(Paint.Style.FILL);
+        particlePaints[0].setColor(0x88F76BF7);
+
+        // 1: Electric Magenta (#E637E6)
+        particlePaints[1] = new Paint(Paint.ANTI_ALIAS_FLAG);
+        particlePaints[1].setStyle(Paint.Style.FILL);
+        particlePaints[1].setColor(0x88E637E6);
+
+        // 2: Deep Cyber Violet (#D050FF)
+        particlePaints[2] = new Paint(Paint.ANTI_ALIAS_FLAG);
+        particlePaints[2].setStyle(Paint.Style.FILL);
+        particlePaints[2].setColor(0x88D050FF);
 
         // Enable hardware acceleration
         setLayerType(LAYER_TYPE_HARDWARE, null);
 
         // Apply isolated view-level blur (Applies ONLY to this view's canvas)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Api31BlurHelper.applyBlur(this, blurRadiusPx);
+            Api31BlurHelper.applyBlur(this, BLUR_RADIUS_PX);
         } else {
-            // Fallback for API < 31: MaskFilter on particle paint
             try {
-                particlePaint.setMaskFilter(new BlurMaskFilter(blurRadiusPx, BlurMaskFilter.Blur.NORMAL));
+                BlurMaskFilter filter = new BlurMaskFilter(BLUR_RADIUS_PX, BlurMaskFilter.Blur.NORMAL);
+                particlePaints[0].setMaskFilter(filter);
+                particlePaints[1].setMaskFilter(filter);
+                particlePaints[2].setMaskFilter(filter);
             } catch (Throwable ignored) {}
         }
     }
@@ -163,7 +176,6 @@ public class ParticleNetworkView extends View {
             }
         }
 
-        float[] hsv = new float[3];
         for (int i = 0; i < count; i++) {
             Particle p = particles[i];
             p.radiusPx = (MIN_RADIUS_DP + random.nextFloat() * (MAX_RADIUS_DP - MIN_RADIUS_DP)) * density;
@@ -174,17 +186,7 @@ public class ParticleNetworkView extends View {
             double angle = random.nextDouble() * 2.0 * Math.PI;
             p.vx = (float) (speed * Math.cos(angle));
             p.vy = (float) (speed * Math.sin(angle));
-
-            // Vibrant Pink / Magenta / Neon Fuchsia (Hue 285 to 335)
-            hsv[0] = 285.0f + random.nextFloat() * (335.0f - 285.0f);
-            hsv[1] = 0.65f + random.nextFloat() * 0.35f; // High vibrancy
-            hsv[2] = 0.90f + random.nextFloat() * 0.10f; // Glowing bright
-            int baseColor = Color.HSVToColor(hsv);
-
-            // Alpha: 0.35 to 0.75 for rich glowing pink constellation
-            float alphaFloat = 0.35f + random.nextFloat() * 0.40f;
-            int alpha = (int) (alphaFloat * 255.0f);
-            p.color = (alpha << 24) | (baseColor & 0x00FFFFFF);
+            p.paintIndex = random.nextInt(3);
         }
     }
 
@@ -219,42 +221,46 @@ public class ParticleNetworkView extends View {
         super.onDraw(canvas);
         if (viewWidth <= 0 || viewHeight <= 0 || particleCount == 0) return;
 
-        // 1. Draw base canvas background
-        canvas.drawRect(0, 0, viewWidth, viewHeight, bgPaint);
+        // 1. Instant GPU clear color backdrop
+        canvas.drawColor(BG_COLOR);
 
-        // 2. Draw soft ambient pink aura
+        // 2. Ambient soft pink cyber aura
         canvas.drawRect(0, 0, viewWidth, viewHeight, ambientGlowPaint);
 
-        // 3. Draw connecting network lines in vibrant Pink/Magenta (fading alpha 0.22 -> 0)
+        // 3. Batch connecting lines in vibrant Pink/Magenta (Fast bounding-box rejection + single GPU drawLines call)
+        int lineCount = 0;
         for (int i = 0; i < particleCount; i++) {
             Particle p1 = particles[i];
             for (int j = i + 1; j < particleCount; j++) {
                 Particle p2 = particles[j];
                 float dx = p1.x - p2.x;
+                if (dx > linkDistancePx || dx < -linkDistancePx) continue;
                 float dy = p1.y - p2.y;
-                float distSq = dx * dx + dy * dy;
+                if (dy > linkDistancePx || dy < -linkDistancePx) continue;
 
-                if (distSq < linkDistanceSq) {
-                    float dist = (float) Math.sqrt(distSq);
-                    float fraction = 1.0f - (dist / linkDistancePx);
-                    int alpha = (int) (fraction * 0.32f * 255.0f);
-                    if (alpha > 0) {
-                        // Color: rgba(247, 107, 247, alpha) - Neon Pink
-                        linePaint.setColor((alpha << 24) | LINE_BASE_COLOR);
-                        canvas.drawLine(p1.x, p1.y, p2.x, p2.y, linePaint);
-                    }
+                float distSq = dx * dx + dy * dy;
+                if (distSq < linkDistanceSq && lineCount < MAX_DRAW_LINES) {
+                    int idx = lineCount * 4;
+                    linesBuffer[idx] = p1.x;
+                    linesBuffer[idx + 1] = p1.y;
+                    linesBuffer[idx + 2] = p2.x;
+                    linesBuffer[idx + 3] = p2.y;
+                    lineCount++;
                 }
             }
         }
 
-        // 4. Draw glowing pink particles
-        for (int i = 0; i < particleCount; i++) {
-            Particle p = particles[i];
-            particlePaint.setColor(p.color);
-            canvas.drawCircle(p.x, p.y, p.radiusPx, particlePaint);
+        if (lineCount > 0) {
+            canvas.drawLines(linesBuffer, 0, lineCount * 4, linePaint);
         }
 
-        // 5. Update and request next vsync frame
+        // 4. Draw glowing pink particles (Zero state changes per draw)
+        for (int i = 0; i < particleCount; i++) {
+            Particle p = particles[i];
+            canvas.drawCircle(p.x, p.y, p.radiusPx, particlePaints[p.paintIndex]);
+        }
+
+        // 5. Update physics and request next vsync frame
         if (isRunning) {
             updateParticles();
             postInvalidateOnAnimation();
