@@ -628,12 +628,9 @@ int main(int argc, char*argv[]){
             Request request{};
             while (server.receive((void*)&request) > 0) {
                 Response SendResponse{};
-                if (request.Mode == Mode::InitMode) {
-                    SendResponse.Success = true;
-                    NIN_LOGI("DAEMON", "InitMode handshake received from client, replied Success=true");
-                } else if (request.Mode == Mode::HackMode) {
-                    SendResponse.Success = true;
-                } else {
+
+                // Attach / scan target game dynamically if needed
+                if (request.Mode != Mode::InitMode && request.Mode != Mode::HackMode) {
                     if (target_pid <= 0 || mem_fd <= 0 || libAddress == 0) {
                         target_pid = FindGamePid();
                         if (target_pid > 0) {
@@ -643,58 +640,65 @@ int main(int argc, char*argv[]){
                                      target_pid, mem_fd, (unsigned long)libAddress);
                         }
                     }
-                    if (request.Mode == Mode::EspMode) {
-                        g_screenWidth = request.ScreenWidth;
-                        g_screenHeight = request.ScreenHeight;
-                        CreateDataList(SendResponse);
-                        SendResponse.Success = true;
-                    } else if (request.Mode == 3) {
+                }
+
+                if (request.Mode == Mode::InitMode) {
+                    SendResponse.Success = true;
+                    NIN_LOGI("DAEMON", "InitMode handshake received from client, replied Success=true");
+                } else if (request.Mode == Mode::HackMode) {
+                    SendResponse.Success = true;
+                } else if (request.Mode == Mode::EspMode) {
+                    g_screenWidth = request.ScreenWidth;
+                    g_screenHeight = request.ScreenHeight;
+                    CreateDataList(SendResponse);
+                    SendResponse.Success = true;
+                } else if (request.Mode == 3) {
                     Actived.activar = request.m_IsOn;
                     SendResponse.Success = true;
                     NIN_LOGI("DAEMON", "Feature: ESP Toggle = %s", Actived.activar ? "ON" : "OFF");
-                } else if(request.Mode == 5){
+                } else if (request.Mode == 5) {
                     pPlayer.aimbot = request.m_IsOn;
                     SendResponse.Success = true;
                     NIN_LOGI("DAEMON", "Feature: Aimbot = %s", pPlayer.aimbot ? "ON" : "OFF");
-                } else if(request.Mode == 22){
+                } else if (request.Mode == 22) {
                     pPlayer.fovawm = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 54){
+                } else if (request.Mode == 54) {
                     pPlayer.aimbotlock = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 57){
+                } else if (request.Mode == 57) {
                     pPlayer.silen4a = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 58){
+                } else if (request.Mode == 58) {
                     pPlayer.AimFov = (float)request.value;
                     SendResponse.Success = true;
-                } else if(request.Mode == 59){
+                } else if (request.Mode == 59) {
                     pPlayer.AimDistance = (float)request.value;
                     SendResponse.Success = true;
-                } else if(request.Mode == 60){
+                } else if (request.Mode == 60) {
                     speedHackEnabled = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 25){
+                } else if (request.Mode == 25) {
                     pPlayer.gameSpeed = (float)request.value / 10.0f; // Input 10-50 -> 1.0x-5.0x
                     SendResponse.Success = true;
-                } else if(request.Mode == 61){
+                } else if (request.Mode == 61) {
                     pPlayer.silentAimHead = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 62){
+                } else if (request.Mode == 62) {
                     pPlayer.targetByDistance = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 63){
+                } else if (request.Mode == 63) {
                     pPlayer.aimMagnet = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 70){
+                } else if (request.Mode == 70) {
                     pPlayer.headshotRate = request.value;
-                    if(pPlayer.headshotRate > 100) pPlayer.headshotRate = 100;
-                    if(pPlayer.headshotRate < 0) pPlayer.headshotRate = 0;
+                    if (pPlayer.headshotRate > 100) pPlayer.headshotRate = 100;
+                    if (pPlayer.headshotRate < 0) pPlayer.headshotRate = 0;
                     SendResponse.Success = true;
-                } else if(request.Mode == 71){
+                } else if (request.Mode == 71) {
                     pPlayer.ignoreBots = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 72){
+                } else if (request.Mode == 72) {
                     pPlayer.ignoreKnocked = request.m_IsOn;
                     SendResponse.Success = true;
                 }
