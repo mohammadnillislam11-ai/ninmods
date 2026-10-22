@@ -91,7 +91,7 @@ public class SidebarView {
         // Sidebar Footer
         TextView footer = new TextView(context);
         footer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        footer.setText("Version " + context.getString(R.string.app_version) + " (Official Build)");
+        footer.setText("Version: " + context.getString(R.string.app_version) + " (Official Build)");
         footer.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         footer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         footer.setGravity(Gravity.CENTER);

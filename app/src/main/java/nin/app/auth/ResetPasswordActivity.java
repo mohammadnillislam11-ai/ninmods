@@ -174,25 +174,26 @@ public class ResetPasswordActivity extends BaseActivity {
 
         board.addView(linksRow);
 
-        centerContainer.addView(board);
-        scrollView.addView(centerContainer);
-        root.addView(scrollView);
-
-        // 9. Official Version Footer pinned at screen bottom (Zero overlap with card content)
+        // 9. Official Version Footer inside scrollable content (Never overlaps keyboard)
         TextView footerVersion = new TextView(this);
-        FrameLayout.LayoutParams fvLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+        LinearLayout.LayoutParams fvLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+                ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        fvLp.bottomMargin = dp(16);
+        fvLp.gravity = Gravity.CENTER_HORIZONTAL;
+        fvLp.topMargin = dp(24);
+        fvLp.bottomMargin = dp(8);
         footerVersion.setLayoutParams(fvLp);
         footerVersion.setGravity(Gravity.CENTER);
-        footerVersion.setText("V" + getString(R.string.app_version));
+        footerVersion.setText("Version: " + getString(R.string.app_version));
         footerVersion.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         footerVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         footerVersion.setTypeface(Typeface.DEFAULT_BOLD);
-        root.addView(footerVersion);
+        board.addView(footerVersion);
+
+        centerContainer.addView(board);
+        scrollView.addView(centerContainer);
+        root.addView(scrollView);
 
         setContentView(root);
     }

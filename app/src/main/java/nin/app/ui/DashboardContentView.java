@@ -231,7 +231,7 @@ public class DashboardContentView {
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setColor(AppColors.MAGENTA_CARD);
         cardBg.setCornerRadius(dp(context, 10));
-        cardBg.setStroke(dp(context, 1), AppColors.withAlpha(AppColors.MAGENTA_PRIMARY, 100));
+        cardBg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
         card.setBackground(cardBg);
 
         // Official App Icon from Installed Game

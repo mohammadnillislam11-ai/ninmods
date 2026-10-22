@@ -30,10 +30,10 @@ public class ParticleNetworkView extends View {
     public static final float LINK_DISTANCE_DP = 140.0f;     // Connection threshold distance
     public static final float MIN_SPEED_DP = 0.12f;          // Minimum particle speed per frame
     public static final float MAX_SPEED_DP = 0.75f;          // Maximum particle speed per frame
-    public static final float BLUR_RADIUS_DP = 3.0f;         // Rich soft pink blur radius
-    public static final float MIN_RADIUS_DP = 1.2f;          // Particle minimum radius
-    public static final float MAX_RADIUS_DP = 3.2f;          // Particle maximum radius
-    public static final float LINE_STROKE_DP = 0.8f;         // Connecting line stroke width
+    public static final float BLUR_RADIUS_DP = 18.0f;        // Rich deep pink frosted bokeh blur radius
+    public static final float MIN_RADIUS_DP = 2.2f;          // Particle minimum radius
+    public static final float MAX_RADIUS_DP = 4.8f;          // Particle maximum radius
+    public static final float LINE_STROKE_DP = 1.2f;         // Connecting line stroke width
     public static final int MIN_PARTICLES = 22;              // Lower bound for small screens
     public static final int MAX_PARTICLES = 65;              // Upper bound to prevent overdraw
     public static final float AREA_PER_PARTICLE = 20000.0f;  // Screen area per particle ratio
@@ -237,7 +237,7 @@ public class ParticleNetworkView extends View {
                 if (distSq < linkDistanceSq) {
                     float dist = (float) Math.sqrt(distSq);
                     float fraction = 1.0f - (dist / linkDistancePx);
-                    int alpha = (int) (fraction * 0.22f * 255.0f);
+                    int alpha = (int) (fraction * 0.32f * 255.0f);
                     if (alpha > 0) {
                         // Color: rgba(247, 107, 247, alpha) - Neon Pink
                         linePaint.setColor((alpha << 24) | LINE_BASE_COLOR);

@@ -154,6 +154,22 @@ public class ProfileActivity extends BaseActivity {
         logoutBtn.setOnClickListener(v -> confirmLogout());
         content.addView(logoutBtn);
 
+        // 6. Official Version Footer inside scrollable content
+        TextView profileFooter = new TextView(this);
+        LinearLayout.LayoutParams pfvLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        pfvLp.topMargin = dp(24);
+        pfvLp.bottomMargin = dp(12);
+        profileFooter.setLayoutParams(pfvLp);
+        profileFooter.setGravity(Gravity.CENTER);
+        profileFooter.setText("Version: " + getString(R.string.app_version));
+        profileFooter.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        profileFooter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        profileFooter.setTypeface(Typeface.DEFAULT_BOLD);
+        content.addView(profileFooter);
+
         scroll.addView(content);
         layout.addView(scroll);
         root.addView(layout);
@@ -186,7 +202,6 @@ public class ProfileActivity extends BaseActivity {
         GradientDrawable avBg = new GradientDrawable();
         avBg.setShape(GradientDrawable.OVAL);
         avBg.setColor(AppColors.MAGENTA_CHIP);
-        avBg.setStroke(dp(2), AppColors.MAGENTA_PRIMARY);
         avatarBox.setBackground(avBg);
 
         ImageView avIcon = new ImageView(this);

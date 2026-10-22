@@ -113,6 +113,22 @@ public class ModeSelectActivity extends BaseActivity {
         brutalButton.setLayoutParams(brutalLp);
         cardLayout.addView(brutalButton);
 
+        // Official Version Footer
+        TextView modeFooter = new TextView(this);
+        LinearLayout.LayoutParams mfLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        mfLp.topMargin = dp(20);
+        mfLp.bottomMargin = dp(8);
+        modeFooter.setLayoutParams(mfLp);
+        modeFooter.setGravity(Gravity.CENTER);
+        modeFooter.setText("Version: " + getString(R.string.app_version));
+        modeFooter.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        modeFooter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        modeFooter.setTypeface(Typeface.DEFAULT_BOLD);
+        cardLayout.addView(modeFooter);
+
         setContentView(root);
     }
 

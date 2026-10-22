@@ -80,10 +80,10 @@ public final class AppColors {
     public static final int MAGENTA_DARK = Color.parseColor("#A81FA8");
     public static final int MAGENTA_GLOW = Color.parseColor("#FF55FF");
     public static final int MAGENTA_SCREEN_BG = Color.parseColor("#0B0411");
-    public static final int MAGENTA_SURFACE = Color.parseColor("#150821");
-    public static final int MAGENTA_CARD = Color.parseColor("#210D33");
-    public static final int MAGENTA_CARD_BORDER = Color.parseColor("#4D1C59");
-    public static final int MAGENTA_CHIP = Color.parseColor("#33153D");
+    public static final int MAGENTA_SURFACE = Color.parseColor("#E60F041A");
+    public static final int MAGENTA_CARD = Color.parseColor("#22FFFFFF"); // Frosted Glass (light translucent white glass ~13.5%)
+    public static final int MAGENTA_CARD_BORDER = Color.parseColor("#28FFFFFF"); // Subtle glass specular highlight border
+    public static final int MAGENTA_CHIP = Color.parseColor("#28FFFFFF"); // Recessed frosted glass chip
     public static final int MAGENTA_TEXT_DIM = Color.parseColor("#E2BDE8");
     public static final int MAGENTA_BTN_START = Color.parseColor("#E637E6");
     public static final int MAGENTA_BTN_END = Color.parseColor("#961A96");

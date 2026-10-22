@@ -85,7 +85,6 @@ public class HeaderView {
         android.graphics.drawable.GradientDrawable pBg = new android.graphics.drawable.GradientDrawable();
         pBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
         pBg.setColor(AppColors.MAGENTA_CHIP);
-        pBg.setStroke(dp(context, 1), AppColors.MAGENTA_PRIMARY);
         profileBtn.setBackground(pBg);
 
         android.widget.ImageView pIcon = new android.widget.ImageView(context);
