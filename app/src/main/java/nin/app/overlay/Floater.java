@@ -81,42 +81,8 @@ public class Floater {
     private LinearLayout page1Content;
     private LinearLayout page2Content;
 
-    private static final List<String> terminalLogs = new ArrayList<>();
-    private TextView terminalTextView = null;
-    private ScrollView terminalScrollView = null;
-
-    static {
-        terminalLogs.add("> [SYS] NINMODS Tactical Engine v70.0");
-        terminalLogs.add("> [SEC] Kernel Channel: /dev/health_storage_service_alloc");
-        terminalLogs.add("> [IPC] Dual Socket Protocol: Connected");
-        terminalLogs.add("> [MOD] Status: Online (Glassmorphic HUD)");
-        terminalLogs.add("> [READY] Tactical Floater Initialized");
-    }
-
     public static void logTerminal(String msg) {
-        if (msg == null) return;
-        mainHandler.post(() -> {
-            terminalLogs.add(msg);
-            if (terminalLogs.size() > 50) {
-                terminalLogs.remove(0);
-            }
-            if (activeFloater != null) {
-                activeFloater.updateTerminalView();
-            }
-        });
-    }
-
-    private void updateTerminalView() {
-        if (terminalTextView != null) {
-            StringBuilder sb = new StringBuilder();
-            for (String line : terminalLogs) {
-                sb.append(line).append("\n");
-            }
-            terminalTextView.setText(sb.toString().trim());
-            if (terminalScrollView != null) {
-                terminalScrollView.post(() -> terminalScrollView.fullScroll(View.FOCUS_DOWN));
-            }
-        }
+        // UI terminal box completely removed per user request
     }
 
     // Strict Singleton & Lifecycle Control
@@ -166,8 +132,6 @@ public class Floater {
         } catch (Exception ignored) {}
         categoryViews.clear();
         railTabButtons.clear();
-        terminalTextView = null;
-        terminalScrollView = null;
         activeFloater = null;
     }
 
@@ -256,9 +220,9 @@ public class Floater {
         SCREEN_HEIGHT = screenHeight;
 
         boolean isLandscape = screenWidth > screenHeight;
-        // Tactical 3-Layer Compact Layout dimensions (generous width for sliders and dual columns)
-        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 620 : 500), (int) (screenWidth * 0.98f));
-        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 195 : 240), (int) (screenHeight * 0.70f));
+        // Tactical 3-Layer Compact Layout dimensions (increased width per user request)
+        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 680 : 540), (int) (screenWidth * 0.98f));
+        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 200 : 250), (int) (screenHeight * 0.72f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -285,7 +249,7 @@ public class Floater {
         logoImagem.setBackground(null); // Pure PNG without circular background
         collapsedRelative.addView(logoImagem);
 
-        // Corner Close Badge (✕) spaced away from the logo, with ZERO background
+        // Corner Close Badge (✕) with Pink Circle background (সার্কেল) per user explicit request
         TextView logoCloseBadge = new TextView(context);
         int badgeSize = FloaterStyles.dp(context, 20);
         FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(badgeSize, badgeSize);
@@ -295,10 +259,15 @@ public class Floater {
         logoCloseBadge.setLayoutParams(badgeLp);
         logoCloseBadge.setGravity(Gravity.CENTER);
         logoCloseBadge.setText("✕");
-        logoCloseBadge.setTextColor(0xFFFF4D4D);
-        logoCloseBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        logoCloseBadge.setTextColor(Color.WHITE);
+        logoCloseBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         logoCloseBadge.setTypeface(Typeface.DEFAULT_BOLD);
-        logoCloseBadge.setBackground(null); // Zero background per user explicit instruction
+
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setShape(GradientDrawable.OVAL);
+        badgeBg.setColor(FloaterStyles.getColorAccentPink(context)); // Official Pink #E637E6
+        badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFFFFFFFF); // Clean white ring border
+        logoCloseBadge.setBackground(badgeBg);
 
         logoCloseBadge.setOnClickListener(v -> {
             destroyOverlay();
@@ -315,16 +284,16 @@ public class Floater {
             menuLayout.setClipToOutline(true);
         }
 
-        // Large Brand Logo Watermark in Menu Body (per user specification & main_app style)
+        // Large Brand Logo Watermark in Menu Body (Enlarged per user request)
         ImageView bodyWatermark = new ImageView(context);
-        int watermarkSize = Math.min(FloaterStyles.dp(context, 140), (int) (menuHeight * 0.85f));
+        int watermarkSize = Math.min(FloaterStyles.dp(context, 190), (int) (menuHeight * 0.94f));
         FrameLayout.LayoutParams wmLp = new FrameLayout.LayoutParams(watermarkSize, watermarkSize);
         wmLp.gravity = Gravity.CENTER;
         wmLp.leftMargin = FloaterStyles.dp(context, 20);
         bodyWatermark.setLayoutParams(wmLp);
         bodyWatermark.setImageResource(nin.app.R.drawable.nin_logo);
         bodyWatermark.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        bodyWatermark.setAlpha(0.16f);
+        bodyWatermark.setAlpha(0.20f);
         bodyWatermark.setClickable(false);
         bodyWatermark.setFocusable(false);
         menuLayout.addView(bodyWatermark);
@@ -496,57 +465,6 @@ public class Floater {
         page2Content.setPadding(FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1));
         scroll2.addView(page2Content);
         page2.addView(scroll2);
-
-        // Live Terminal Console Box inside Menu (Replaces dialog/toast messages per user requirement)
-        LinearLayout terminalBox = new LinearLayout(context);
-        LinearLayout.LayoutParams tblp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 48));
-        tblp.topMargin = FloaterStyles.dp(context, 3);
-        terminalBox.setLayoutParams(tblp);
-        terminalBox.setOrientation(LinearLayout.VERTICAL);
-        terminalBox.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 3), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 3));
-
-        GradientDrawable termBg = new GradientDrawable();
-        termBg.setShape(GradientDrawable.RECTANGLE);
-        termBg.setCornerRadius(FloaterStyles.dp(context, 6));
-        termBg.setColor(0xD908020D); // dark translucent terminal background
-        termBg.setStroke(FloaterStyles.dp(context, 1), FloaterStyles.getColorBorder(context));
-        terminalBox.setBackground(termBg);
-
-        // Terminal Top Title Row with mini status dots
-        LinearLayout termTop = new LinearLayout(context);
-        termTop.setOrientation(LinearLayout.HORIZONTAL);
-        termTop.setGravity(Gravity.CENTER_VERTICAL);
-        termTop.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView termDot = new TextView(context);
-        termDot.setText("● ");
-        termDot.setTextColor(0xFF22C55E); // Green status dot
-        termDot.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f);
-        termTop.addView(termDot);
-
-        TextView termTitle = new TextView(context);
-        termTitle.setText("CONSOLE LOG");
-        termTitle.setTextColor(FloaterStyles.getColorSectionTitle(context));
-        termTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
-        termTitle.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
-        termTop.addView(termTitle);
-        terminalBox.addView(termTop);
-
-        terminalScrollView = new ScrollView(context);
-        terminalScrollView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
-        terminalScrollView.setVerticalScrollBarEnabled(false);
-
-        terminalTextView = new TextView(context);
-        terminalTextView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        terminalTextView.setTextColor(0xFF6CF6A8); // Terminal phosphor neon green
-        terminalTextView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
-        terminalTextView.setTypeface(Typeface.MONOSPACE);
-        terminalTextView.setLineSpacing(0, 1.1f);
-        terminalScrollView.addView(terminalTextView);
-        terminalBox.addView(terminalScrollView);
-
-        page2.addView(terminalBox);
-        updateTerminalView();
 
         menuContent.addView(page2);
         menuLayout.addView(menuContent);
