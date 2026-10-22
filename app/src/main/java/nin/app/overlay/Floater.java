@@ -547,13 +547,6 @@ public class Floater {
             t.printStackTrace();
         }
 
-        // Configure brand-specific tactical options, switches, and seekbars
-        try {
-            nin.app.menu.MenuRouter.getActiveMenu(context).configureBrandOptions(this, context);
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
-
         refreshActivePages();
     }
 

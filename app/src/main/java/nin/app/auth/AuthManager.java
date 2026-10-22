@@ -40,6 +40,26 @@ public final class AuthManager {
                 || k.equalsIgnoreCase(AuthConstants.DEV_NUMERIC_KEY);
     }
 
+    /**
+     * Registers a user in offline development mode.
+     */
+    public static boolean registerUser(String username, String password) {
+        if (username == null || password == null) return false;
+        String u = username.trim();
+        String p = password.trim();
+        return !u.isEmpty() && !p.isEmpty();
+    }
+
+    /**
+     * Resets a user's password in offline development mode.
+     */
+    public static boolean resetPassword(String username, String newPassword) {
+        if (username == null || newPassword == null) return false;
+        String u = username.trim();
+        String p = newPassword.trim();
+        return !u.isEmpty() && !p.isEmpty();
+    }
+
     public static void setLoggedIn(Context context, boolean loggedIn) {
         if (context != null) {
             Prefs.with(context).writeBoolean(PREF_KEY_AUTH_STATUS, loggedIn);
