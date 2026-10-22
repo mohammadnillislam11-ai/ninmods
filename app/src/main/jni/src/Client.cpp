@@ -9,6 +9,7 @@
 #include <src/Includes/http.h>
 #include "src/Unity/Vector3.hpp"
 #include "src/Unity/Vector2.hpp"
+#include "src/Unity/Color.hpp"
 #include "src/Unity/Unity.h"
 #include "src/Unity/ESP.h"
 #include "Includes/Logger.h"
@@ -67,11 +68,16 @@ static bool g_ImGuiInitialized = false;
 static int g_ScreenWidth = 0;
 static int g_ScreenHeight = 0;
 
+template<typename T>
+inline constexpr const T& ClampVal(const T& v, const T& lo, const T& hi) {
+    return (v < lo) ? lo : (hi < v) ? hi : v;
+}
+
 inline ImU32 ToImU32(const Color& c, float alphaMultiplier = 1.0f) {
-    int r = (int)std::clamp(c.r, 0.0f, 255.0f);
-    int g = (int)std::clamp(c.g, 0.0f, 255.0f);
-    int b = (int)std::clamp(c.b, 0.0f, 255.0f);
-    int a = (int)std::clamp(c.a * alphaMultiplier, 0.0f, 255.0f);
+    int r = (int)ClampVal(c.r, 0.0f, 255.0f);
+    int g = (int)ClampVal(c.g, 0.0f, 255.0f);
+    int b = (int)ClampVal(c.b, 0.0f, 255.0f);
+    int a = (int)ClampVal(c.a * alphaMultiplier, 0.0f, 255.0f);
     return IM_COL32(r, g, b, a);
 }
 
