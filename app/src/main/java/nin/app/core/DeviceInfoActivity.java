@@ -23,7 +23,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 
-public class DeviceInfoActivity extends Activity {
+public class DeviceInfoActivity extends BaseActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,7 +37,7 @@ public class DeviceInfoActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
-        root.setBackgroundColor(AppColors.BLACK);
+        root.setBackgroundColor(Color.TRANSPARENT);
 
         LinearLayout layout = new LinearLayout(this);
         layout.setLayoutParams(new FrameLayout.LayoutParams(

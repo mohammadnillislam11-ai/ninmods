@@ -25,7 +25,7 @@ import android.widget.Toast;
 
 import nin.app.R;
 
-public class PricingActivity extends Activity {
+public class PricingActivity extends BaseActivity {
 
     public static final String TELEGRAM_SUPPORT_URL = "https://t.me/ninmods";
 
@@ -41,7 +41,7 @@ public class PricingActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
-        root.setBackgroundColor(AppColors.BLACK);
+        root.setBackgroundColor(Color.TRANSPARENT);
 
         LinearLayout layout = new LinearLayout(this);
         layout.setLayoutParams(new FrameLayout.LayoutParams(

@@ -27,7 +27,7 @@ import androidx.core.content.ContextCompat;
 
 import nin.app.R;
 
-public class MainActivity extends Activity {
+public class MainActivity extends BaseActivity {
 
     private static final int REQUEST_OVERLAY_PERMISSION = 1001;
     private static final int REQUEST_ALL_FILES_PERMISSION = 1002;
@@ -100,11 +100,8 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        GradientDrawable bg = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{AppColors.MAGENTA_SCREEN_BG, AppColors.BLACK}
-        );
-        root.setBackground(bg);
+        // Transparent root allows BaseActivity's blurred particle animation to shine through
+        root.setBackgroundColor(Color.TRANSPARENT);
 
         LinearLayout layout = new LinearLayout(this);
         layout.setLayoutParams(new FrameLayout.LayoutParams(
@@ -114,7 +111,16 @@ public class MainActivity extends Activity {
         ));
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setGravity(Gravity.CENTER_HORIZONTAL);
-        layout.setPadding(dp(24), dp(24), dp(24), dp(24));
+        layout.setPadding(dp(28), dp(28), dp(28), dp(28));
+
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.parseColor("#E6120D1A"));
+        cardBg.setCornerRadius(dp(16));
+        cardBg.setStroke(dp(1), Color.parseColor("#33F76BF7"));
+        layout.setBackground(cardBg);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            layout.setElevation(dp(8));
+        }
 
         ImageView logo = new ImageView(this);
         LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(76), dp(76));

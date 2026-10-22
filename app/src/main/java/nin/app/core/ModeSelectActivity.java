@@ -15,7 +15,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import nin.app.overlay.Floater;
 
-public class ModeSelectActivity extends Activity {
+public class ModeSelectActivity extends BaseActivity {
     static {
         System.loadLibrary("ninmods");
     }
@@ -38,7 +38,7 @@ public class ModeSelectActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
-        root.setBackground(createScreenBackground());
+        root.setBackgroundColor(Color.TRANSPARENT);
 
         LinearLayout cardLayout = new LinearLayout(this);
         cardLayout.setOrientation(LinearLayout.VERTICAL);

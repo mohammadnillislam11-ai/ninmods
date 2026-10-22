@@ -41,7 +41,7 @@ import nin.app.ui.DashboardContentView;
 import nin.app.ui.HeaderView;
 import nin.app.ui.SidebarView;
 
-public class DashboardActivity extends Activity {
+public class DashboardActivity extends BaseActivity {
 
     static {
         System.loadLibrary("ninmods");
@@ -73,14 +73,14 @@ public class DashboardActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        // Main Layout Container
+        // Main Layout Container (Transparent so blurred particle animation shines through)
         mainContainer = new LinearLayout(this);
         mainContainer.setLayoutParams(new DrawerLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         mainContainer.setOrientation(LinearLayout.VERTICAL);
-        mainContainer.setBackgroundColor(AppColors.BLACK);
+        mainContainer.setBackgroundColor(Color.TRANSPARENT);
 
         // 1. Separate Header File Import (HeaderView)
         View headerView = HeaderView.create(this, new HeaderView.HeaderListener() {

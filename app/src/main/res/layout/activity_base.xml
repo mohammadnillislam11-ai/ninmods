@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/baseRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="false">
+
+    <!-- Bottom Layer: Universal Blurred Particle Network Animation -->
+    <nin.app.ui.ParticleNetworkView
+        android:id="@+id/particleBg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Top Layer: Foreground Content Container (100% Crisp and Sharp) -->
+    <FrameLayout
+        android:id="@+id/contentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+</FrameLayout>

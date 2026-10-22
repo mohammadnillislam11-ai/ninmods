@@ -30,7 +30,7 @@ import nin.app.auth.AuthApiController;
 import nin.app.auth.AuthManager;
 import nin.app.auth.LoginActivity;
 
-public class ProfileActivity extends Activity {
+public class ProfileActivity extends BaseActivity {
 
     public static final String PREF_ACTIVE_USERNAME = "active_username";
     public static final String PREF_ACTIVE_EMAIL = "active_email";
@@ -81,7 +81,7 @@ public class ProfileActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
-        root.setBackgroundColor(AppColors.BLACK);
+        root.setBackgroundColor(Color.TRANSPARENT);
 
         LinearLayout layout = new LinearLayout(this);
         layout.setLayoutParams(new FrameLayout.LayoutParams(

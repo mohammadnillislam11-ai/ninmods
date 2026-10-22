@@ -24,9 +24,9 @@ import android.widget.Toast;
 
 import nin.app.R;
 import nin.app.core.AppColors;
-import nin.app.ui.TacticalGraphicBackground;
+import nin.app.core.BaseActivity;
 
-public class ResetPasswordActivity extends Activity {
+public class ResetPasswordActivity extends BaseActivity {
 
     private EditText etUsername;
     private EditText etNewPassword;
@@ -47,8 +47,8 @@ public class ResetPasswordActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        // Rich Cyber Matrix Tactical Graphic Body Background (Zero Plain Black)
-        root.setBackground(new TacticalGraphicBackground(this));
+        // Transparent root allows BaseActivity's blurred particle animation to shine through
+        root.setBackgroundColor(Color.TRANSPARENT);
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setLayoutParams(new FrameLayout.LayoutParams(
@@ -68,7 +68,7 @@ public class ResetPasswordActivity extends Activity {
         centerContainer.setGravity(Gravity.CENTER);
         centerContainer.setPadding(dp(16), dp(28), dp(16), dp(20));
 
-        // Main Board Column (Stretches to fill screen width cleanly)
+        // Main Board Card (100% sharp and crisp foreground sitting above blurred particle animation)
         LinearLayout board = new LinearLayout(this);
         LinearLayout.LayoutParams boardLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -77,6 +77,16 @@ public class ResetPasswordActivity extends Activity {
         board.setLayoutParams(boardLp);
         board.setOrientation(LinearLayout.VERTICAL);
         board.setGravity(Gravity.CENTER_HORIZONTAL);
+        board.setPadding(dp(18), dp(22), dp(18), dp(22));
+
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.parseColor("#E6120D1A"));
+        cardBg.setCornerRadius(dp(16));
+        cardBg.setStroke(dp(1), Color.parseColor("#33F76BF7"));
+        board.setBackground(cardBg);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            board.setElevation(dp(8));
+        }
 
         // 1. Logo
         ImageView logo = new ImageView(this);
