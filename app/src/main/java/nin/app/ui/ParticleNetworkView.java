@@ -105,10 +105,20 @@ public class ParticleNetworkView extends View {
 
         // Apply isolated view-level blur (Applies ONLY to this view's canvas)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            setRenderEffect(RenderEffect.createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP));
+            Api31BlurHelper.applyBlur(this, blurRadiusPx);
         } else {
             // Fallback for API < 31: MaskFilter on particle paint
-            particlePaint.setMaskFilter(new BlurMaskFilter(blurRadiusPx, BlurMaskFilter.Blur.NORMAL));
+            try {
+                particlePaint.setMaskFilter(new BlurMaskFilter(blurRadiusPx, BlurMaskFilter.Blur.NORMAL));
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    private static class Api31BlurHelper {
+        static void applyBlur(View view, float blurRadiusPx) {
+            try {
+                view.setRenderEffect(RenderEffect.createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP));
+            } catch (Throwable ignored) {}
         }
     }
 

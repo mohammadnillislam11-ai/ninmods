@@ -1,23 +1,23 @@
 package nin.app.core;
 
+import android.app.Activity;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import nin.app.R;
 import nin.app.ui.ParticleNetworkView;
 
 /**
  * Universal BaseActivity for all screens.
- * Wraps any layout with an isolated, blurred particle network animation
- * running in the background while keeping all foreground cards, text,
- * buttons, and inputs 100% sharp and unaffected.
+ * Extends standard Android Activity to remain 100% immune to theme conflicts.
+ * Wraps any screen layout with an isolated, hardware-accelerated blurred
+ * particle network animation running in the background while keeping all foreground
+ * cards, text, buttons, and inputs 100% sharp and unaffected.
  */
-public abstract class BaseActivity extends AppCompatActivity {
+public abstract class BaseActivity extends Activity {
 
     private FrameLayout baseRoot;
     private ParticleNetworkView particleBg;
@@ -48,7 +48,9 @@ public abstract class BaseActivity extends AppCompatActivity {
         ensureBaseWrapper();
         contentContainer.removeAllViews();
         LayoutInflater.from(this).inflate(layoutResID, contentContainer, true);
-        super.setContentView(baseRoot);
+        if (baseRoot.getParent() == null) {
+            super.setContentView(baseRoot);
+        }
     }
 
     @Override
@@ -56,6 +58,9 @@ public abstract class BaseActivity extends AppCompatActivity {
         ensureBaseWrapper();
         contentContainer.removeAllViews();
         if (view != null) {
+            if (view.getParent() instanceof ViewGroup) {
+                ((ViewGroup) view.getParent()).removeView(view);
+            }
             ViewGroup.LayoutParams lp = view.getLayoutParams();
             if (lp == null) {
                 lp = new FrameLayout.LayoutParams(
@@ -65,7 +70,9 @@ public abstract class BaseActivity extends AppCompatActivity {
             }
             contentContainer.addView(view, lp);
         }
-        super.setContentView(baseRoot);
+        if (baseRoot.getParent() == null) {
+            super.setContentView(baseRoot);
+        }
     }
 
     @Override
@@ -73,15 +80,23 @@ public abstract class BaseActivity extends AppCompatActivity {
         ensureBaseWrapper();
         contentContainer.removeAllViews();
         if (view != null) {
+            if (view.getParent() instanceof ViewGroup) {
+                ((ViewGroup) view.getParent()).removeView(view);
+            }
             contentContainer.addView(view, params);
         }
-        super.setContentView(baseRoot);
+        if (baseRoot.getParent() == null) {
+            super.setContentView(baseRoot);
+        }
     }
 
     @Override
     public void addContentView(View view, ViewGroup.LayoutParams params) {
         ensureBaseWrapper();
         if (view != null) {
+            if (view.getParent() instanceof ViewGroup) {
+                ((ViewGroup) view.getParent()).removeView(view);
+            }
             contentContainer.addView(view, params);
         }
     }
