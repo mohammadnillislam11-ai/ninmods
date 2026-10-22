@@ -718,28 +718,7 @@ Java_power_cheats_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
     return env->NewStringUTF(OBFUSCATE("Titoo"));
 }
 
-extern "C"
-JNIEXPORT jstring JNICALL
-Java_power_cheats_Floater_getPrefKeyHackVersion(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("profile_mode"));
-}
 
-extern "C"
-JNIEXPORT jstring JNICALL
-Java_power_cheats_Floater_getUiString(JNIEnv *env, jclass clazz, jint id) {
-    switch (id) {
-        case 1: return env->NewStringUTF(OBFUSCATE("NINMODS PRO"));
-        case 2: return env->NewStringUTF(OBFUSCATE("Close"));
-        case 3: return env->NewStringUTF(OBFUSCATE("Session valid"));
-        default: return env->NewStringUTF(OBFUSCATE(""));
-    }
-}
-
-extern "C"
-JNIEXPORT jstring JNICALL
-Java_power_cheats_Floater_getSellerName(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("NINMODS_OFFICIAL"));
-}
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -814,25 +793,7 @@ Java_ninmods_pro_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
     Java_power_cheats_Floater_ftKwCvSr(env, clazz);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_ninmods_pro_Floater_getPrefKeyHackVersion(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("profile_mode"));
-}
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_ninmods_pro_Floater_getUiString(JNIEnv *env, jclass clazz, jint id) {
-    switch (id) {
-        case 1: return env->NewStringUTF(OBFUSCATE("NINMODS PRO"));
-        case 2: return env->NewStringUTF(OBFUSCATE("Close"));
-        case 3: return env->NewStringUTF(OBFUSCATE("Session valid"));
-        default: return env->NewStringUTF(OBFUSCATE(""));
-    }
-}
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_ninmods_pro_Floater_getSellerName(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("NINMODS_OFFICIAL"));
-}
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_ninmods_pro_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
@@ -865,10 +826,6 @@ Java_ninmods_pro_ConfigModeActivity_setHackVersionNative(JNIEnv *env, jclass cla
     g_hackVersion = (version == 2) ? 2 : 1;
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_ninmods_pro_MainActivity_showNativeAlertDialog(JNIEnv* env, jobject thiz) {
-    // No-op
-}
 
 extern "C" JNIEXPORT void JNICALL
 Java_nin_app_overlay_Floater_Functions(JNIEnv *env, jclass clazz) {
@@ -895,30 +852,7 @@ Java_nin_app_overlay_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
     Java_power_cheats_Floater_ftKwCvSr(env, clazz);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_nin_app_overlay_Floater_getPrefKeyModeVersion(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("config_mode"));
-}
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_nin_app_overlay_Floater_getPrefKeyHackVersion(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("config_mode"));
-}
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_nin_app_overlay_Floater_getUiString(JNIEnv *env, jclass clazz, jint id) {
-    switch (id) {
-        case 1: return env->NewStringUTF(OBFUSCATE("NINMODS"));
-        case 2: return env->NewStringUTF(OBFUSCATE("Close"));
-        case 3: return env->NewStringUTF(OBFUSCATE("Session valid"));
-        default: return env->NewStringUTF(OBFUSCATE(""));
-    }
-}
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_nin_app_overlay_Floater_getSellerName(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("NINMODS_OFFICIAL"));
-}
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_nin_app_core_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
@@ -930,10 +864,7 @@ Java_nin_app_core_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
     return env->NewStringUTF(OBFUSCATE("Titoo"));
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_nin_app_core_DashboardActivity_isLoggedInNative(JNIEnv *env, jclass clazz) {
-    return JNI_TRUE;
-}
+
 
 extern "C" JNIEXPORT void JNICALL
 Java_nin_app_core_DashboardActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
@@ -941,10 +872,7 @@ Java_nin_app_core_DashboardActivity_setModeNative(JNIEnv *env, jclass clazz, jin
     LOGD("Profile mode selected from DashboardActivity (nin.app): %d", g_hackVersion);
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_nin_app_core_ModeSelectActivity_isLoggedInNative(JNIEnv *env, jclass clazz) {
-    return JNI_TRUE;
-}
+
 
 extern "C" JNIEXPORT void JNICALL
 Java_nin_app_core_ModeSelectActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
@@ -952,25 +880,7 @@ Java_nin_app_core_ModeSelectActivity_setModeNative(JNIEnv *env, jclass clazz, ji
     LOGD("Profile mode selected from ModeSelectActivity (nin.app): %d", g_hackVersion);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_nin_app_core_MainActivity_showNativeAlertDialog(JNIEnv* env, jobject thiz) {
-    // No-op
-}
 
-extern "C" JNIEXPORT void JNICALL
-Java_power_cheats_MainActivity_showNativeAlertDialog(JNIEnv* env, jobject thiz) {
-    jclass toastClass = env->FindClass("android/widget/Toast");
-    if (toastClass == nullptr) return;
-    jmethodID makeText = env->GetStaticMethodID(toastClass, "makeText",
-        "(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;");
-    if (makeText == nullptr) return;
-    jmethodID show = env->GetMethodID(toastClass, "show", "()V");
-    if (show == nullptr) return;
-    jstring message = env->NewStringUTF(OBFUSCATE("Native Library Loaded!"));
-    jobject toast = env->CallStaticObjectMethod(toastClass, makeText, thiz, message, 0);
-    if (toast != nullptr) env->CallVoidMethod(toast, show);
-    env->DeleteLocalRef(message);
-}
 
 static bool isRooted() {
     struct stat st;

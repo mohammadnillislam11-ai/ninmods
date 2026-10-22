@@ -2,7 +2,6 @@
 #include "Category.h"
 #include "Switch.h"
 #include "SeekBar.h"
-#include "images.h"
 
 class Widget {
 

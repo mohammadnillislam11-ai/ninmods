@@ -187,7 +187,6 @@ public class ModeSelectActivity extends Activity {
         finish();
     }
 
-    public static native boolean isLoggedInNative();
     public static native void setModeNative(int mode);
 
     private int dp(int value) {

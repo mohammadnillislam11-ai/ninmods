@@ -145,6 +145,5 @@ public class DashboardActivity extends Activity {
         mainContainer.addView(currentBodyView);
     }
 
-    public static native boolean isLoggedInNative();
     public static native void setModeNative(int mode);
 }

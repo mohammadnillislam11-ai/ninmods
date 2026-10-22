@@ -101,6 +101,4 @@ public class MainActivity extends Activity {
             e.printStackTrace();
         }
     }
-
-    public native void showNativeAlertDialog();
 }

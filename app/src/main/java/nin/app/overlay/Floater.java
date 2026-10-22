@@ -7,11 +7,8 @@ import nin.app.graphics.ESPView;
 
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -19,9 +16,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Looper;
-import android.os.Messenger;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -30,7 +25,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
@@ -49,20 +43,10 @@ public class Floater {
     public static native void Functions();
     public static native void ChangesID(int ID, int Value);
     public static native void ftKZXivSr(Context context);
-    public static native String getBase64Icon();
     public static native void PxbftKZXivSr(ESPView espView, Canvas canvas, int width, int height);
-    public static boolean isLoggedIn() { return true; }
-    public static native String getPrefKeyModeVersion();
-    public static native String getUiString(int id);
-    public static native String getSellerName();
 
     public static int SCREEN_WIDTH = 0;
     public static int SCREEN_HEIGHT = 0;
-
-    public static int Width() { return SCREEN_WIDTH; }
-    public static int Height() { return SCREEN_HEIGHT; }
-
-    public IBinder onBind(Intent intent) { return null; }
 
     static Context context;
     private static Utils utils;
@@ -81,15 +65,10 @@ public class Floater {
     private int menuWidth;
     private int menuHeight;
 
-    private ScrollView mainScroll;
-    public static LinearLayout funcsListLayout;
-    private LinearLayout firstSectionMenuContainer;
-
     private final Map<String, List<View>> categoryViews = new LinkedHashMap<>();
     private final List<ImageView> railTabButtons = new ArrayList<>();
     private int activeRailIndex = 0;
     private String currentCategory = "Aim";
-    private String selectedCategoryName = "Aim";
 
     private LinearLayout iconTabsContainer;
     private TextView page1Title;
@@ -192,7 +171,6 @@ public class Floater {
     }
 
     public void onCreate() {
-        if (!isLoggedIn()) return;
         onCreateSystemWindow();
         onCreateTemplate();
     }
@@ -206,7 +184,6 @@ public class Floater {
 
     @SuppressLint("ClickableViewAccessibility")
     public void onCreateSystemWindow() {
-        if (!isLoggedIn()) return;
         int layoutFlag = getLayoutType();
 
         windowManagerParams = new WindowManager.LayoutParams(
@@ -786,37 +763,15 @@ public class Floater {
         });
     }
 
-    public static void addCategory(final String name, int categoryHeightDp) {
-        addCategory(name);
-    }
-
     public static void addSwitch(final String name, final int ID) {
         new Handler(Looper.getMainLooper()).post(() -> {
             if (activeFloater != null) activeFloater.onNativeAddSwitch(name, ID);
         });
     }
 
-    public static void addSwitch(final String name, final int ID, int switchHeightDp) {
-        addSwitch(name, ID);
-    }
-
     public static void addSeekBar(final String name, final int value, final int max, final String type, final int ID) {
         new Handler(Looper.getMainLooper()).post(() -> {
             if (activeFloater != null) activeFloater.onNativeAddSeekBar(name, value, max, type, ID);
         });
-    }
-
-    public static void addCheckBox(final String name, final int ID) {
-        addSwitch(name, ID);
-    }
-
-    public static void addCheckBox(final String name, final int ID, int heightDp) {
-        addSwitch(name, ID);
-    }
-
-    public static void addRadioGroup(final String name, final String[] options, final int defaultIndex, final int ID) {
-    }
-
-    public static void Funçoes(String pkg, String lib, String offset, String hex) {
     }
 }
