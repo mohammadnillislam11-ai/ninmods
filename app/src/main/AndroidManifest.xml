@@ -45,6 +45,24 @@
             android:label="@string/mode_select_title" />
 
         <activity
+            android:name="nin.app.auth.LoginActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:label="@string/app_name" />
+
+        <activity
+            android:name="nin.app.auth.SignupActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:label="Sign Up" />
+
+        <activity
+            android:name="nin.app.auth.ResetPasswordActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:label="Reset Password" />
+
+        <activity
             android:name="nin.app.core.DeviceInfoActivity"
             android:exported="false"
             android:label="Device Information" />

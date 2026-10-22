@@ -4,9 +4,12 @@ import android.content.Context;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -17,8 +20,7 @@ import nin.app.core.AppColors;
 public class DashboardContentView {
 
     public interface DashboardListener {
-        void onStartMenu();
-        void onStopMenu();
+        void onBrandMenuClick(String brandName);
         void onModeSelected(int mode);
         void onLaunchGame(String packageName);
     }
@@ -40,8 +42,10 @@ public class DashboardContentView {
         container.setOrientation(LinearLayout.VERTICAL);
         container.setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 24));
 
-        // 1. FIRST: START and STOP Buttons Side-by-Side (Horizontally Adjacent)
-        container.addView(createStartStopRow(context, listener));
+        // 1. Available Tactical Menus (Responsive Brand Logo Buttons Grid - up to 4 per row)
+        TextView menusHeader = createSectionHeader(context, "AVAILABLE TACTICAL MENUS");
+        container.addView(menusHeader);
+        container.addView(createBrandMenuGrid(context, listener));
 
         // 2. Tactical Engine Profiles: Paired Cards Side-by-Side
         TextView enginesHeader = createSectionHeader(context, "TACTICAL ENGINE PROFILES");
@@ -63,56 +67,102 @@ public class DashboardContentView {
         return contentScrollView;
     }
 
-    // Start & Stop Buttons Side-by-Side
-    private static View createStartStopRow(Context context, final DashboardListener listener) {
-        LinearLayout row = new LinearLayout(context);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+    // Responsive Brand Menu Grid (up to 4 items per row)
+    private static View createBrandMenuGrid(Context context, final DashboardListener listener) {
+        LinearLayout card = new LinearLayout(context);
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(context, 48)
+                ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        rowLp.setMargins(0, 0, 0, dp(context, 16));
-        row.setLayoutParams(rowLp);
-        row.setOrientation(LinearLayout.HORIZONTAL);
+        cardLp.setMargins(0, 0, 0, dp(context, 14));
+        card.setLayoutParams(cardLp);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(context, 16), dp(context, 14), dp(context, 16), dp(context, 14));
 
-        Button startBtn = new Button(context);
-        LinearLayout.LayoutParams startLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-        startLp.rightMargin = dp(context, 6);
-        startBtn.setLayoutParams(startLp);
-        startBtn.setText("START MENU");
-        startBtn.setTextColor(AppColors.WHITE);
-        startBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        startBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(AppColors.MAGENTA_CARD);
+        cardBg.setCornerRadius(dp(context, 10));
+        card.setBackground(cardBg);
 
-        GradientDrawable startBg = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{AppColors.MAGENTA_BTN_START, AppColors.MAGENTA_BTN_END}
+        // Row of Logo Buttons (up to 4 items per row, responsive layout)
+        LinearLayout gridRow = new LinearLayout(context);
+        gridRow.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        gridRow.setOrientation(LinearLayout.HORIZONTAL);
+        gridRow.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+
+        // Brand item 1: NINMODS (Primary Brand)
+        gridRow.addView(createBrandLogoButton(context, "NINMODS", R.drawable.nin_logo, listener));
+
+        card.addView(gridRow);
+        return card;
+    }
+
+    private static View createBrandLogoButton(Context context, final String brandName, int iconResId, final DashboardListener listener) {
+        LinearLayout itemLayout = new LinearLayout(context);
+        LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(
+                dp(context, 76),
+                ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        startBg.setCornerRadius(dp(context, 8));
-        startBtn.setBackground(startBg);
-        startBtn.setOnClickListener(v -> {
-            if (listener != null) listener.onStartMenu();
+        itemLp.setMargins(0, 0, dp(context, 12), 0);
+        itemLayout.setLayoutParams(itemLp);
+        itemLayout.setOrientation(LinearLayout.VERTICAL);
+        itemLayout.setGravity(Gravity.CENTER_HORIZONTAL);
+        itemLayout.setClickable(true);
+        itemLayout.setFocusable(true);
+
+        // App-launcher style icon container
+        FrameLayout iconBox = new FrameLayout(context);
+        FrameLayout.LayoutParams iconBoxLp = new FrameLayout.LayoutParams(dp(context, 62), dp(context, 62));
+        iconBoxLp.gravity = Gravity.CENTER_HORIZONTAL;
+        iconBox.setLayoutParams(iconBoxLp);
+
+        GradientDrawable iconBg = new GradientDrawable();
+        iconBg.setColor(AppColors.MAGENTA_CHIP);
+        iconBg.setCornerRadius(dp(context, 14));
+        iconBg.setStroke(dp(context, 1), AppColors.MAGENTA_PRIMARY);
+        iconBox.setBackground(iconBg);
+
+        ImageView iv = new ImageView(context);
+        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(dp(context, 44), dp(context, 44));
+        ivLp.gravity = Gravity.CENTER;
+        iv.setLayoutParams(ivLp);
+        iv.setImageResource(iconResId);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        iconBox.addView(iv);
+
+        itemLayout.addView(iconBox);
+
+        // Brand Label below icon
+        TextView label = new TextView(context);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        labelLp.topMargin = dp(context, 6);
+        label.setLayoutParams(labelLp);
+        label.setText(brandName);
+        label.setTextColor(AppColors.WHITE);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        label.setTypeface(Typeface.DEFAULT_BOLD);
+        label.setGravity(Gravity.CENTER);
+        itemLayout.addView(label);
+
+        // Subtitle badge below label
+        TextView badge = new TextView(context);
+        badge.setText("VIP MENU");
+        badge.setTextColor(AppColors.MAGENTA_LIGHT);
+        badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
+        badge.setGravity(Gravity.CENTER);
+        badge.setPadding(0, dp(context, 1), 0, 0);
+        itemLayout.addView(badge);
+
+        itemLayout.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onBrandMenuClick(brandName);
+            }
         });
-        row.addView(startBtn);
 
-        Button stopBtn = new Button(context);
-        LinearLayout.LayoutParams stopLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-        stopLp.leftMargin = dp(context, 6);
-        stopBtn.setLayoutParams(stopLp);
-        stopBtn.setText("STOP MENU");
-        stopBtn.setTextColor(AppColors.WHITE);
-        stopBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        stopBtn.setTypeface(Typeface.DEFAULT_BOLD);
-
-        GradientDrawable stopBg = new GradientDrawable();
-        stopBg.setColor(AppColors.MAGENTA_CHIP);
-        stopBg.setCornerRadius(dp(context, 8));
-        stopBtn.setBackground(stopBg);
-        stopBtn.setOnClickListener(v -> {
-            if (listener != null) listener.onStopMenu();
-        });
-        row.addView(stopBtn);
-
-        return row;
+        return itemLayout;
     }
 
     // Side-by-Side Paired Cards for Safe and Extreme Engine Profiles
@@ -234,7 +284,7 @@ public class DashboardContentView {
         pName.setText(pkg + " • " + desc);
         pName.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         pName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        pName.setPadding(0, dp(context, 2), 0, dp(context, 12));
+        pName.setPadding(0, dp(context, 2), 0, dp(12));
         card.addView(pName);
 
         Button launchBtn = new Button(context);

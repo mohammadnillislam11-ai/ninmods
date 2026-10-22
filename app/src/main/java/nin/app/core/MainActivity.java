@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
     }
     
     private void startApp() {
-        Intent intent = new Intent(this, DashboardActivity.class);
+        Intent intent = new Intent(this, nin.app.auth.LoginActivity.class);
         startActivity(intent);
         finish();
     }
