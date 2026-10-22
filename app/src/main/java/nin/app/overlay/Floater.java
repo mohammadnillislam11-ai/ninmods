@@ -281,12 +281,17 @@ public class Floater {
         collapsedRelative.setLayoutParams(new ViewGroup.LayoutParams(totalLogoBox, totalLogoBox));
         collapsedRelative.setVisibility(View.VISIBLE);
 
+        int brandIcon = nin.app.R.drawable.nin_logo;
+        try {
+            brandIcon = nin.app.menu.MenuRouter.getActiveMenu(context).getIconResId();
+        } catch (Throwable ignored) {}
+
         int logoSize = FloaterStyles.dp(context, 60);
         logoImagem = new ImageView(context);
         FrameLayout.LayoutParams logoLp = new FrameLayout.LayoutParams(logoSize, logoSize);
         logoLp.gravity = Gravity.BOTTOM | Gravity.LEFT;
         logoImagem.setLayoutParams(logoLp);
-        logoImagem.setImageResource(nin.app.R.drawable.nin_logo);
+        logoImagem.setImageResource(brandIcon);
         logoImagem.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logoImagem.setBackground(null); // Pure PNG without circular background
         collapsedRelative.addView(logoImagem);
@@ -333,7 +338,7 @@ public class Floater {
         wmLp.gravity = Gravity.CENTER;
         wmLp.leftMargin = FloaterStyles.dp(context, 20);
         bodyWatermark.setLayoutParams(wmLp);
-        bodyWatermark.setImageResource(nin.app.R.drawable.nin_logo);
+        bodyWatermark.setImageResource(brandIcon);
         bodyWatermark.setScaleType(ImageView.ScaleType.FIT_CENTER);
         bodyWatermark.setAlpha(0.20f);
         bodyWatermark.setClickable(false);
@@ -360,7 +365,7 @@ public class Floater {
         // Top mini logo (Brand display only, strictly non-clickable per user requirement)
         ImageView railLogo = new ImageView(context);
         railLogo.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 24), FloaterStyles.dp(context, 24)));
-        railLogo.setImageResource(nin.app.R.drawable.nin_logo);
+        railLogo.setImageResource(brandIcon);
         railLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         railLogo.setClickable(false);
         railLogo.setFocusable(false);
@@ -541,6 +546,14 @@ public class Floater {
         } catch (Throwable t) {
             t.printStackTrace();
         }
+
+        // Configure brand-specific tactical options, switches, and seekbars
+        try {
+            nin.app.menu.MenuRouter.getActiveMenu(context).configureBrandOptions(this, context);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+
         refreshActivePages();
     }
 

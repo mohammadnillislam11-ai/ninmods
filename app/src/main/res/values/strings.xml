@@ -103,4 +103,14 @@
     <string name="ctrl_esp_left_adjust">ESP Left Adjust</string>
     <string name="ctrl_esp_right_adjust">ESP Right Adjust</string>
     <string name="ctrl_reset_adjust">Reset Adjust</string>
+
+    <!-- Modular Tactical Brand Menus -->
+    <string name="menu_tactical_1_name">NIN TACTICAL</string>
+    <string name="menu_tactical_1_sub">VIP</string>
+    <string name="menu_tactical_2_name">BULL TACTICAL</string>
+    <string name="menu_tactical_2_sub">PRO</string>
+    <string name="menu_tactical_3_name">CROSS VIP</string>
+    <string name="menu_tactical_3_sub">PRECISION</string>
+    <string name="menu_tactical_4_name">DELTA ELITE</string>
+    <string name="menu_tactical_4_sub">STEALTH</string>
 </resources>

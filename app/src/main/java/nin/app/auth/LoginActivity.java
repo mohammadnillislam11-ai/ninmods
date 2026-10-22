@@ -65,85 +65,65 @@ public class LoginActivity extends Activity {
         ));
         centerContainer.setOrientation(LinearLayout.VERTICAL);
         centerContainer.setGravity(Gravity.CENTER);
-        centerContainer.setPadding(dp(20), dp(32), dp(20), dp(32));
+        centerContainer.setPadding(dp(24), dp(36), dp(24), dp(36));
 
-        // Glassmorphic Login Card
-        LinearLayout card = new LinearLayout(this);
-        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
-                dp(340),
+        // Main Board Column (Direct on board - No Card box)
+        LinearLayout board = new LinearLayout(this);
+        LinearLayout.LayoutParams boardLp = new LinearLayout.LayoutParams(
+                dp(320),
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        card.setLayoutParams(cardLp);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(24), dp(28), dp(24), dp(24));
-
-        GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(AppColors.MAGENTA_CARD);
-        cardBg.setCornerRadius(dp(16));
-        cardBg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
-        card.setBackground(cardBg);
+        board.setLayoutParams(boardLp);
+        board.setOrientation(LinearLayout.VERTICAL);
+        board.setGravity(Gravity.CENTER_HORIZONTAL);
 
         // 1. Logo
         ImageView logo = new ImageView(this);
-        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(68), dp(68));
-        logoLp.gravity = Gravity.CENTER_HORIZONTAL;
-        logoLp.bottomMargin = dp(12);
+        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(56), dp(56));
+        logoLp.bottomMargin = dp(10);
         logo.setLayoutParams(logoLp);
         logo.setImageResource(R.drawable.nin_logo);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        card.addView(logo);
+        board.addView(logo);
 
-        // 2. Title & Subtitle
+        // 2. Title
         TextView title = new TextView(this);
         title.setText(getString(R.string.app_name));
         title.setTextColor(AppColors.WHITE);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         title.setGravity(Gravity.CENTER);
-        card.addView(title);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.bottomMargin = dp(24);
+        title.setLayoutParams(titleLp);
+        board.addView(title);
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("Tactical Game Engine • Authentication");
-        subtitle.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, dp(2), 0, dp(18));
-        card.addView(subtitle);
-
-        // 3. Section Label
-        TextView sectionLabel = new TextView(this);
-        sectionLabel.setText("ACCOUNT LOGIN");
-        sectionLabel.setTextColor(AppColors.MAGENTA_PRIMARY);
-        sectionLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        sectionLabel.setTypeface(Typeface.DEFAULT_BOLD);
-        sectionLabel.setPadding(0, 0, 0, dp(8));
-        card.addView(sectionLabel);
-
-        // 4. Username Field
+        // 3. Username Field
         etUsername = createInputField("Username", InputType.TYPE_CLASS_TEXT);
-        card.addView(etUsername);
+        board.addView(etUsername);
 
-        // 5. Password Field
+        // 4. Password Field
         etPassword = createInputField("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) etPassword.getLayoutParams();
-        passLp.topMargin = dp(10);
+        passLp.topMargin = dp(12);
         etPassword.setLayoutParams(passLp);
-        card.addView(etPassword);
+        board.addView(etPassword);
 
-        // 6. Error Label
+        // 5. Error Label
         tvError = new TextView(this);
         LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         errLp.topMargin = dp(8);
         tvError.setLayoutParams(errLp);
         tvError.setTextColor(Color.parseColor("#FF5252"));
         tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        tvError.setGravity(Gravity.CENTER);
         tvError.setVisibility(View.GONE);
-        card.addView(tvError);
+        board.addView(tvError);
 
-        // 7. Login Button
+        // 6. Login Button
         Button loginBtn = new Button(this);
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
-        btnLp.topMargin = dp(16);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        btnLp.topMargin = dp(18);
         loginBtn.setLayoutParams(btnLp);
         loginBtn.setText("LOGIN");
         loginBtn.setTextColor(AppColors.WHITE);
@@ -157,9 +137,9 @@ public class LoginActivity extends Activity {
         btnBg.setCornerRadius(dp(8));
         loginBtn.setBackground(btnBg);
         loginBtn.setOnClickListener(v -> performLogin());
-        card.addView(loginBtn);
+        board.addView(loginBtn);
 
-        // 8. Navigation Links (Signup & Reset Password)
+        // 7. Navigation Links (Signup & Reset Password)
         LinearLayout linksRow = new LinearLayout(this);
         LinearLayout.LayoutParams linksLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         linksLp.topMargin = dp(16);
@@ -172,7 +152,7 @@ public class LoginActivity extends Activity {
         signUpLink.setTextColor(AppColors.MAGENTA_LIGHT);
         signUpLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         signUpLink.setGravity(Gravity.CENTER);
-        signUpLink.setPadding(0, dp(4), 0, dp(4));
+        signUpLink.setPadding(0, dp(6), 0, dp(6));
         signUpLink.setOnClickListener(v -> {
             Intent intent = new Intent(LoginActivity.this, SignupActivity.class);
             startActivity(intent);
@@ -184,48 +164,16 @@ public class LoginActivity extends Activity {
         resetPassLink.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         resetPassLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         resetPassLink.setGravity(Gravity.CENTER);
-        resetPassLink.setPadding(0, dp(4), 0, dp(4));
+        resetPassLink.setPadding(0, dp(6), 0, dp(6));
         resetPassLink.setOnClickListener(v -> {
             Intent intent = new Intent(LoginActivity.this, ResetPasswordActivity.class);
             startActivity(intent);
         });
         linksRow.addView(resetPassLink);
 
-        card.addView(linksRow);
+        board.addView(linksRow);
 
-        // 9. Temporary Development Credentials Hint Chip
-        LinearLayout hintChip = new LinearLayout(this);
-        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hintLp.topMargin = dp(18);
-        hintChip.setLayoutParams(hintLp);
-        hintChip.setOrientation(LinearLayout.VERTICAL);
-        hintChip.setPadding(dp(10), dp(8), dp(10), dp(8));
-
-        GradientDrawable hintBg = new GradientDrawable();
-        hintBg.setColor(AppColors.MAGENTA_CHIP);
-        hintBg.setCornerRadius(dp(6));
-        hintBg.setStroke(dp(1), AppColors.withAlpha(AppColors.MAGENTA_PRIMARY, 80));
-        hintChip.setBackground(hintBg);
-
-        TextView hintTitle = new TextView(this);
-        hintTitle.setText("Temporary Free Login:");
-        hintTitle.setTextColor(AppColors.WHITE);
-        hintTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        hintTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        hintTitle.setGravity(Gravity.CENTER);
-        hintChip.addView(hintTitle);
-
-        TextView hintDetails = new TextView(this);
-        hintDetails.setText("Username: " + AuthConstants.DEV_DEFAULT_USER + "   |   Password: " + AuthConstants.DEV_DEFAULT_PASS);
-        hintDetails.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        hintDetails.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        hintDetails.setGravity(Gravity.CENTER);
-        hintDetails.setPadding(0, dp(2), 0, 0);
-        hintChip.addView(hintDetails);
-
-        card.addView(hintChip);
-
-        centerContainer.addView(card);
+        centerContainer.addView(board);
         scrollView.addView(centerContainer);
         root.addView(scrollView);
 
@@ -234,7 +182,7 @@ public class LoginActivity extends Activity {
 
     private EditText createInputField(String hint, int inputType) {
         EditText et = new EditText(this);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
         et.setLayoutParams(lp);
         et.setHint(hint);
         et.setHintTextColor(AppColors.MAGENTA_TEXT_DIM);
@@ -271,7 +219,7 @@ public class LoginActivity extends Activity {
             startActivity(intent);
             finish();
         } else {
-            showError("Invalid credentials! Please use development free credentials.");
+            showError("Invalid credentials! Please try again.");
         }
     }
 

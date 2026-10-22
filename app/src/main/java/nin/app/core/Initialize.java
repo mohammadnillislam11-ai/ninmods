@@ -78,8 +78,8 @@ public class Initialize {
                                         new Handler(Looper.getMainLooper()).post(new Runnable() {
                                             @Override
                                             public void run() {
-                                                Toast.makeText(context, "Menu Initialized!", Toast.LENGTH_SHORT).show();
-                                                Floater.start(context);
+                                                Toast.makeText(context, "Tactical Menu Initialized!", Toast.LENGTH_SHORT).show();
+                                                nin.app.menu.MenuRouter.launchActiveMenu(context);
                                             }
                                         });
                                     } else {
