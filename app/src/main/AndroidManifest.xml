@@ -19,6 +19,7 @@
     <!-- Package Visibility (Android 11+) -->
     <queries>
         <package android:name="com.dts.freefireth" />
+        <package android:name="com.dts.freefiremax" />
     </queries>
 
     <application

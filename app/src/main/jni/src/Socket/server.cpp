@@ -18,6 +18,9 @@ bool SocketServer::Bind() {
     addr_server.sun_family = AF_UNIX; // Unix Domain instead of AF_INET IP domain
     strncpy(addr_server.sun_path, socket_name, sizeof(addr_server.sun_path) - 1); // 108 char max
 
+    int opt = 1;
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
     if (bind(listenfd, (sockaddr *) &addr_server, sizeof(addr_server)) < 0) {
         Close();
         return false;
@@ -35,7 +38,6 @@ bool SocketServer::Listen() {
 
 bool SocketServer::Accept() {
     if ((acceptfd = accept4(listenfd, nullptr, nullptr, SOCK_CLOEXEC)) < 0) {
-        Close();
         return false;
     }
     return true;
@@ -51,7 +53,7 @@ int SocketServer::sendData(void *inData, size_t size) {
         } while (numSent == -1 && EINTR == errno);
 
         if (numSent <= 0) {
-            Close();
+            CloseAccept();
             break;
         }
 
@@ -79,7 +81,7 @@ int SocketServer::recvData(void *outData, size_t size) {
         } while (numReceived == -1 && EINTR == errno);
 
         if (numReceived <= 0) {
-            Close();
+            CloseAccept();
             break;
         }
 
@@ -99,9 +101,17 @@ size_t SocketServer::receive(void* outData) {
     return length;
 }
 
-void SocketServer::Close() {
-    if (acceptfd > 0)
+void SocketServer::CloseAccept() {
+    if (acceptfd > 0) {
         close(acceptfd);
-    if (listenfd > 0)
+        acceptfd = -1;
+    }
+}
+
+void SocketServer::Close() {
+    CloseAccept();
+    if (listenfd > 0) {
         close(listenfd);
+        listenfd = -1;
+    }
 }

@@ -18,6 +18,7 @@ public:
     bool Bind();
     bool Listen();
     void Close();
+    void CloseAccept();
 
     int sendData(void *inData, size_t size);
     bool send(void* inData, size_t size);

@@ -22,117 +22,65 @@
 // Global to prevent log spamming
 uintptr_t last_failed_ptr = 0;
 
-// ========== Logging System ==========
-std::mutex logMutex;
-std::ofstream logFile;
-std::ofstream debugLogFile;
-std::ofstream weaponLogFile;  // NEW: weapon ID log
-
+// ========== Unified Logging System ==========
 void InitLogs() {
-    std::lock_guard<std::mutex> lock(logMutex);
-    
-    // Use app cache folder which is always writable by root on any emulator
-    const char* logPath = "/data/data/ninmods.pro/cache/logs.txt";
-    const char* debugPath = "/data/data/ninmods.pro/cache/LogDebug.txt";
-    const char* weaponPath = "/data/data/ninmods.pro/cache/Weponlog.txt";
-    
-    // Fallback check (for some emulators that use /data/user/0/)
-    struct stat st;
-    if (stat("/data/user/0/ninmods.pro/cache/", &st) == 0) {
-        logPath = "/data/user/0/ninmods.pro/cache/logs.txt";
-        debugPath = "/data/user/0/ninmods.pro/cache/LogDebug.txt";
-        weaponPath = "/data/user/0/ninmods.pro/cache/Weponlog.txt";
-    }
-
-    logFile.open(logPath, std::ios::out | std::ios::app);
-    debugLogFile.open(debugPath, std::ios::out | std::ios::app);
-    weaponLogFile.open(weaponPath, std::ios::out | std::ios::app);
-    
-    if (logFile.is_open()) {
-        logFile << "--- Daemon Starting ---" << std::endl;
-        logFile.flush();
-    }
+    NIN_LOGI("DAEMON", "=== Titoo Daemon Session Initialized ===");
 }
 
 void CloseLogs() {
-    std::lock_guard<std::mutex> lock(logMutex);
-    if (logFile.is_open()) logFile.close();
-    if (debugLogFile.is_open()) debugLogFile.close();
-    if (weaponLogFile.is_open()) weaponLogFile.close();  // NEW
+    NIN_LOGI("DAEMON", "=== Titoo Daemon Session Ended ===");
 }
 
 void LogPlayerData(const char* name, bool isBot, int health, float distance, bool isDead) {
-    std::lock_guard<std::mutex> lock(logMutex);
-    if (!logFile.is_open()) return;
-
-    auto t = std::time(nullptr);
-    auto tm = *std::localtime(&t);
-    logFile << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | ";
-    logFile << "Name: " << name << " | Bot: " << (isBot ? "Yes" : "No") << " | HP: " << health << " | Dist: " << distance << " | Dead: " << (isDead ? "Yes" : "No") << std::endl;
-    logFile.flush();
+    NIN_LOGI("DAEMON_ENTITY", "Name: %s | Bot: %s | HP: %d | Dist: %.1f | Dead: %s",
+             name, (isBot ? "Yes" : "No"), health, distance, (isDead ? "Yes" : "No"));
 }
 
 void LogDebug(const char* format, ...) {
-    std::lock_guard<std::mutex> lock(logMutex);
-    if (!debugLogFile.is_open()) return;
-
-    auto t = std::time(nullptr);
-    auto tm = *std::localtime(&t);
-    debugLogFile << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " [DEBUG] ";
-
     va_list args;
     va_start(args, format);
     char buffer[512];
     vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
-
-    debugLogFile << buffer << std::endl;
-    debugLogFile.flush();
+    NIN_LOGI("DAEMON_DEBUG", "%s", buffer);
 }
 
-// NEW: Log weapon ID
 void LogWeaponData(const char* playerName, int weaponId, bool isLocal) {
-    std::lock_guard<std::mutex> lock(logMutex);
-    if (!weaponLogFile.is_open()) return;
-    
-    auto t = std::time(nullptr);
-    auto tm = *std::localtime(&t);
-    weaponLogFile << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | ";
-    weaponLogFile << (isLocal ? "Local" : "Enemy") << " | ";
-    weaponLogFile << "Name: " << playerName << " | WeaponID: " << weaponId << std::endl;
-    weaponLogFile.flush();
+    NIN_LOGI("DAEMON_WEAPON", "%s | Name: %s | WeaponID: %d", (isLocal ? "Local" : "Enemy"), playerName, weaponId);
 }
 
-// ========== Module Base Address (FIXED) ==========
+// ========== Module Base Address (ROBUST) ==========
 uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
     char mapsPath[64];
     snprintf(mapsPath, sizeof(mapsPath), "/proc/%d/maps", pid);
     FILE* fp = fopen(mapsPath, "r");
     if (!fp) {
+        NIN_LOGE("DAEMON", "GetModuleBase: Cannot open %s", mapsPath);
         return 0;
     }
 
     char line[512];
     uintptr_t base = 0;
-    int zeroOffsetCount = 0;
 
     while (fgets(line, sizeof(line), fp)) {
         if (strstr(line, moduleName)) {
-            uintptr_t start, offset;
-            char perms[5];
-            if (sscanf(line, "%lx-%*lx %4s %lx", &start, perms, &offset) == 3) {
-                if (offset == 0) {
-                    zeroOffsetCount++;
-                    if (zeroOffsetCount == 2) {
-                        base = start;
-                        break;
-                    }
+            uintptr_t start = 0, offset = 0;
+            char perms[5] = {0};
+            if (sscanf(line, "%lx-%*lx %4s %lx", &start, perms, &offset) >= 1) {
+                NIN_LOGI("DAEMON", "Maps match: %s", line);
+                if (base == 0) {
+                    base = start;
+                }
+                if (offset == 0 && (perms[0] == 'r' || perms[2] == 'x')) {
+                    base = start;
+                    break;
                 }
             }
         }
     }
 
     fclose(fp);
+    NIN_LOGI("DAEMON", "GetModuleBase(%s) = 0x%lx", moduleName, (unsigned long)base);
     return base;
 }
 
@@ -659,31 +607,46 @@ void CreateDataList(Response& SendResponse) {
 __attribute__ ((visibility ("hidden")))
 int main(int argc, char*argv[]){
     InitLogs();
+    NIN_LOGI("DAEMON", "=== Titoo Daemon Starting (PID: %d, UID: %d, GID: %d) ===", getpid(), getuid(), getgid());
     
     // Launch Aim Magnet Thread
     std::thread(UpdateAimMagnetFast).detach();
-    // Launch Spin Bot Thread
 
-    if (InitServer() == (0)) {
+    if (InitServer() != 0) {
+        NIN_LOGE("DAEMON", "InitServer() failed to bind/listen on \\0%s!", SOCKET_NAME);
+        return 1;
+    }
+    NIN_LOGI("DAEMON", "InitServer() listening on abstract socket \\0%s", SOCKET_NAME);
+
+    while (true) {
+        NIN_LOGI("DAEMON", "Waiting for client connection...");
         if (server.Accept()) {
-            target_pid = FindPid("com.dts.freefireth");
+            NIN_LOGI("DAEMON", "Client accepted! Session established.");
+            target_pid = FindGamePid();
             if (target_pid > 0) {
                 mem_fd = my_open_mem(target_pid);
                 libAddress = GetModuleBase(target_pid, "libil2cpp.so");
+                NIN_LOGI("DAEMON", "Target game attached! PID: %d, mem_fd: %d, libil2cpp: 0x%lx",
+                         target_pid, mem_fd, (unsigned long)libAddress);
+            } else {
+                NIN_LOGI("DAEMON", "Game not currently running. Will scan dynamically.");
             }
          
             Request request{};
-            while (server.receive((void*)&request) > (0)) {
+            while (server.receive((void*)&request) > 0) {
                 Response SendResponse{};
                 if (target_pid <= 0 || mem_fd <= 0 || libAddress == 0) {
-                    target_pid = FindPid("com.dts.freefireth");
+                    target_pid = FindGamePid();
                     if (target_pid > 0) {
                         if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
                         if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
+                        NIN_LOGI("DAEMON", "Game detected dynamically: PID=%d, mem_fd=%d, libAddress=0x%lx",
+                                 target_pid, mem_fd, (unsigned long)libAddress);
                     }
                 }
                 if (request.Mode == Mode::InitMode) {
                     SendResponse.Success = true;
+                    NIN_LOGI("DAEMON", "InitMode handshake received from client");
                 } else if (request.Mode == Mode::HackMode) {
                     SendResponse.Success = true;
                 } else if (request.Mode == Mode::EspMode) {
@@ -694,9 +657,11 @@ int main(int argc, char*argv[]){
                 } else if (request.Mode == 3) {
                     Actived.activar = request.m_IsOn;
                     SendResponse.Success = true;
+                    NIN_LOGI("DAEMON", "Feature: ESP Toggle = %s", Actived.activar ? "ON" : "OFF");
                 } else if(request.Mode == 5){
                     pPlayer.aimbot = request.m_IsOn;
                     SendResponse.Success = true;
+                    NIN_LOGI("DAEMON", "Feature: Aimbot = %s", pPlayer.aimbot ? "ON" : "OFF");
                 } else if(request.Mode == 22){
                     pPlayer.fovawm = request.m_IsOn;
                     SendResponse.Success = true;
@@ -719,31 +684,33 @@ int main(int argc, char*argv[]){
                     pPlayer.gameSpeed = (float)request.value / 10.0f; // Input 10-50 -> 1.0x-5.0x
                     SendResponse.Success = true;
                 } else if(request.Mode == 61){
-                    pPlayer.silentAimHead = request.m_IsOn;   // Fixed: was aimMagnet
+                    pPlayer.silentAimHead = request.m_IsOn;
                     SendResponse.Success = true;
                 } else if(request.Mode == 62){
-                    pPlayer.targetByDistance = request.m_IsOn; // New: target priority
+                    pPlayer.targetByDistance = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 63){                 // If you need aimMagnet separately
+                } else if(request.Mode == 63){
                     pPlayer.aimMagnet = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 70){                 // New Headshot %
+                } else if(request.Mode == 70){
                     pPlayer.headshotRate = request.value;
                     if(pPlayer.headshotRate > 100) pPlayer.headshotRate = 100;
                     if(pPlayer.headshotRate < 0) pPlayer.headshotRate = 0;
                     SendResponse.Success = true;
-                } else if(request.Mode == 71){                 // Ignore Bots
+                } else if(request.Mode == 71){
                     pPlayer.ignoreBots = request.m_IsOn;
                     SendResponse.Success = true;
-                } else if(request.Mode == 72){                 // Ignore Knocked
+                } else if(request.Mode == 72){
                     pPlayer.ignoreKnocked = request.m_IsOn;
                     SendResponse.Success = true;
                 }
 
-                
-
                 server.send((void*)& SendResponse, sizeof(SendResponse));
             }
+            NIN_LOGI("DAEMON", "Client disconnected from session. Resetting session...");
+            server.CloseAccept();
+        } else {
+            usleep(200000); // 200ms
         }
     }
     CloseLogs();

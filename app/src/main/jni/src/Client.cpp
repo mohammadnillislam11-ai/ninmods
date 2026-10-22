@@ -81,9 +81,39 @@ inline ImU32 ToImU32(const Color& c, float alphaMultiplier = 1.0f) {
     return IM_COL32(r, g, b, a);
 }
 
+static void EnsureClientConnected() {
+    static auto lastConnectAttempt = std::chrono::steady_clock::now();
+    if (!isConnected()) {
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastConnectAttempt).count() > 1500) {
+            lastConnectAttempt = now;
+            NIN_LOGI("CLIENT", "Attempting auto-reconnect to daemon...");
+            if (startClient() == 0) {
+                NIN_LOGI("CLIENT", "Auto-reconnect successful! Syncing active features...");
+                if (Actived.activar) SendBool(3, true);
+                if (pPlayer.aimbot) SendBool(5, true);
+                if (pPlayer.aimbotlock) SendBool(54, true);
+                if (pPlayer.silen4a) SendBool(57, true);
+                SendFloat(58, pPlayer.AimFov);
+                SendFloat(59, pPlayer.AimDistance);
+                SendInt(70, pPlayer.headshotRate);
+                if (pPlayer.ignoreBots) SendBool(71, true);
+                if (pPlayer.ignoreKnocked) SendBool(72, true);
+            }
+        }
+    }
+}
+
 void RenderHardwareESP(int screenWidth, int screenHeight) {
     if (screenWidth <= 0 || screenHeight <= 0) return;
-    if (!isConnected()) return;
+    
+    EnsureClientConnected();
+
+    if (!isConnected()) {
+        ImDrawList* draw = ImGui::GetBackgroundDrawList();
+        draw->AddText(ImVec2(24.0f, 40.0f), IM_COL32(255, 180, 0, 230), "NINMODS: CONNECTING DAEMON... (SEE /sdcard/ninmods.log)");
+        return;
+    }
 
     ImDrawList* draw = ImGui::GetBackgroundDrawList();
 
@@ -924,16 +954,16 @@ Java_power_cheats_Floater_PxbftKZXivSr(JNIEnv *env, jclass type, jobject espView
 
 extern "C" JNIEXPORT void JNICALL
 Java_power_cheats_Floater_ftKZXivSr(JNIEnv *env, jclass clazz, jobject ctx) {
-    if (!Connection.connectClient) {
+    NIN_LOGI("CLIENT", "ftKZXivSr invoked from Java overlay");
+    if (!isConnected()) {
         startClient();
-        Connection.connectClient = true;
     }
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_power_cheats_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
+    NIN_LOGI("CLIENT", "ftKwCvSr invoked from Java overlay");
     stopClient();
-    Connection.connectClient = false;
 }
 
 extern "C"
@@ -1182,6 +1212,7 @@ static bool isRooted() {
 }
 
 void StartDaemon() {
+    NIN_LOGI("CLIENT", "=== StartDaemon() background thread started ===");
     bool isX86 = false;
 #if defined(__x86_64__) || defined(__i386__)
     isX86 = true;
@@ -1189,48 +1220,48 @@ void StartDaemon() {
 
     const char* dName = isX86 ? "Titoo1" : "Titoo";
     const char* paths[] = {
+        "/data/user/0/nin.app/files/",
+        "/data/data/nin.app/files/",
         "/data/user/0/nin.app/cache/",
         "/data/data/nin.app/cache/",
-        "/data/user/0/ninmods.pro/cache/",
-        "/data/data/ninmods.pro/cache/"
+        "/data/local/tmp/"
     };
     
-    char path[256];
+    char path[256] = {0};
     struct stat st;
     bool found = false;
     
     for (const char* p : paths) {
         snprintf(path, sizeof(path), "%s%s", p, dName);
-        if (stat(path, &st) == 0) {
+        if (stat(path, &st) == 0 && st.st_size > 5000) {
             found = true;
             break;
         }
     }
 
     if (!found) {
-        LOGE("Daemon binary NOT FOUND at any expected cache path");
+        NIN_LOGE("CLIENT", "Daemon binary %s NOT FOUND at any expected path!", dName);
         return;
     }
 
-    if (!isRooted()) {
-        LOGD("Device is NOT rooted - launching as normal user");
-        char cmd[512];
-        snprintf(cmd, sizeof(cmd), "chmod 777 %s && %s &", path, path);
-        system(cmd);
-        return;
-    }
-    
-    LOGI("Launching daemon as ROOT: %s", path);
+    NIN_LOGI("CLIENT", "Found daemon binary at: %s (size: %ld)", path, (long)st.st_size);
+
+    char tmpPath[256];
+    snprintf(tmpPath, sizeof(tmpPath), "/data/local/tmp/%s", dName);
+
+    // Copy to /data/local/tmp for unconstrained root execution
+    char cp_cmd[512];
+    snprintf(cp_cmd, sizeof(cp_cmd), "su -c \"cp -f %s %s && chmod 777 %s\"", path, tmpPath, tmpPath);
+    system(cp_cmd);
+
     char pkill_cmd[256];
     snprintf(pkill_cmd, sizeof(pkill_cmd), "su -c \"pkill -9 -f %s\"", dName);
     system(pkill_cmd);
-    
-    char chmod_cmd[256];
-    snprintf(chmod_cmd, sizeof(chmod_cmd), "su -c \"chmod 777 %s\"", path);
-    system(chmod_cmd);
-    
+    usleep(150000); // 150ms
+
     char launch_cmd[512];
-    snprintf(launch_cmd, sizeof(launch_cmd), "su -c \"%s &\"", path);
+    snprintf(launch_cmd, sizeof(launch_cmd), "su -c \"%s &\"", tmpPath);
+    NIN_LOGI("CLIENT", "Launching root daemon: %s", launch_cmd);
     system(launch_cmd);
 }
 

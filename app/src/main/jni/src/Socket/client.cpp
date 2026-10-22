@@ -94,7 +94,10 @@ size_t SocketClient::receive(void *outData) {
 
 void SocketClient::Close() {
     connected = false;
-    if (sockfd > 0)
+    created = false;
+    if (sockfd > 0) {
         close(sockfd);
+        sockfd = -1;
+    }
 }
 

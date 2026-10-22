@@ -1,3 +1,5 @@
+#include "Includes/Logger.h"
+
 SocketClient client;
 
 #define maxplayerCount 200
@@ -43,16 +45,21 @@ struct Response {
 };
 
 int startClient(){
+    NIN_LOGI("CLIENT", "startClient() connecting to \\0%s ...", SOCKET_NAME);
     client = SocketClient();
     if (!client.Create()) {
+        NIN_LOGE("CLIENT", "SocketClient::Create failed!");
         return -1;
     }
     if (!client.Connect()) {
+        NIN_LOGE("CLIENT", "SocketClient::Connect to \\0%s failed: %s (errno: %d)", SOCKET_NAME, strerror(errno), errno);
         return -1;
     }
     if (!initServer()) {
+        NIN_LOGE("CLIENT", "initServer handshake failed!");
         return -1;
     }
+    NIN_LOGI("CLIENT", "Connected to daemon successfully!");
     return 0;
 }
 

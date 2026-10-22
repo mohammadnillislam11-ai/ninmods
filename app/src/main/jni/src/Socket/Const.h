@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <sys/un.h>
 
-#define SOCKET_NAME "УБИЙЦА. ХД"
+#define SOCKET_NAME "nin_X9K2q"
 #define BACKLOG 8
 #define PacketSize 4096
 

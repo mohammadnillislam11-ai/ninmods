@@ -73,14 +73,77 @@ typedef unsigned int uint32;
 static const UTF32 halfBase = 0x0010000UL;
 static const UTF8 firstByteMark[7] = { 0x00, 0x00, static_cast<UTF8>(0xC0), static_cast<UTF8>(0xE0), static_cast<UTF8>(0xF0), static_cast<UTF8>(0xF8), static_cast<UTF8>(0xFC) };
 
-// Encontra o PID do processo pelo nome do pacote
+#include <dirent.h>
+
+// Encontra o PID do processo pelo nome do pacote com varredura direta em /proc
+pid_t FindGamePid() {
+    const char* packages[] = {
+        "com.dts.freefireth",
+        "com.dts.freefiremax"
+    };
+
+    DIR* dir = opendir("/proc");
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            if (entry->d_type == DT_DIR) {
+                char* endptr = nullptr;
+                pid_t pid = strtol(entry->d_name, &endptr, 10);
+                if (endptr && *endptr == '\0' && pid > 0) {
+                    char cmdlinePath[64];
+                    snprintf(cmdlinePath, sizeof(cmdlinePath), "/proc/%d/cmdline", pid);
+                    FILE* fp = fopen(cmdlinePath, "r");
+                    if (fp) {
+                        char cmdline[256] = {0};
+                        if (fgets(cmdline, sizeof(cmdline), fp)) {
+                            for (const char* pkg : packages) {
+                                if (strstr(cmdline, pkg) != nullptr) {
+                                    fclose(fp);
+                                    closedir(dir);
+                                    NIN_LOGI("DAEMON", "Found Game PID: %d (%s via /proc)", pid, pkg);
+                                    return pid;
+                                }
+                            }
+                        }
+                        fclose(fp);
+                    }
+                }
+            }
+        }
+        closedir(dir);
+    }
+
+    for (const char* pkg : packages) {
+        char cmd[64];
+        snprintf(cmd, sizeof(cmd), "pidof %s 2>/dev/null", pkg);
+        FILE* p = popen(cmd, "r");
+        if (p) {
+            char buf[32] = {0};
+            if (fgets(buf, sizeof(buf), p)) {
+                pid_t pid = atoi(buf);
+                pclose(p);
+                if (pid > 0) {
+                    NIN_LOGI("DAEMON", "Found Game PID: %d (%s via pidof)", pid, pkg);
+                    return pid;
+                }
+            } else {
+                pclose(p);
+            }
+        }
+    }
+    return 0;
+}
+
 pid_t FindPid(const char *PackageName) {
+    if (PackageName != nullptr && (strstr(PackageName, "freefire") != nullptr)) {
+        return FindGamePid();
+    }
     char text[69];
     pid_t pid = 0;
-    sprintf(text, "pidof %s", PackageName);
+    snprintf(text, sizeof(text), "pidof %s 2>/dev/null", PackageName);
     FILE *chkRun = popen(text, "r");
     if (chkRun) {
-        char output[10];
+        char output[32] = {0};
         if (fgets(output, sizeof(output), chkRun)) {
             pid = atoi(output);
         }
