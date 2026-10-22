@@ -233,9 +233,11 @@ int GetWeaponId(uintptr_t player) {
 
 void UpdateAimMagnetFast() {
     while (true) {
-        usleep(10000);  // 10ms - stability ke liye
-        
-        if (!pPlayer.aimMagnet) continue;
+        if (!pPlayer.aimMagnet) {
+            usleep(100000);  // 100ms idle sleep to save CPU and memory bandwidth
+            continue;
+        }
+        usleep(10000);  // 10ms active sleep
         
         uintptr_t localP = ShareLocalPlayer;
         uintptr_t enemy = ShareEnemy;
@@ -373,17 +375,12 @@ void CreateDataList(Response& SendResponse) {
         return;
     }
 
-    // TimeService Speedhack if available
-    uintptr_t timeService = 0;
-    if (BaseGame > 0x10000000) {
-        timeService = Read<uintptr_t>(BaseGame + Offsets::BaseGameTimeService);
-    }
-    if (timeService > 0x10000000) {
-        if (speedHackEnabled) {
+    // TimeService Speedhack ONLY if explicitly enabled
+    if (speedHackEnabled && BaseGame > 0x10000000) {
+        uintptr_t timeService = Read<uintptr_t>(BaseGame + Offsets::BaseGameTimeService);
+        if (timeService > 0x10000000) {
             float speedVal = 0.03299999982f * pPlayer.gameSpeed;
             Write<float>(timeService + Offsets::TimeServiceSpeed, speedVal);
-        } else {
-            Write<float>(timeService + Offsets::TimeServiceSpeed, 0.03299999982f);
         }
     }
 
@@ -650,15 +647,22 @@ int main(int argc, char*argv[]){
             while (server.receive((void*)&request) > 0) {
                 Response SendResponse{};
 
-                // Attach / scan target game dynamically if needed
+                // Attach / scan target game dynamically if needed (throttled to 1s to prevent kernel mmap_lock starvation)
                 if (request.Mode != Mode::InitMode && request.Mode != Mode::HackMode) {
                     if (target_pid <= 0 || mem_fd <= 0 || libAddress == 0) {
-                        target_pid = FindGamePid();
-                        if (target_pid > 0) {
-                            if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
-                            if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
-                            NIN_LOGI("DAEMON", "Game detected dynamically: PID=%d, mem_fd=%d, libAddress=0x%lx",
-                                     target_pid, mem_fd, (unsigned long)libAddress);
+                        static time_t lastAttachAttempt = 0;
+                        time_t nowScan = time(nullptr);
+                        if (nowScan - lastAttachAttempt >= 1) {
+                            lastAttachAttempt = nowScan;
+                            if (target_pid <= 0) target_pid = FindGamePid();
+                            if (target_pid > 0) {
+                                if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
+                                if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
+                                if (libAddress > 0) {
+                                    NIN_LOGI("DAEMON", "Game attached successfully: PID=%d, mem_fd=%d, libil2cpp=0x%lx",
+                                             target_pid, mem_fd, (unsigned long)libAddress);
+                                }
+                            }
                         }
                     }
                 }
