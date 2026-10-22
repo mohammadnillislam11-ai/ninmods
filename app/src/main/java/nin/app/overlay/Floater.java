@@ -259,7 +259,7 @@ public class Floater {
         GradientDrawable badgeBg = new GradientDrawable();
         badgeBg.setShape(GradientDrawable.OVAL);
         badgeBg.setColor(0xFFE53935); // Crimson red
-        badgeBg.setStroke(FloaterStyles.dp(context, 1.5f), 0xFFFFFFFF);
+        badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFFFFFFFF);
         logoCloseBadge.setBackground(badgeBg);
 
         logoCloseBadge.setOnClickListener(v -> {
