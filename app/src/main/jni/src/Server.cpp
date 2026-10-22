@@ -14,6 +14,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <android/log.h>
 
 #include "Server.h"
@@ -606,6 +607,7 @@ void CreateDataList(Response& SendResponse) {
 
 __attribute__ ((visibility ("hidden")))
 int main(int argc, char*argv[]){
+    signal(SIGPIPE, SIG_IGN);
     InitLogs();
     NIN_LOGI("DAEMON", "=== Titoo Daemon Starting (PID: %d, UID: %d, GID: %d) ===", getpid(), getuid(), getgid());
     
@@ -622,39 +624,31 @@ int main(int argc, char*argv[]){
         NIN_LOGI("DAEMON", "Waiting for client connection...");
         if (server.Accept()) {
             NIN_LOGI("DAEMON", "Client accepted! Session established.");
-            target_pid = FindGamePid();
-            if (target_pid > 0) {
-                mem_fd = my_open_mem(target_pid);
-                libAddress = GetModuleBase(target_pid, "libil2cpp.so");
-                NIN_LOGI("DAEMON", "Target game attached! PID: %d, mem_fd: %d, libil2cpp: 0x%lx",
-                         target_pid, mem_fd, (unsigned long)libAddress);
-            } else {
-                NIN_LOGI("DAEMON", "Game not currently running. Will scan dynamically.");
-            }
-         
+
             Request request{};
             while (server.receive((void*)&request) > 0) {
                 Response SendResponse{};
-                if (target_pid <= 0 || mem_fd <= 0 || libAddress == 0) {
-                    target_pid = FindGamePid();
-                    if (target_pid > 0) {
-                        if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
-                        if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
-                        NIN_LOGI("DAEMON", "Game detected dynamically: PID=%d, mem_fd=%d, libAddress=0x%lx",
-                                 target_pid, mem_fd, (unsigned long)libAddress);
-                    }
-                }
                 if (request.Mode == Mode::InitMode) {
                     SendResponse.Success = true;
-                    NIN_LOGI("DAEMON", "InitMode handshake received from client");
+                    NIN_LOGI("DAEMON", "InitMode handshake received from client, replied Success=true");
                 } else if (request.Mode == Mode::HackMode) {
                     SendResponse.Success = true;
-                } else if (request.Mode == Mode::EspMode) {
-                    g_screenWidth = request.ScreenWidth;
-                    g_screenHeight = request.ScreenHeight;
-                    CreateDataList(SendResponse);
-                    SendResponse.Success = true;
-                } else if (request.Mode == 3) {
+                } else {
+                    if (target_pid <= 0 || mem_fd <= 0 || libAddress == 0) {
+                        target_pid = FindGamePid();
+                        if (target_pid > 0) {
+                            if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
+                            if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
+                            NIN_LOGI("DAEMON", "Game detected dynamically: PID=%d, mem_fd=%d, libAddress=0x%lx",
+                                     target_pid, mem_fd, (unsigned long)libAddress);
+                        }
+                    }
+                    if (request.Mode == Mode::EspMode) {
+                        g_screenWidth = request.ScreenWidth;
+                        g_screenHeight = request.ScreenHeight;
+                        CreateDataList(SendResponse);
+                        SendResponse.Success = true;
+                    } else if (request.Mode == 3) {
                     Actived.activar = request.m_IsOn;
                     SendResponse.Success = true;
                     NIN_LOGI("DAEMON", "Feature: ESP Toggle = %s", Actived.activar ? "ON" : "OFF");

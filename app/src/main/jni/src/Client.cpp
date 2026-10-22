@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <string>
 #include <src/Socket/client.h>
+#include <signal.h>
 #include "src/Includes/obfuscate.h"
 #include <sys/stat.h>
 #include <src/Widgets/ImportWidgets.h>
@@ -1212,6 +1213,7 @@ static bool isRooted() {
 }
 
 void StartDaemon() {
+    signal(SIGPIPE, SIG_IGN);
     NIN_LOGI("CLIENT", "=== StartDaemon() background thread started ===");
     bool isX86 = false;
 #if defined(__x86_64__) || defined(__i386__)
@@ -1270,6 +1272,7 @@ void StartDaemon() {
 
 extern "C" JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM* vm, void* reserved) {
+    signal(SIGPIPE, SIG_IGN);
     std::thread(StartDaemon).detach();
     return JNI_VERSION_1_6;
 }

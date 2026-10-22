@@ -45,6 +45,7 @@ struct Response {
 };
 
 int startClient(){
+    signal(SIGPIPE, SIG_IGN);
     NIN_LOGI("CLIENT", "startClient() connecting to daemon (Dual-Channel: UNIX \\0%s / TCP %s:%d)...", SOCKET_NAME, TCP_HOST, TCP_PORT);
     client = SocketClient();
     if (!client.Create()) {
@@ -60,7 +61,7 @@ int startClient(){
         client.Close();
         return -1;
     }
-    NIN_LOGI("CLIENT", "Connected to daemon successfully via %s channel!", client.isTcpChannel ? "TCP" : "UNIX");
+    NIN_LOGI("CLIENT", "Connected to daemon successfully via %s channel! Handshake OK.", client.isTcpChannel ? "TCP" : "UNIX");
     return 0;
 }
 

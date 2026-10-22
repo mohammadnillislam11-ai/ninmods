@@ -1,4 +1,5 @@
 #include "client.h"
+#include <signal.h>
 
 SocketClient::SocketClient(){
     sockfd = -1;
@@ -30,8 +31,8 @@ bool SocketClient::Connect() {
 
         if (connect(sockfd, (sockaddr *) &addr_unix, sizeof(addr_unix)) == 0) {
             struct timeval tv;
-            tv.tv_sec = 0;
-            tv.tv_usec = 15000; // 15 ms timeout
+            tv.tv_sec = 1;
+            tv.tv_usec = 0; // 1000 ms (1 second) timeout
             setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
             setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
             connected = true;
@@ -58,8 +59,8 @@ bool SocketClient::Connect() {
             setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
 
             struct timeval tv;
-            tv.tv_sec = 0;
-            tv.tv_usec = 15000; // 15 ms timeout
+            tv.tv_sec = 1;
+            tv.tv_usec = 0; // 1000 ms (1 second) timeout
             setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
             setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
             connected = true;
@@ -83,7 +84,7 @@ int SocketClient::sendData(void *inData, size_t size) {
 
     while (size) {
         do {
-            numSent = write(sockfd, buffer, size);
+            numSent = send(sockfd, buffer, size, MSG_NOSIGNAL);
         } while (numSent == -1 && EINTR == errno);
 
         if (numSent <= 0) {
@@ -111,7 +112,7 @@ int SocketClient::recvData(void *outData, size_t size) {
 
     while (size) {
         do {
-            numReceived = read(sockfd, buffer, size);
+            numReceived = recv(sockfd, buffer, size, 0);
         } while (numReceived == -1 && EINTR == errno);
 
         if (numReceived <= 0) {
