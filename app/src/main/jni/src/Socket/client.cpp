@@ -24,6 +24,12 @@ bool SocketClient::Connect() {
         return false;
     }
 
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 15000; // 15 ms timeout to prevent UI thread freezing
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+
     connected = true;
     return true;
 }

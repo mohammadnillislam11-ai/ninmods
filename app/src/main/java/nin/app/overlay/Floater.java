@@ -197,9 +197,9 @@ public class Floater {
         SCREEN_HEIGHT = screenHeight;
 
         boolean isLandscape = screenWidth > screenHeight;
-        // Compact dimensions per user request
-        int menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 280 : 250), (int) (screenWidth * 0.85f));
-        int menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 230 : 270), (int) (screenHeight * 0.70f));
+        // Compact dimensions per user request (lightweight & sleek)
+        int menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 250 : 230), (int) (screenWidth * 0.80f));
+        int menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 220 : 260), (int) (screenHeight * 0.65f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -238,7 +238,7 @@ public class Floater {
             logoImagem.setImageBitmap(FloaterStyles.createDefaultIcon());
         }
 
-        // Main Menu Layout (Compact & Clean)
+        // Main Menu Layout (Compact, Sleek, Zero-Hang)
         menuLayout = new LinearLayout(context);
         menuLayout.setLayoutParams(new LinearLayout.LayoutParams(menuWidth, menuHeight));
         menuLayout.setVisibility(View.GONE);
@@ -246,7 +246,7 @@ public class Floater {
         menuLayout.setBackground(FloaterStyles.createCardBackground(context));
         menuLayout.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6));
 
-        // 1. Header Bar (Draggable, tap logo or header to close, ZERO minimize/close buttons)
+        // 1. Header Bar (Draggable, clean title and close button)
         LinearLayout headerBlock = new LinearLayout(context);
         headerBlock.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         headerBlock.setOrientation(LinearLayout.HORIZONTAL);
@@ -281,6 +281,16 @@ public class Floater {
         brand.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         headerBlock.addView(brand);
+
+        TextView closeBtn = new TextView(context);
+        closeBtn.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 24), FloaterStyles.dp(context, 24)));
+        closeBtn.setGravity(Gravity.CENTER);
+        closeBtn.setText("✕");
+        closeBtn.setTextColor(AppColors.WHITE);
+        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        closeBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        closeBtn.setOnClickListener(v -> closeMenu());
+        headerBlock.addView(closeBtn);
 
         headerBlock.setOnTouchListener(createDragListener(false));
         menuLayout.addView(headerBlock);
@@ -384,6 +394,24 @@ public class Floater {
         }
     }
 
+    private String formatSeekBarText(String name, int value, String type, int id) {
+        if ("Color".equals(type)) {
+            String[] colors = {"White", "Green", "Blue", "Red", "Black", "Yellow", "Cyan", "Magenta", "Gray", "Purple"};
+            if (value >= 0 && value < colors.length) return name + ": " + colors[value];
+        } else if ("BoxType".equals(type)) {
+            String[] boxes = {"Stroke", "Filled", "Corner"};
+            if (value >= 0 && value < boxes.length) return name + ": " + boxes[value];
+        } else if ("LineType".equals(type)) {
+            String[] lines = {"Top", "Center", "Bottom"};
+            if (value >= 0 && value < lines.length) return name + ": " + lines[value];
+        } else if (id == 61) {
+            return value == 0 ? "Target: Head" : "Target: Body";
+        } else if (id == 62) {
+            return value == 0 ? "Priority: AimFov" : "Priority: Distance";
+        }
+        return name + ": " + value;
+    }
+
     public void onNativeAddSeekBar(final String name, final int value, final int max, final String type, final int id) {
         if (!categoryViews.containsKey(currentCategory)) {
             categoryViews.put(currentCategory, new ArrayList<>());
@@ -396,7 +424,7 @@ public class Floater {
         row.setPadding(0, pad, 0, pad);
 
         final TextView tv = new TextView(context);
-        tv.setText(name + ": " + value);
+        tv.setText(formatSeekBarText(name, value, type, id));
         tv.setTextColor(AppColors.TEXT_SUBTITLE);
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         tv.setTypeface(Typeface.DEFAULT);
@@ -408,7 +436,7 @@ public class Floater {
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                tv.setText(name + ": " + progress);
+                tv.setText(formatSeekBarText(name, progress, type, id));
                 ChangesID(id, progress);
             }
             @Override
