@@ -113,14 +113,7 @@ public class MainActivity extends BaseActivity {
         layout.setGravity(Gravity.CENTER_HORIZONTAL);
         layout.setPadding(dp(28), dp(28), dp(28), dp(28));
 
-        GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(Color.parseColor("#E6120D1A"));
-        cardBg.setCornerRadius(dp(16));
-        cardBg.setStroke(dp(1), Color.parseColor("#33F76BF7"));
-        layout.setBackground(cardBg);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            layout.setElevation(dp(8));
-        }
+
 
         ImageView logo = new ImageView(this);
         LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(76), dp(76));
