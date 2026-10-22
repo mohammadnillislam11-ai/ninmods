@@ -695,8 +695,6 @@ Java_power_cheats_Floater_ftKZXivSr(JNIEnv *env, jclass clazz, jobject ctx) {
     if (!Connection.connectClient) {
         startClient();
         Connection.connectClient = true;
-        Toast(env, ctx, OBFUSCATE("ACTIVATING..."), 1, 1);
-        Toast(env, ctx, OBFUSCATE("MOD ACTIVATED"), 1, 1);
     }
 }
 

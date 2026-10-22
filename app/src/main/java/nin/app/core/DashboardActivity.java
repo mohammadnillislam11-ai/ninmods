@@ -105,10 +105,8 @@ public class DashboardActivity extends Activity {
                         return;
                     }
                     Floater.start(DashboardActivity.this);
-                    android.widget.Toast.makeText(DashboardActivity.this, "Floating Menu Started", android.widget.Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     e.printStackTrace();
-                    android.widget.Toast.makeText(DashboardActivity.this, "Error starting menu: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
                 }
             }
 
@@ -116,7 +114,6 @@ public class DashboardActivity extends Activity {
             public void onStopMenu() {
                 try {
                     Floater.stop();
-                    android.widget.Toast.makeText(DashboardActivity.this, "Floating Menu Stopped", android.widget.Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }

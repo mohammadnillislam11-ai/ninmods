@@ -81,6 +81,44 @@ public class Floater {
     private LinearLayout page1Content;
     private LinearLayout page2Content;
 
+    private static final List<String> terminalLogs = new ArrayList<>();
+    private TextView terminalTextView = null;
+    private ScrollView terminalScrollView = null;
+
+    static {
+        terminalLogs.add("> [SYS] NINMODS Tactical Engine v70.0");
+        terminalLogs.add("> [SEC] Kernel Channel: /dev/health_storage_service_alloc");
+        terminalLogs.add("> [IPC] Dual Socket Protocol: Connected");
+        terminalLogs.add("> [MOD] Status: Online (Glassmorphic HUD)");
+        terminalLogs.add("> [READY] Tactical Floater Initialized");
+    }
+
+    public static void logTerminal(String msg) {
+        if (msg == null) return;
+        mainHandler.post(() -> {
+            terminalLogs.add(msg);
+            if (terminalLogs.size() > 50) {
+                terminalLogs.remove(0);
+            }
+            if (activeFloater != null) {
+                activeFloater.updateTerminalView();
+            }
+        });
+    }
+
+    private void updateTerminalView() {
+        if (terminalTextView != null) {
+            StringBuilder sb = new StringBuilder();
+            for (String line : terminalLogs) {
+                sb.append(line).append("\n");
+            }
+            terminalTextView.setText(sb.toString().trim());
+            if (terminalScrollView != null) {
+                terminalScrollView.post(() -> terminalScrollView.fullScroll(View.FOCUS_DOWN));
+            }
+        }
+    }
+
     // Strict Singleton & Lifecycle Control
     public static synchronized void start(Context ctx) {
         if (activeFloater != null && activeFloater.isAttached()) {
@@ -128,12 +166,15 @@ public class Floater {
         } catch (Exception ignored) {}
         categoryViews.clear();
         railTabButtons.clear();
+        terminalTextView = null;
+        terminalScrollView = null;
         activeFloater = null;
     }
 
     public void openMenu() {
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.GONE);
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
+        logTerminal("> [HUD] Tactical Menu Expanded");
         if (rootFrame != null) {
             rootFrame.requestLayout();
             try {
@@ -155,6 +196,7 @@ public class Floater {
     public void closeMenu() {
         if (menuLayout != null) menuLayout.setVisibility(View.GONE);
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.VISIBLE);
+        logTerminal("> [HUD] Menu Collapsed to Floating Icon");
         if (rootFrame != null) {
             rootFrame.requestLayout();
             try {
@@ -214,9 +256,9 @@ public class Floater {
         SCREEN_HEIGHT = screenHeight;
 
         boolean isLandscape = screenWidth > screenHeight;
-        // Tactical 3-Layer Compact Layout dimensions (increased width for spacious controls)
-        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 520 : 430), (int) (screenWidth * 0.96f));
-        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 180 : 230), (int) (screenHeight * 0.65f));
+        // Tactical 3-Layer Compact Layout dimensions (generous width for sliders and dual columns)
+        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 620 : 500), (int) (screenWidth * 0.98f));
+        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 195 : 240), (int) (screenHeight * 0.70f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -229,37 +271,34 @@ public class Floater {
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
         collapsedRelative = new FrameLayout(context);
-        collapsedRelative.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
+        int totalLogoBox = FloaterStyles.dp(context, 76);
+        collapsedRelative.setLayoutParams(new ViewGroup.LayoutParams(totalLogoBox, totalLogoBox));
         collapsedRelative.setVisibility(View.VISIBLE);
 
-        int logoSize = FloaterStyles.dp(context, 50);
+        int logoSize = FloaterStyles.dp(context, 60);
         logoImagem = new ImageView(context);
         FrameLayout.LayoutParams logoLp = new FrameLayout.LayoutParams(logoSize, logoSize);
+        logoLp.gravity = Gravity.BOTTOM | Gravity.LEFT;
         logoImagem.setLayoutParams(logoLp);
         logoImagem.setImageResource(nin.app.R.drawable.nin_logo);
         logoImagem.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logoImagem.setBackground(null); // Pure PNG without circular background
         collapsedRelative.addView(logoImagem);
 
-        // Corner Close Badge (✕) directly on top-right of the logo
+        // Corner Close Badge (✕) spaced away from the logo, with ZERO background
         TextView logoCloseBadge = new TextView(context);
-        int badgeSize = FloaterStyles.dp(context, 17);
+        int badgeSize = FloaterStyles.dp(context, 20);
         FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(badgeSize, badgeSize);
         badgeLp.gravity = Gravity.TOP | Gravity.RIGHT;
+        badgeLp.topMargin = FloaterStyles.dp(context, 2);
+        badgeLp.rightMargin = FloaterStyles.dp(context, 2);
         logoCloseBadge.setLayoutParams(badgeLp);
         logoCloseBadge.setGravity(Gravity.CENTER);
         logoCloseBadge.setText("✕");
-        logoCloseBadge.setTextColor(Color.WHITE);
-        logoCloseBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
+        logoCloseBadge.setTextColor(0xFFFF4D4D);
+        logoCloseBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
         logoCloseBadge.setTypeface(Typeface.DEFAULT_BOLD);
-
-        GradientDrawable badgeBg = new GradientDrawable();
-        badgeBg.setShape(GradientDrawable.OVAL);
-        badgeBg.setColor(FloaterStyles.getColorBadgeClose(context));
-        badgeBg.setStroke(FloaterStyles.dp(context, 1), FloaterStyles.getColor(context, nin.app.R.color.white));
-        logoCloseBadge.setBackground(badgeBg);
+        logoCloseBadge.setBackground(null); // Zero background per user explicit instruction
 
         logoCloseBadge.setOnClickListener(v -> {
             destroyOverlay();
@@ -457,6 +496,58 @@ public class Floater {
         page2Content.setPadding(FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1));
         scroll2.addView(page2Content);
         page2.addView(scroll2);
+
+        // Live Terminal Console Box inside Menu (Replaces dialog/toast messages per user requirement)
+        LinearLayout terminalBox = new LinearLayout(context);
+        LinearLayout.LayoutParams tblp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 48));
+        tblp.topMargin = FloaterStyles.dp(context, 3);
+        terminalBox.setLayoutParams(tblp);
+        terminalBox.setOrientation(LinearLayout.VERTICAL);
+        terminalBox.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 3), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 3));
+
+        GradientDrawable termBg = new GradientDrawable();
+        termBg.setShape(GradientDrawable.RECTANGLE);
+        termBg.setCornerRadius(FloaterStyles.dp(context, 6));
+        termBg.setColor(0xD908020D); // dark translucent terminal background
+        termBg.setStroke(FloaterStyles.dp(context, 1), FloaterStyles.getColorBorder(context));
+        terminalBox.setBackground(termBg);
+
+        // Terminal Top Title Row with mini status dots
+        LinearLayout termTop = new LinearLayout(context);
+        termTop.setOrientation(LinearLayout.HORIZONTAL);
+        termTop.setGravity(Gravity.CENTER_VERTICAL);
+        termTop.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView termDot = new TextView(context);
+        termDot.setText("● ");
+        termDot.setTextColor(0xFF22C55E); // Green status dot
+        termDot.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f);
+        termTop.addView(termDot);
+
+        TextView termTitle = new TextView(context);
+        termTitle.setText("CONSOLE LOG");
+        termTitle.setTextColor(FloaterStyles.getColorSectionTitle(context));
+        termTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
+        termTitle.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+        termTop.addView(termTitle);
+        terminalBox.addView(termTop);
+
+        terminalScrollView = new ScrollView(context);
+        terminalScrollView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        terminalScrollView.setVerticalScrollBarEnabled(false);
+
+        terminalTextView = new TextView(context);
+        terminalTextView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        terminalTextView.setTextColor(0xFF6CF6A8); // Terminal phosphor neon green
+        terminalTextView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
+        terminalTextView.setTypeface(Typeface.MONOSPACE);
+        terminalTextView.setLineSpacing(0, 1.1f);
+        terminalScrollView.addView(terminalTextView);
+        terminalBox.addView(terminalScrollView);
+
+        page2.addView(terminalBox);
+        updateTerminalView();
+
         menuContent.addView(page2);
         menuLayout.addView(menuContent);
 
@@ -484,6 +575,9 @@ public class Floater {
         try {
             Functions();
             ftKZXivSr(context);
+            logTerminal("> [SYS] Engine Functions Loaded (" + categoryViews.size() + " categories)");
+            logTerminal("> [OK] Secure Driver Channel Active");
+            logTerminal("> [STATUS] System Ready. Touch logo to open.");
         } catch (Throwable t) {
             t.printStackTrace();
         }
@@ -538,7 +632,7 @@ public class Floater {
             p1Cat = "Preferences";
             p2Cat = "System";
             p1Header = "TACTICAL PREFS";
-            p2Header = "ENGINE STATUS";
+            p2Header = "LIVE TERMINAL";
         }
 
         if (page1Title != null) page1Title.setText(p1Header);
@@ -604,6 +698,7 @@ public class Floater {
         sw.setScaleY(0.80f);
         sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
             ChangesID(id, isChecked ? 1 : 0);
+            logTerminal("> [EXEC] " + name + " -> " + (isChecked ? "ON" : "OFF"));
         });
         row.addView(sw);
 
@@ -654,9 +749,12 @@ public class Floater {
         // Slide Bar (SeekBar) for both ranges and discrete options per user explicit rule
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.VERTICAL);
-        row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = FloaterStyles.dp(context, 3);
+        rowLp.bottomMargin = FloaterStyles.dp(context, 4);
+        row.setLayoutParams(rowLp);
         int pad = FloaterStyles.dp(context, 2);
-        row.setPadding(0, pad, 0, pad);
+        row.setPadding(pad, pad, pad, pad);
 
         LinearLayout topRow = new LinearLayout(context);
         topRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -669,16 +767,17 @@ public class Floater {
         tv.setSingleLine(true);
         tv.setMaxLines(1);
         tv.setTextColor(FloaterStyles.getColorTextPrimary(context));
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         tv.setTypeface(Typeface.DEFAULT);
+        tv.setPadding(0, 0, FloaterStyles.dp(context, 8), 0);
         topRow.addView(tv);
 
         final TextView valLabel = new TextView(context);
         valLabel.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         valLabel.setTextColor(FloaterStyles.getColorSectionTitle(context));
-        valLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
+        valLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         valLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        valLabel.setPadding(0, 0, FloaterStyles.dp(context, 4), 0);
+        valLabel.setPadding(FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 4), 0);
 
         int initVal = isOption ? Math.max(0, Math.min(value, options.length - 1)) : value;
         valLabel.setText(isOption ? options[initVal] : (initVal + getSliderUnit(name)));
@@ -686,9 +785,12 @@ public class Floater {
         row.addView(topRow);
 
         SeekBar sb = new SeekBar(context);
+        LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sbLp.topMargin = FloaterStyles.dp(context, 2);
+        sb.setLayoutParams(sbLp);
         sb.setMax(seekMax);
         sb.setProgress(initVal);
-        sb.setPadding(FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 2));
+        sb.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 2));
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -702,7 +804,9 @@ public class Floater {
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                logTerminal("> [SET] " + name + " -> " + valLabel.getText());
+            }
         });
         row.addView(sb);
 
