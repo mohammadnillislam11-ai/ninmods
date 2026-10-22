@@ -122,6 +122,7 @@ namespace Offsets {
     constexpr uintptr_t UmaData = 0x28;
     constexpr uintptr_t UmaDataCheck = 0x81;
     constexpr uintptr_t EnemyCheck7C = 0x7C;
+    constexpr uintptr_t IsDead = 0x7C; // New_Brutal PL_ISDEAD
     
     constexpr uintptr_t HHCBNAPCKHF = 0x19F8;
     constexpr uintptr_t HHCBDeadPtr = 0x20;

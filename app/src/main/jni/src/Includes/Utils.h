@@ -75,13 +75,28 @@ static const UTF8 firstByteMark[7] = { 0x00, 0x00, static_cast<UTF8>(0xC0), stat
 
 #include <dirent.h>
 
-// Encontra o PID do processo pelo nome do pacote com varredura direta em /proc
-pid_t FindGamePid() {
-    const char* packages[] = {
-        "com.dts.freefireth",
-        "com.dts.freefiremax"
-    };
+// Check if an Android process is actually running in active foreground (not sleeping/cached by OS)
+static bool IsProcessActiveForeground(pid_t pid) {
+    char oomPath[64];
+    snprintf(oomPath, sizeof(oomPath), "/proc/%d/oom_score_adj", pid);
+    FILE* fp = fopen(oomPath, "r");
+    if (!fp) return false;
+    int score = 1000;
+    if (fscanf(fp, "%d", &score) == 1) {
+        fclose(fp);
+        // On Android:
+        // Active foreground app has oom_score_adj <= 200 (usually 0)
+        // Background cached/dormant processes have oom_score_adj >= 900
+        return score < 900;
+    }
+    fclose(fp);
+    return true;
+}
 
+// Encontra o PID do processo com prioridade estrita para Free Fire Normal (com.dts.freefireth)
+// e validação contra processos suspensos/em cache do Android
+pid_t FindGamePid() {
+    // 1. Pass 1: Look specifically for Normal Free Fire (com.dts.freefireth)
     DIR* dir = opendir("/proc");
     if (dir) {
         struct dirent* entry;
@@ -96,12 +111,45 @@ pid_t FindGamePid() {
                     if (fp) {
                         char cmdline[256] = {0};
                         if (fgets(cmdline, sizeof(cmdline), fp)) {
-                            for (const char* pkg : packages) {
-                                if (strstr(cmdline, pkg) != nullptr) {
-                                    fclose(fp);
+                            if (strstr(cmdline, "com.dts.freefireth") != nullptr) {
+                                fclose(fp);
+                                closedir(dir);
+                                NIN_LOGI("DAEMON", "Found Game PID: %d (com.dts.freefireth via /proc)", pid);
+                                return pid;
+                            }
+                        }
+                        fclose(fp);
+                    }
+                }
+            }
+        }
+        closedir(dir);
+    }
+
+    // 2. Pass 2: Only if com.dts.freefireth is NOT present, check active Free Fire MAX
+    dir = opendir("/proc");
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            if (entry->d_type == DT_DIR) {
+                char* endptr = nullptr;
+                pid_t pid = strtol(entry->d_name, &endptr, 10);
+                if (endptr && *endptr == '\0' && pid > 0) {
+                    char cmdlinePath[64];
+                    snprintf(cmdlinePath, sizeof(cmdlinePath), "/proc/%d/cmdline", pid);
+                    FILE* fp = fopen(cmdlinePath, "r");
+                    if (fp) {
+                        char cmdline[256] = {0};
+                        if (fgets(cmdline, sizeof(cmdline), fp)) {
+                            if (strstr(cmdline, "com.dts.freefiremax") != nullptr) {
+                                fclose(fp);
+                                // Ensure it's not a dormant cached background process!
+                                if (IsProcessActiveForeground(pid)) {
                                     closedir(dir);
-                                    NIN_LOGI("DAEMON", "Found Game PID: %d (%s via /proc)", pid, pkg);
+                                    NIN_LOGI("DAEMON", "Found Game PID: %d (com.dts.freefiremax active foreground)", pid);
                                     return pid;
+                                } else {
+                                    NIN_LOGI("DAEMON", "Ignoring cached dormant background com.dts.freefiremax (PID: %d)", pid);
                                 }
                             }
                         }
@@ -113,24 +161,6 @@ pid_t FindGamePid() {
         closedir(dir);
     }
 
-    for (const char* pkg : packages) {
-        char cmd[64];
-        snprintf(cmd, sizeof(cmd), "pidof %s 2>/dev/null", pkg);
-        FILE* p = popen(cmd, "r");
-        if (p) {
-            char buf[32] = {0};
-            if (fgets(buf, sizeof(buf), p)) {
-                pid_t pid = atoi(buf);
-                pclose(p);
-                if (pid > 0) {
-                    NIN_LOGI("DAEMON", "Found Game PID: %d (%s via pidof)", pid, pkg);
-                    return pid;
-                }
-            } else {
-                pclose(p);
-            }
-        }
-    }
     return 0;
 }
 
