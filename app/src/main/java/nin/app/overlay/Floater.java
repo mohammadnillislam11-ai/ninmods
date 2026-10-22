@@ -85,7 +85,7 @@ public class Floater {
     private LinearLayout firstSectionMenuContainer;
 
     private final Map<String, List<View>> categoryViews = new LinkedHashMap<>();
-    private final List<TextView> railTabButtons = new ArrayList<>();
+    private final List<ImageView> railTabButtons = new ArrayList<>();
     private int activeRailIndex = 0;
     private String currentCategory = "Aim";
     private String selectedCategoryName = "Aim";
@@ -304,24 +304,29 @@ public class Floater {
         railSep.setBackgroundColor(FloaterStyles.ColorBorder);
         iconRail.addView(railSep);
 
-        // Icon Buttons: Tab 0 (Aim 🎯), Tab 1 (ESP 👁), Tab 2 (Position Fix 📐), Tab 3 (Settings ⚙)
+        // Vector Icon Buttons: Tab 0 (Aim), Tab 1 (ESP), Tab 2 (Position Fix), Tab 3 (Settings)
         iconTabsContainer = new LinearLayout(context);
         iconTabsContainer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
         iconTabsContainer.setOrientation(LinearLayout.VERTICAL);
         iconTabsContainer.setGravity(Gravity.CENTER_HORIZONTAL);
 
         railTabButtons.clear();
-        String[] railIcons = new String[]{"🎯", "👁", "📐", "⚙"};
-        for (int i = 0; i < railIcons.length; i++) {
+        int[] railDrawables = new int[]{
+                nin.app.R.drawable.ic_rail_aim,
+                nin.app.R.drawable.ic_rail_esp,
+                nin.app.R.drawable.ic_rail_position,
+                nin.app.R.drawable.ic_rail_settings
+        };
+        for (int i = 0; i < railDrawables.length; i++) {
             final int tabIndex = i;
-            TextView btn = new TextView(context);
-            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(FloaterStyles.dp(context, 30), FloaterStyles.dp(context, 30));
+            ImageView btn = new ImageView(context);
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(FloaterStyles.dp(context, 28), FloaterStyles.dp(context, 28));
             blp.topMargin = FloaterStyles.dp(context, 3);
             blp.bottomMargin = FloaterStyles.dp(context, 3);
             btn.setLayoutParams(blp);
-            btn.setGravity(Gravity.CENTER);
-            btn.setText(railIcons[i]);
-            btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            btn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            btn.setPadding(FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 4));
+            btn.setImageResource(railDrawables[i]);
             btn.setOnClickListener(v -> selectRailTab(tabIndex));
             iconTabsContainer.addView(btn);
             railTabButtons.add(btn);
@@ -471,13 +476,13 @@ public class Floater {
 
     private void highlightActiveRailTab(int index) {
         for (int i = 0; i < railTabButtons.size(); i++) {
-            TextView btn = railTabButtons.get(i);
+            ImageView btn = railTabButtons.get(i);
             if (i == index) {
                 btn.setBackground(FloaterStyles.createActiveIconRailDrawable(context));
-                btn.setTextColor(0xFFFFFFFF);
+                btn.setColorFilter(0xFFFFFFFF);
             } else {
                 btn.setBackground(FloaterStyles.createInactiveIconRailDrawable(context));
-                btn.setTextColor(0xFF70758F);
+                btn.setColorFilter(0xFF70758F);
             }
         }
     }
