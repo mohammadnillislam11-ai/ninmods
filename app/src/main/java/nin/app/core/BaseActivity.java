@@ -8,6 +8,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import nin.app.R;
+import nin.app.ui.FooterView;
 import nin.app.ui.ParticleNetworkView;
 
 /**
@@ -16,12 +17,14 @@ import nin.app.ui.ParticleNetworkView;
  * Wraps any screen layout with an isolated, hardware-accelerated blurred
  * particle network animation running in the background while keeping all foreground
  * cards, text, buttons, and inputs 100% sharp and unaffected.
+ * Automatically pins the universal FooterView permanently to the screen footer across all activities.
  */
 public abstract class BaseActivity extends Activity {
 
     private FrameLayout baseRoot;
     private ParticleNetworkView particleBg;
     private FrameLayout contentContainer;
+    private FooterView universalFooter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,10 +38,15 @@ public abstract class BaseActivity extends Activity {
             baseRoot = (FrameLayout) inflater.inflate(R.layout.activity_base, null);
             particleBg = baseRoot.findViewById(R.id.particleBg);
             contentContainer = baseRoot.findViewById(R.id.contentContainer);
+            universalFooter = baseRoot.findViewById(R.id.universalFooter);
 
             if (!enableParticleBackground() && particleBg != null) {
                 particleBg.setVisibility(View.GONE);
                 particleBg.stop();
+            }
+
+            if (!enableUniversalFooter() && universalFooter != null) {
+                universalFooter.setVisibility(View.GONE);
             }
         }
     }
@@ -115,6 +123,33 @@ public abstract class BaseActivity extends Activity {
 
     public FrameLayout getContentContainer() {
         return contentContainer;
+    }
+
+    public FooterView getFooterView() {
+        return universalFooter;
+    }
+
+    protected boolean enableUniversalFooter() {
+        return true;
+    }
+
+    /**
+     * Applies full-screen hardware-accelerated blur across the entire activity layout
+     * (background, content, and footer) when modal popups/dialogs are displayed.
+     * Clears instantly when dismissed.
+     */
+    public void setScreenBlur(boolean enable) {
+        if (baseRoot == null) return;
+        if (Build.VERSION.SDK_INT >= 31) { // Android 12+ (Build.VERSION_CODES.S)
+            if (enable) {
+                android.graphics.RenderEffect blurEffect = android.graphics.RenderEffect.createBlurEffect(
+                        25.0f, 25.0f, android.graphics.Shader.TileMode.CLAMP
+                );
+                baseRoot.setRenderEffect(blurEffect);
+            } else {
+                baseRoot.setRenderEffect(null);
+            }
+        }
     }
 
     @Override

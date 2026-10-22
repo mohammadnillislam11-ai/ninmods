@@ -35,7 +35,7 @@ public class SidebarView {
         sideLp.gravity = Gravity.START;
         sidebar.setLayoutParams(sideLp);
         sidebar.setOrientation(LinearLayout.VERTICAL);
-        sidebar.setBackgroundColor(AppColors.MAGENTA_SURFACE);
+        sidebar.setBackgroundColor(AppColors.MAGENTA_CARD); // Matches card and header color exactly
 
         // Sidebar Header
         LinearLayout sideHeader = new LinearLayout(context);

@@ -146,22 +146,6 @@ public class PricingActivity extends BaseActivity {
                 true
         ));
 
-        // Official Version Footer inside scrollable content
-        TextView pricingFooter = new TextView(this);
-        LinearLayout.LayoutParams pfLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        pfLp.topMargin = dp(16);
-        pfLp.bottomMargin = dp(12);
-        pricingFooter.setLayoutParams(pfLp);
-        pricingFooter.setGravity(Gravity.CENTER);
-        pricingFooter.setText("Version: " + getString(R.string.app_version));
-        pricingFooter.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        pricingFooter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        pricingFooter.setTypeface(Typeface.DEFAULT_BOLD);
-        content.addView(pricingFooter);
-
         scroll.addView(content);
         layout.addView(scroll);
         root.addView(layout);

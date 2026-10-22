@@ -118,22 +118,6 @@ public class DeviceInfoActivity extends BaseActivity {
         dispCard.addView(createRow("Root Access", isRootAvailable() ? "Granted (su active)" : "Not Detected"));
         content.addView(dispCard);
 
-        // Official Version Footer inside scrollable content
-        TextView devFooter = new TextView(this);
-        LinearLayout.LayoutParams dfLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        dfLp.topMargin = dp(16);
-        dfLp.bottomMargin = dp(12);
-        devFooter.setLayoutParams(dfLp);
-        devFooter.setGravity(Gravity.CENTER);
-        devFooter.setText("Version: " + getString(R.string.app_version));
-        devFooter.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        devFooter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        devFooter.setTypeface(Typeface.DEFAULT_BOLD);
-        content.addView(devFooter);
-
         scroll.addView(content);
         layout.addView(scroll);
 

@@ -46,7 +46,7 @@ public class HeaderView {
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(context, 12), 0, dp(context, 14), 0);
-        header.setBackgroundColor(AppColors.MAGENTA_SURFACE); // Clean solid background, zero borders
+        header.setBackgroundColor(AppColors.MAGENTA_CARD); // Exactly matches card color
 
         // 3-Line Hamburger Menu Button (opens sidebar drawer)
         Button menuBtn = new Button(context);
@@ -77,20 +77,16 @@ public class HeaderView {
 
         header.addView(brandBox);
 
-        // Circular Profile Avatar Button (Right Edge)
+        // Profile Avatar Button (Right Edge - Clean icon, zero border)
         android.widget.FrameLayout profileBtn = new android.widget.FrameLayout(context);
         LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(dp(context, 38), dp(context, 38));
         profileBtn.setLayoutParams(pLp);
-
-        android.graphics.drawable.GradientDrawable pBg = new android.graphics.drawable.GradientDrawable();
-        pBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-        pBg.setColor(AppColors.MAGENTA_CHIP);
-        profileBtn.setBackground(pBg);
+        profileBtn.setBackgroundColor(Color.TRANSPARENT);
 
         android.widget.ImageView pIcon = new android.widget.ImageView(context);
         android.widget.FrameLayout.LayoutParams pIconLp = new android.widget.FrameLayout.LayoutParams(
-                dp(context, 22),
-                dp(context, 22),
+                dp(context, 24),
+                dp(context, 24),
                 Gravity.CENTER
         );
         pIcon.setLayoutParams(pIconLp);

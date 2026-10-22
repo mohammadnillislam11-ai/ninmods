@@ -25,6 +25,10 @@
     <color name="nin_border_subtle">#2B0E38</color>
     <color name="nin_switch_track_on">#16D8FF</color>
     <color name="nin_switch_track_off">#2C3A4A</color>
+    <color name="magenta_text_dim">#E2BDE8</color>
+    <color name="magenta_card_glass">#2BF76BF7</color>
+    <color name="magenta_card_border">#48F76BF7</color>
+    <color name="magenta_chip_glass">#32F76BF7</color>
 
     <!-- Tactical Floater Overlay Glassmorphism Colors (100% XML Driven) -->
     <!-- Semi-transparent alpha (0xC4 / ~77%) produces translucent frosted glass where background shines through -->

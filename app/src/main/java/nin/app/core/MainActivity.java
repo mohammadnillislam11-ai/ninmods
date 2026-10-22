@@ -156,21 +156,6 @@ public class MainActivity extends BaseActivity {
         btnAction.setBackground(btnBg);
         layout.addView(btnAction);
 
-        // Official Version Footer
-        TextView splashFooter = new TextView(this);
-        LinearLayout.LayoutParams sfLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        sfLp.topMargin = dp(24);
-        splashFooter.setLayoutParams(sfLp);
-        splashFooter.setGravity(Gravity.CENTER);
-        splashFooter.setText("Version: " + getString(R.string.app_version));
-        splashFooter.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        splashFooter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        splashFooter.setTypeface(Typeface.DEFAULT_BOLD);
-        layout.addView(splashFooter);
-
         root.addView(layout);
         setContentView(root);
     }

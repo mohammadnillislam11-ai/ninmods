@@ -407,6 +407,9 @@ public class DashboardActivity extends BaseActivity {
 
         dialogRoot.addView(card);
         dialog.setContentView(dialogRoot);
+        dialog.setOnShowListener(d -> setScreenBlur(true));
+        dialog.setOnDismissListener(d -> setScreenBlur(false));
+
         if (dialog.getWindow() != null) {
             Window window = dialog.getWindow();
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
@@ -415,11 +418,13 @@ public class DashboardActivity extends BaseActivity {
 
             // Official Android Native Background Blur and Dim Component
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(0.70f);
+            window.setDimAmount(0.65f);
 
             if (Build.VERSION.SDK_INT >= 31) { // Android 12+ (Build.VERSION_CODES.S)
                 window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-                window.getAttributes().setBlurBehindRadius(dp(20));
+                WindowManager.LayoutParams lp = window.getAttributes();
+                lp.setBlurBehindRadius(dp(25));
+                window.setAttributes(lp);
             }
         }
         dialog.show();

@@ -51,19 +51,19 @@
         <activity
             android:name="nin.app.auth.LoginActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize"
+            android:windowSoftInputMode="stateHidden|adjustPan"
             android:label="@string/app_name" />
 
         <activity
             android:name="nin.app.auth.SignupActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize"
+            android:windowSoftInputMode="stateHidden|adjustPan"
             android:label="Sign Up" />
 
         <activity
             android:name="nin.app.auth.ResetPasswordActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize"
+            android:windowSoftInputMode="stateHidden|adjustPan"
             android:label="Reset Password" />
 
         <activity
@@ -79,7 +79,7 @@
         <activity
             android:name="nin.app.core.ProfileActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize"
+            android:windowSoftInputMode="stateHidden|adjustPan"
             android:label="Account Profile" />
 
         <service

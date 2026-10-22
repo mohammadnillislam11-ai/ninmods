@@ -67,7 +67,7 @@ public class SignupActivity extends BaseActivity {
         ));
         centerContainer.setOrientation(LinearLayout.VERTICAL);
         centerContainer.setGravity(Gravity.CENTER);
-        centerContainer.setPadding(dp(16), dp(28), dp(16), dp(20));
+        centerContainer.setPadding(dp(16), dp(28), dp(16), dp(48));
 
         // Main Board Column (Seamless on screen - flows naturally inside particle animation)
         LinearLayout board = new LinearLayout(this);
@@ -181,23 +181,6 @@ public class SignupActivity extends BaseActivity {
         linksRow.addView(backToLoginLink);
 
         board.addView(linksRow);
-
-        // 10. Official Version Footer inside scrollable content (Never overlaps keyboard)
-        TextView footerVersion = new TextView(this);
-        LinearLayout.LayoutParams fvLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        fvLp.gravity = Gravity.CENTER_HORIZONTAL;
-        fvLp.topMargin = dp(24);
-        fvLp.bottomMargin = dp(8);
-        footerVersion.setLayoutParams(fvLp);
-        footerVersion.setGravity(Gravity.CENTER);
-        footerVersion.setText("Version: " + getString(R.string.app_version));
-        footerVersion.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        footerVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        footerVersion.setTypeface(Typeface.DEFAULT_BOLD);
-        board.addView(footerVersion);
 
         centerContainer.addView(board);
         scrollView.addView(centerContainer);

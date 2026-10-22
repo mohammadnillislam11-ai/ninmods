@@ -17,4 +17,11 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Universal Fixed Footer (Permanently fixed at screen bottom on every screen) -->
+    <nin.app.ui.FooterView
+        android:id="@+id/universalFooter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal" />
+
 </FrameLayout>
