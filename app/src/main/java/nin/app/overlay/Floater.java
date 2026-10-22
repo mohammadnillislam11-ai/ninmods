@@ -40,6 +40,7 @@ public class Floater {
     public static native void Functions();
     public static native void ChangesID(int ID, int Value);
     public static native void ftKZXivSr(Context context);
+    public static native void ftKwCvSr();
     public static native void PxbftKZXivSr(ESPView espView, Canvas canvas, int width, int height);
 
     public static int SCREEN_WIDTH = 0;
