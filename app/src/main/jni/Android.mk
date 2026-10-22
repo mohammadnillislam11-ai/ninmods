@@ -14,6 +14,11 @@ LOCAL_MODULE    := ninmods
 LOCAL_SRC_FILES := \
     src/Client.cpp \
     src/Socket/client.cpp \
+    src/imgui/imgui.cpp \
+    src/imgui/imgui_draw.cpp \
+    src/imgui/imgui_tables.cpp \
+    src/imgui/imgui_widgets.cpp \
+    src/imgui/imgui_impl_opengl3.cpp \
     src/frnetlib/Base64.cpp \
     src/frnetlib/Http.cpp \
     src/frnetlib/HttpRequest.cpp \
@@ -28,6 +33,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/src \
+    $(LOCAL_PATH)/src/imgui \
     $(LOCAL_PATH)/src/Includes \
     $(LOCAL_PATH)/src/Includes/curl \
     $(LOCAL_PATH)/src/Socket \
@@ -39,7 +45,7 @@ LOCAL_CFLAGS    := -Wno-error=format-security -fpermissive -fvisibility=hidden -
 
 # Moved -latomic here to fix the linker warning
 LOCAL_LDFLAGS   := -Wl,--exclude-libs,ALL -s -latomic
-LOCAL_LDLIBS    := -llog -landroid -lz
+LOCAL_LDLIBS    := -llog -landroid -lGLESv3 -lEGL -lz
 
 LOCAL_STATIC_LIBRARIES := curl_static
 LOCAL_ARM_MODE  := arm

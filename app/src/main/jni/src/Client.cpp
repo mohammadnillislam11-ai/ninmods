@@ -30,6 +30,11 @@
 #include <dlfcn.h>
 #include <elf.h>                // For ELF structures
 #include <thread>
+#include <GLES3/gl3.h>
+#include <EGL/egl.h>
+#include "imgui.h"
+#include "imgui_internal.h"
+#include "imgui_impl_opengl3.h"
 
 
 // ============================================
@@ -57,6 +62,227 @@ float g_espLeftAdjust = 0.0f;
 float g_espRightAdjust = 0.0f;
 
 static bool showFOVCircle = false;
+
+static bool g_ImGuiInitialized = false;
+static int g_ScreenWidth = 0;
+static int g_ScreenHeight = 0;
+
+inline ImU32 ToImU32(const Color& c, float alphaMultiplier = 1.0f) {
+    int r = (int)std::clamp(c.r, 0.0f, 255.0f);
+    int g = (int)std::clamp(c.g, 0.0f, 255.0f);
+    int b = (int)std::clamp(c.b, 0.0f, 255.0f);
+    int a = (int)std::clamp(c.a * alphaMultiplier, 0.0f, 255.0f);
+    return IM_COL32(r, g, b, a);
+}
+
+void RenderHardwareESP(int screenWidth, int screenHeight) {
+    if (screenWidth <= 0 || screenHeight <= 0) return;
+    if (!isConnected()) return;
+
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+
+    // 1. Draw FOV Circle
+    if (Actived.activar && pPlayer.silen4a && showFOVCircle && pPlayer.AimFov > 0) {
+        float centerX = screenWidth * 0.5f;
+        float centerY = screenHeight * 0.5f;
+        float radius = (pPlayer.AimFov / 180.0f) * (screenHeight * 0.5f);
+        radius *= pPlayer.AimFovScale;
+        if (radius < 30.0f) radius = 30.0f;
+
+        ImVec2 center(centerX, centerY);
+        ImU32 fovColor = ToImU32(pEspPlayer.espColor);
+        ImU32 fovGlow = (fovColor & 0x00FFFFFF) | (0x40 << 24);
+
+        draw->AddCircle(center, radius + 2.0f, fovGlow, 64, 4.0f);
+        draw->AddCircle(center, radius, fovColor, 64, 1.8f);
+        draw->AddCircleFilled(center, 2.5f, IM_COL32(255, 255, 255, 255), 16);
+    }
+
+    // 2. Fetch live data from daemon
+    Response response = getData(screenWidth, screenHeight);
+    if (!response.Success) return;
+
+    // 3. Live Threat Counter HUD (Safe / Danger)
+    if (Actived.activar && pEspPlayer.espDrawCount) {
+        const bool hasVisible = response.VisibleEnemyCount > 0;
+        const bool hasNear = response.VisibleNearOffScreenEnemyCount > 0;
+
+        float topY = 75.0f;
+        float badgeH = 32.0f;
+        float badgeRadius = 16.0f;
+
+        if (!hasVisible && !hasNear) {
+            float badgeW = 140.0f;
+            float startX = (screenWidth - badgeW) * 0.5f;
+            ImVec2 minP(startX, topY);
+            ImVec2 maxP(startX + badgeW, topY + badgeH);
+
+            draw->AddRectFilled(minP, maxP, IM_COL32(20, 160, 60, 220), badgeRadius);
+            draw->AddRect(minP, maxP, IM_COL32(100, 255, 140, 200), badgeRadius, 0, 1.5f);
+
+            const char* txt = "AREA SAFE";
+            ImVec2 txtSz = ImGui::CalcTextSize(txt);
+            draw->AddText(ImVec2(startX + (badgeW - txtSz.x) * 0.5f, topY + (badgeH - txtSz.y) * 0.5f),
+                          IM_COL32(255, 255, 255, 255), txt);
+        } else {
+            float sectionW = 110.0f;
+            float gap = 10.0f;
+            int sections = (hasVisible ? 1 : 0) + (hasNear ? 1 : 0);
+            float totalW = sections * sectionW + (sections - 1) * gap;
+            float curX = (screenWidth - totalW) * 0.5f;
+
+            if (hasVisible) {
+                ImVec2 minP(curX, topY);
+                ImVec2 maxP(curX + sectionW, topY + badgeH);
+                draw->AddRectFilled(minP, maxP, IM_COL32(235, 40, 40, 220), badgeRadius);
+                draw->AddRect(minP, maxP, IM_COL32(255, 140, 140, 220), badgeRadius, 0, 1.5f);
+
+                char buf[32];
+                snprintf(buf, sizeof(buf), "FOE: %d", response.VisibleEnemyCount);
+                ImVec2 sz = ImGui::CalcTextSize(buf);
+                draw->AddText(ImVec2(curX + (sectionW - sz.x) * 0.5f, topY + (badgeH - sz.y) * 0.5f),
+                              IM_COL32(255, 255, 255, 255), buf);
+                curX += sectionW + gap;
+            }
+
+            if (hasNear) {
+                ImVec2 minP(curX, topY);
+                ImVec2 maxP(curX + sectionW, topY + badgeH);
+                draw->AddRectFilled(minP, maxP, IM_COL32(240, 150, 20, 220), badgeRadius);
+                draw->AddRect(minP, maxP, IM_COL32(255, 210, 120, 220), badgeRadius, 0, 1.5f);
+
+                char buf[32];
+                snprintf(buf, sizeof(buf), "NEAR: %d", response.VisibleNearOffScreenEnemyCount);
+                ImVec2 sz = ImGui::CalcTextSize(buf);
+                draw->AddText(ImVec2(curX + (sectionW - sz.x) * 0.5f, topY + (badgeH - sz.y) * 0.5f),
+                              IM_COL32(255, 255, 255, 255), buf);
+            }
+        }
+    }
+
+    if (response.PlayerCount <= 0 || !Actived.activar) return;
+
+    float totalXAdjust = g_espRightAdjust - g_espLeftAdjust;
+    float globalThickness = pEspPlayer.thickness > 0.5f ? pEspPlayer.thickness : 1.5f;
+
+    for (int i = 0; i < response.PlayerCount; i++) {
+        const auto& player = response.Players[i];
+        if (player.Head == Vector3::Zero() || player.Toe == Vector3::Zero()) continue;
+
+        float distance = player.Distancia;
+        if (distance < 0.1f || distance > 150.0f) continue;
+
+        float headToFeetHeight = std::abs(player.Toe.Y - player.Head.Y);
+        float boxHeight = headToFeetHeight * 1.15f;
+        float width = boxHeight * 0.48f;
+
+        float boxY = player.Head.Y - (boxHeight * 0.12f);
+        float boxX = player.Head.X - (width * 0.5f) + totalXAdjust;
+        float adjustedHeadX = player.Head.X + totalXAdjust;
+
+        Color baseColor = pEspPlayer.espColor;
+        if (player.Name) baseColor = Color::Red();         // Bot
+        if (player.IsCaido) baseColor = Color(255, 200, 0); // Knocked
+
+        ImU32 mainCol = ToImU32(baseColor);
+        ImU32 glowCol = (mainCol & 0x00FFFFFF) | (0x44 << 24);
+        ImU32 shadowCol = IM_COL32(0, 0, 0, 180);
+
+        // --- ESP LINE ---
+        if (pEspPlayer.espLinha) {
+            ImVec2 startP;
+            if (pEspPlayer.lineType == LINE_TOP) {
+                startP = ImVec2(screenWidth * 0.5f, 0.0f);
+            } else if (pEspPlayer.lineType == LINE_CENTER) {
+                startP = ImVec2(screenWidth * 0.5f, screenHeight * 0.5f);
+            } else {
+                startP = ImVec2(screenWidth * 0.5f, (float)screenHeight);
+            }
+
+            ImVec2 endP = (pEspPlayer.lineType == LINE_BOTTOM)
+                ? ImVec2(adjustedHeadX, boxY + boxHeight)
+                : ImVec2(adjustedHeadX, boxY);
+
+            draw->AddLine(startP, endP, glowCol, globalThickness + 2.0f);
+            draw->AddLine(startP, endP, mainCol, globalThickness);
+        }
+
+        // --- ESP BOX ---
+        if (pEspPlayer.espCaixa) {
+            ImVec2 bMin(boxX, boxY);
+            ImVec2 bMax(boxX + width, boxY + boxHeight);
+
+            if (pEspPlayer.boxType == BOX_CORNER) {
+                float cs = width * 0.25f;
+                draw->AddLine(ImVec2(bMin.x+1, bMin.y+1), ImVec2(bMin.x + cs+1, bMin.y+1), shadowCol, globalThickness + 1.0f);
+                draw->AddLine(ImVec2(bMin.x+1, bMin.y+1), ImVec2(bMin.x+1, bMin.y + cs+1), shadowCol, globalThickness + 1.0f);
+                draw->AddLine(ImVec2(bMax.x+1, bMin.y+1), ImVec2(bMax.x - cs+1, bMin.y+1), shadowCol, globalThickness + 1.0f);
+                draw->AddLine(ImVec2(bMax.x+1, bMin.y+1), ImVec2(bMax.x+1, bMin.y + cs+1), shadowCol, globalThickness + 1.0f);
+                draw->AddLine(ImVec2(bMin.x+1, bMax.y+1), ImVec2(bMin.x + cs+1, bMax.y+1), shadowCol, globalThickness + 1.0f);
+                draw->AddLine(ImVec2(bMin.x+1, bMax.y+1), ImVec2(bMin.x+1, bMax.y - cs+1), shadowCol, globalThickness + 1.0f);
+                draw->AddLine(ImVec2(bMax.x+1, bMax.y+1), ImVec2(bMax.x - cs+1, bMax.y+1), shadowCol, globalThickness + 1.0f);
+                draw->AddLine(ImVec2(bMax.x+1, bMax.y+1), ImVec2(bMax.x+1, bMax.y - cs+1), shadowCol, globalThickness + 1.0f);
+
+                draw->AddLine(ImVec2(bMin.x, bMin.y), ImVec2(bMin.x + cs, bMin.y), mainCol, globalThickness);
+                draw->AddLine(ImVec2(bMin.x, bMin.y), ImVec2(bMin.x, bMin.y + cs), mainCol, globalThickness);
+                draw->AddLine(ImVec2(bMax.x, bMin.y), ImVec2(bMax.x - cs, bMin.y), mainCol, globalThickness);
+                draw->AddLine(ImVec2(bMax.x, bMin.y), ImVec2(bMax.x, bMin.y + cs), mainCol, globalThickness);
+                draw->AddLine(ImVec2(bMin.x, bMax.y), ImVec2(bMin.x + cs, bMax.y), mainCol, globalThickness);
+                draw->AddLine(ImVec2(bMin.x, bMax.y), ImVec2(bMin.x, bMax.y - cs), mainCol, globalThickness);
+                draw->AddLine(ImVec2(bMax.x, bMax.y), ImVec2(bMax.x - cs, bMax.y), mainCol, globalThickness);
+                draw->AddLine(ImVec2(bMax.x, bMax.y), ImVec2(bMax.x, bMax.y - cs), mainCol, globalThickness);
+            } else if (pEspPlayer.boxType == BOX_FILLED) {
+                ImU32 fillCol = (mainCol & 0x00FFFFFF) | (0x35 << 24);
+                draw->AddRectFilled(bMin, bMax, fillCol, 4.0f);
+                draw->AddRect(bMin, bMax, mainCol, 4.0f, 0, globalThickness);
+            } else {
+                draw->AddRect(ImVec2(bMin.x - 1, bMin.y - 1), ImVec2(bMax.x + 1, bMax.y + 1), glowCol, 5.0f, 0, 3.0f);
+                draw->AddRect(bMin, bMax, mainCol, 5.0f, 0, globalThickness);
+            }
+        }
+
+        // --- ESP HEALTH BAR ---
+        if (pEspPlayer.espHealth) {
+            float curHp = (float)player.Health;
+            if (curHp < 0.0f) curHp = 0.0f;
+            if (curHp > 200.0f) curHp = 200.0f;
+            float pct = curHp / 200.0f;
+
+            ImU32 hpCol = IM_COL32(70, 225, 90, 255);
+            if (pct < 0.30f) hpCol = IM_COL32(235, 45, 45, 255);
+            else if (pct < 0.60f) hpCol = IM_COL32(235, 200, 45, 255);
+
+            float barW = 4.0f;
+            float barX = boxX - barW - 4.0f;
+            float barY = boxY;
+            float barH = boxHeight;
+
+            draw->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH), IM_COL32(20, 20, 25, 210), 2.0f);
+            float fillH = barH * pct;
+            draw->AddRectFilled(ImVec2(barX, barY + (barH - fillH)), ImVec2(barX + barW, barY + barH), hpCol, 2.0f);
+            draw->AddRect(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH), IM_COL32(255, 255, 255, 120), 2.0f, 0, 1.0f);
+        }
+
+        // --- ESP NAME / DISTANCE ---
+        if (pEspPlayer.espName || pEspPlayer.espDistance) {
+            char labelBuf[64];
+            if (pEspPlayer.espName && pEspPlayer.espDistance) {
+                snprintf(labelBuf, sizeof(labelBuf), "%s [%dm]", player.Name ? "BOT" : "ENEMY", (int)distance);
+            } else if (pEspPlayer.espDistance) {
+                snprintf(labelBuf, sizeof(labelBuf), "[%dm]", (int)distance);
+            } else {
+                snprintf(labelBuf, sizeof(labelBuf), "%s", player.Name ? "BOT" : "ENEMY");
+            }
+
+            ImVec2 txtSz = ImGui::CalcTextSize(labelBuf);
+            float txtX = boxX + (width - txtSz.x) * 0.5f;
+            float txtY = boxY - txtSz.y - 4.0f;
+
+            draw->AddText(ImVec2(txtX + 1, txtY + 1), shadowCol, labelBuf);
+            draw->AddText(ImVec2(txtX, txtY), IM_COL32(255, 255, 255, 255), labelBuf);
+        }
+    }
+}
 
 struct MemoryChunk {
     char *memory;
@@ -848,6 +1074,67 @@ Java_nin_app_overlay_Floater_ftKZXivSr(JNIEnv *env, jclass clazz, jobject ctx) {
 extern "C" JNIEXPORT void JNICALL
 Java_nin_app_overlay_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
     Java_power_cheats_Floater_ftKwCvSr(env, clazz);
+}
+
+// ========================================================
+// GLES3 JNI VIEW NATIVE BRIDGE (OpenGL ES 3.0 / ImGui ESP)
+// ========================================================
+extern "C" JNIEXPORT void JNICALL
+Java_nin_app_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz) {
+    if (!g_ImGuiInitialized) {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.LogFilename = nullptr;
+
+        ImGuiStyle& style = ImGui::GetStyle();
+        style.WindowBorderSize = 0.0f;
+        style.WindowPadding = ImVec2(0.0f, 0.0f);
+        style.FramePadding = ImVec2(0.0f, 0.0f);
+        style.ItemSpacing = ImVec2(0.0f, 0.0f);
+
+        ImGui_ImplOpenGL3_Init("#version 300 es");
+        g_ImGuiInitialized = true;
+        LOGD("GLES3 ImGui Hardware ESP initialized successfully");
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_nin_app_graphics_GLES3JNIView_nativeResize(JNIEnv *env, jclass clazz, jint width, jint height) {
+    g_ScreenWidth = width;
+    g_ScreenHeight = height;
+    glViewport(0, 0, width, height);
+    if (g_ImGuiInitialized) {
+        ImGuiIO& io = ImGui::GetIO();
+        io.DisplaySize = ImVec2((float)width, (float)height);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_nin_app_graphics_GLES3JNIView_nativeStep(JNIEnv *env, jclass clazz) {
+    if (!g_ImGuiInitialized) return;
+
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui::NewFrame();
+
+    RenderHardwareESP(g_ScreenWidth, g_ScreenHeight);
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_nin_app_graphics_GLES3JNIView_nativeShutdown(JNIEnv *env, jclass clazz) {
+    if (g_ImGuiInitialized) {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui::DestroyContext();
+        g_ImGuiInitialized = false;
+        LOGD("GLES3 ImGui Hardware ESP shutdown cleanly");
+    }
 }
 
 

@@ -1,6 +1,7 @@
 package nin.app.overlay;
 
 import nin.app.graphics.ESPView;
+import nin.app.graphics.GLES3JNIView;
 
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
@@ -56,7 +57,7 @@ public class Floater {
 
     private WindowManager windowManager;
     private WindowManager.LayoutParams windowManagerParams;
-    ESPView drawView;
+    GLES3JNIView drawView;
     WindowManager.LayoutParams windowManagerDrawViewParams;
 
     private FrameLayout rootFrame;
@@ -138,10 +139,12 @@ public class Floater {
                     rootFrame.removeAllViews();
                 }
                 if (drawView != null) {
-                    drawView.stop();
                     try {
-                        windowManager.removeView(drawView);
+                        if (drawView.isAttachedToWindow()) {
+                            windowManager.removeView(drawView);
+                        }
                     } catch (Exception ignored) {}
+                    drawView = null;
                 }
             }
         } catch (Exception ignored) {}
@@ -912,12 +915,20 @@ public class Floater {
     public void DrawCanvas() {
         if (drawView != null && drawView.isAttachedToWindow()) return;
         int layoutFlag = getLayoutType();
-        drawView = new ESPView(context);
-        windowManagerDrawViewParams = new WindowManager.LayoutParams(-1, -1, layoutFlag, 56, -3);
+        drawView = new GLES3JNIView(context);
+        windowManagerDrawViewParams = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                layoutFlag,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+        );
         windowManagerDrawViewParams.gravity = Gravity.TOP | Gravity.START;
         windowManagerDrawViewParams.x = 0;
         windowManagerDrawViewParams.y = 0;
-        windowManagerDrawViewParams.alpha = 0.8f;
         try {
             windowManager.addView(drawView, windowManagerDrawViewParams);
         } catch (Exception e) {

@@ -127,6 +127,35 @@ namespace Offsets {
     // String Offsets
     constexpr uintptr_t StringLen = 0x10;
     constexpr uintptr_t StringChars = 0x14;
+
+    // ========================================================
+    // OB54 / OB55 / OB56 PROVEN OFFSETS (Synchronized from NINMODS & New_Brutal)
+    // ========================================================
+    namespace Ob55 {
+        // HitObjectInfo (CGKJLKPMGDJ) field offsets
+        constexpr uintptr_t HitObject = 0x10;        // JHAINOBIFMA
+        constexpr uintptr_t HitCollider = 0x18;      // JINDNOFABKB
+        constexpr uintptr_t HitGroup = 0x20;         // DKPDBLLJEAA
+        constexpr uintptr_t HitLocation = 0x24;      // HPCOJHGFEEG
+        constexpr uintptr_t HitNormal = 0x30;        // DOJDNHCGFGK
+        constexpr uintptr_t RayDir = 0x3C;           // HLDECMJFKJK
+        constexpr uintptr_t IgnoreHappens = 0x48;    // EFMBNPNFGHM
+        constexpr uintptr_t ViewBlocked = 0x49;      // CEOKOILBODN
+        constexpr uintptr_t SpecialHitType = 0x4C;   // CLOLKHNMNEK
+
+        // Game Hooks and Method Names
+        constexpr const char* AssemblyCSharp = "Assembly-CSharp.dll";
+        constexpr const char* COWGamePlay = "COW.GamePlay";
+        constexpr const char* COWGameConfig = "COW";
+        constexpr const char* CalcDamageClass = "HBIBDMMOOOK";
+        constexpr const char* CalcDamageMethod = "LHNJLFOINDO";
+        constexpr const char* HitObjectClass = "CGKJLKPMGDJ";
+        constexpr const char* ResetGuestMethod = "get_ResetGuest";
+        constexpr const char* MaxJumpHeightMethod = "get_MaxJumpHeight";
+        constexpr const char* CustomGravityMethod = "get_CustomGravity";
+        constexpr const char* InSwapWeaponCDMethod = "get_InSwapWeaponCD";
+        constexpr const char* IsGodMethod = "get_IsGod";
+    }
 }
 
 #define OFFSET_CAMERA_MATRIX_STR "0x10"

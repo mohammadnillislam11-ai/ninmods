@@ -2,6 +2,6 @@
 <resources>
     <!-- Single Central Version Definition for the entire NINMODS project -->
     <!-- Update here and it updates build.gradle, Sidebar, and all UI components automatically -->
-    <string name="app_version">81.0</string>
-    <string name="version_code">81</string>
+    <string name="app_version">82.0</string>
+    <string name="version_code">82</string>
 </resources>
