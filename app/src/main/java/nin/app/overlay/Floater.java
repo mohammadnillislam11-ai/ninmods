@@ -9,6 +9,7 @@ import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -81,6 +82,27 @@ public class Floater {
     private LinearLayout page1Content;
     private LinearLayout page2Content;
 
+    private int savedMenuX = -1;
+    private int savedMenuY = -1;
+    private boolean isLogoDragged = false;
+
+    private void updateScreenDimensions() {
+        try {
+            if (windowManager != null) {
+                DisplayMetrics dm = new DisplayMetrics();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                    windowManager.getDefaultDisplay().getRealMetrics(dm);
+                } else {
+                    windowManager.getDefaultDisplay().getMetrics(dm);
+                }
+                if (dm.widthPixels > 0 && dm.heightPixels > 0) {
+                    SCREEN_WIDTH = dm.widthPixels;
+                    SCREEN_HEIGHT = dm.heightPixels;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     public static void logTerminal(String msg) {
         // UI terminal box completely removed per user request
     }
@@ -138,18 +160,24 @@ public class Floater {
     public void openMenu() {
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.GONE);
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
+        updateScreenDimensions();
         logTerminal("> [HUD] Tactical Menu Expanded");
         if (rootFrame != null) {
             rootFrame.requestLayout();
             try {
                 if (windowManager != null && rootFrame.isAttachedToWindow()) {
-                    if (SCREEN_WIDTH > 0 && SCREEN_HEIGHT > 0 && menuWidth > 0 && menuHeight > 0) {
-                        int maxX = Math.max(0, SCREEN_WIDTH - menuWidth);
-                        int maxY = Math.max(0, SCREEN_HEIGHT - menuHeight);
-                        if (windowManagerParams.x > maxX) windowManagerParams.x = maxX;
-                        if (windowManagerParams.y > maxY) windowManagerParams.y = maxY;
-                        if (windowManagerParams.x < 0) windowManagerParams.x = 0;
-                        if (windowManagerParams.y < 0) windowManagerParams.y = 0;
+                    if (savedMenuX >= 0 && savedMenuY >= 0 && !isLogoDragged) {
+                        windowManagerParams.x = savedMenuX;
+                        windowManagerParams.y = savedMenuY;
+                    } else {
+                        if (SCREEN_WIDTH > 0 && SCREEN_HEIGHT > 0 && menuWidth > 0 && menuHeight > 0) {
+                            int maxX = Math.max(0, SCREEN_WIDTH - menuWidth);
+                            int maxY = Math.max(0, SCREEN_HEIGHT - menuHeight);
+                            if (windowManagerParams.x > maxX) windowManagerParams.x = maxX;
+                            if (windowManagerParams.y > maxY) windowManagerParams.y = maxY;
+                            if (windowManagerParams.x < 0) windowManagerParams.x = 0;
+                            if (windowManagerParams.y < 0) windowManagerParams.y = 0;
+                        }
                     }
                     windowManager.updateViewLayout(rootFrame, windowManagerParams);
                 }
@@ -158,6 +186,11 @@ public class Floater {
     }
 
     public void closeMenu() {
+        if (windowManagerParams != null) {
+            savedMenuX = windowManagerParams.x;
+            savedMenuY = windowManagerParams.y;
+        }
+        isLogoDragged = false;
         if (menuLayout != null) menuLayout.setVisibility(View.GONE);
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.VISIBLE);
         logTerminal("> [HUD] Menu Collapsed to Floating Icon");
@@ -204,8 +237,8 @@ public class Floater {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT);
         windowManagerParams.gravity = Gravity.TOP | Gravity.LEFT;
-        windowManagerParams.x = 0;
-        windowManagerParams.y = 100;
+        windowManagerParams.x = 40;
+        windowManagerParams.y = 120;
 
         windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         DrawCanvas();
@@ -221,8 +254,8 @@ public class Floater {
 
         boolean isLandscape = screenWidth > screenHeight;
         // Tactical 3-Layer Compact Layout dimensions (increased width per user request)
-        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 680 : 540), (int) (screenWidth * 0.98f));
-        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 200 : 250), (int) (screenHeight * 0.72f));
+        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 720 : 580), (int) (screenWidth * 0.96f));
+        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 210 : 260), (int) (screenHeight * 0.75f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -249,7 +282,7 @@ public class Floater {
         logoImagem.setBackground(null); // Pure PNG without circular background
         collapsedRelative.addView(logoImagem);
 
-        // Corner Close Badge (✕) with Pink Circle background (সার্কেল) per user explicit request
+        // Corner Close Badge (✕) with Transparent Circle background & Pink circular ring border per user explicit request
         TextView logoCloseBadge = new TextView(context);
         int badgeSize = FloaterStyles.dp(context, 20);
         FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(badgeSize, badgeSize);
@@ -259,14 +292,14 @@ public class Floater {
         logoCloseBadge.setLayoutParams(badgeLp);
         logoCloseBadge.setGravity(Gravity.CENTER);
         logoCloseBadge.setText("✕");
-        logoCloseBadge.setTextColor(Color.WHITE);
+        logoCloseBadge.setTextColor(FloaterStyles.getColorAccentPink(context));
         logoCloseBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         logoCloseBadge.setTypeface(Typeface.DEFAULT_BOLD);
 
         GradientDrawable badgeBg = new GradientDrawable();
         badgeBg.setShape(GradientDrawable.OVAL);
-        badgeBg.setColor(FloaterStyles.getColorAccentPink(context)); // Official Pink #E637E6
-        badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFFFFFFFF); // Clean white ring border
+        badgeBg.setColor(Color.TRANSPARENT); // Strictly transparent background per user requirement
+        badgeBg.setStroke(FloaterStyles.dp(context, 1.5f), FloaterStyles.getColorAccentPink(context)); // Circular pink border ring
         logoCloseBadge.setBackground(badgeBg);
 
         logoCloseBadge.setOnClickListener(v -> {
@@ -286,7 +319,7 @@ public class Floater {
 
         // Large Brand Logo Watermark in Menu Body (Enlarged per user request)
         ImageView bodyWatermark = new ImageView(context);
-        int watermarkSize = Math.min(FloaterStyles.dp(context, 190), (int) (menuHeight * 0.94f));
+        int watermarkSize = Math.min(FloaterStyles.dp(context, 195), (int) (menuHeight * 0.94f));
         FrameLayout.LayoutParams wmLp = new FrameLayout.LayoutParams(watermarkSize, watermarkSize);
         wmLp.gravity = Gravity.CENTER;
         wmLp.leftMargin = FloaterStyles.dp(context, 20);
@@ -614,6 +647,34 @@ public class Floater {
         sw.setChecked(false);
         sw.setScaleX(0.80f);
         sw.setScaleY(0.80f);
+
+        // Apply pure Pink tinting for checked state, clean muted tint for unchecked state per user requirement
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            int accentPink = FloaterStyles.getColorAccentPink(context);
+            ColorStateList thumbStates = new ColorStateList(
+                    new int[][]{
+                            new int[]{android.R.attr.state_checked},
+                            new int[]{-android.R.attr.state_checked}
+                    },
+                    new int[]{
+                            accentPink,
+                            0xFF8A7A90
+                    }
+            );
+            ColorStateList trackStates = new ColorStateList(
+                    new int[][]{
+                            new int[]{android.R.attr.state_checked},
+                            new int[]{-android.R.attr.state_checked}
+                    },
+                    new int[]{
+                            0x80E637E6,
+                            0x33FFFFFF
+                    }
+            );
+            sw.setThumbTintList(thumbStates);
+            sw.setTrackTintList(trackStates);
+        }
+
         sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
             ChangesID(id, isChecked ? 1 : 0);
             logTerminal("> [EXEC] " + name + " -> " + (isChecked ? "ON" : "OFF"));
@@ -709,6 +770,14 @@ public class Floater {
         sb.setMax(seekMax);
         sb.setProgress(initVal);
         sb.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 2));
+
+        // Apply pure Pink tinting for thumb and progress bar per user explicit request
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            int accentPink = FloaterStyles.getColorAccentPink(context);
+            sb.setThumbTintList(ColorStateList.valueOf(accentPink));
+            sb.setProgressTintList(ColorStateList.valueOf(accentPink));
+            sb.setProgressBackgroundTintList(ColorStateList.valueOf(0x33FFFFFF));
+        }
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -745,6 +814,7 @@ public class Floater {
             private int initialY;
             private float initialTouchX;
             private float initialTouchY;
+            private boolean hasMoved = false;
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -754,11 +824,18 @@ public class Floater {
                         initialY = windowManagerParams.y;
                         initialTouchX = event.getRawX();
                         initialTouchY = event.getRawY();
+                        hasMoved = false;
                         return true;
 
                     case MotionEvent.ACTION_MOVE:
-                        windowManagerParams.x = initialX + (int) (event.getRawX() - initialTouchX);
-                        windowManagerParams.y = initialY + (int) (event.getRawY() - initialTouchY);
+                        int dx = (int) (event.getRawX() - initialTouchX);
+                        int dy = (int) (event.getRawY() - initialTouchY);
+                        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                            hasMoved = true;
+                            isLogoDragged = true;
+                        }
+                        windowManagerParams.x = initialX + dx;
+                        windowManagerParams.y = initialY + dy;
                         try {
                             if (rootFrame != null && rootFrame.isAttachedToWindow()) {
                                 windowManager.updateViewLayout(rootFrame, windowManagerParams);
@@ -769,7 +846,7 @@ public class Floater {
                     case MotionEvent.ACTION_UP:
                         int xDiff = (int) (event.getRawX() - initialTouchX);
                         int yDiff = (int) (event.getRawY() - initialTouchY);
-                        if (Math.abs(xDiff) < 10 && Math.abs(yDiff) < 10) {
+                        if (!hasMoved && Math.abs(xDiff) < 12 && Math.abs(yDiff) < 12) {
                             openMenu();
                         }
                         return true;
@@ -800,6 +877,8 @@ public class Floater {
                     case MotionEvent.ACTION_MOVE:
                         windowManagerParams.x = initialX + (int) (event.getRawX() - initialTouchX);
                         windowManagerParams.y = initialY + (int) (event.getRawY() - initialTouchY);
+                        savedMenuX = windowManagerParams.x;
+                        savedMenuY = windowManagerParams.y;
                         try {
                             if (rootFrame != null && rootFrame.isAttachedToWindow()) {
                                 windowManager.updateViewLayout(rootFrame, windowManagerParams);
@@ -808,6 +887,8 @@ public class Floater {
                         return true;
 
                     case MotionEvent.ACTION_UP:
+                        savedMenuX = windowManagerParams.x;
+                        savedMenuY = windowManagerParams.y;
                         return true;
                 }
                 return false;
