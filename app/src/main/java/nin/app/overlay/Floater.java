@@ -85,10 +85,16 @@ public class Floater {
     private LinearLayout firstSectionMenuContainer;
 
     private final Map<String, List<View>> categoryViews = new LinkedHashMap<>();
-    private final List<TextView> categoryTabViews = new ArrayList<>();
+    private final List<TextView> railTabButtons = new ArrayList<>();
+    private int activeRailIndex = 0;
     private String currentCategory = "Aim";
     private String selectedCategoryName = "Aim";
-    private TextView currentSectionTitle;
+
+    private LinearLayout iconTabsContainer;
+    private TextView page1Title;
+    private TextView page2Title;
+    private LinearLayout page1Content;
+    private LinearLayout page2Content;
 
     // Strict Singleton & Lifecycle Control
     public static synchronized void start(Context ctx) {
@@ -198,9 +204,9 @@ public class Floater {
         SCREEN_HEIGHT = screenHeight;
 
         boolean isLandscape = screenWidth > screenHeight;
-        // Tactical Split Layout dimensions matching landscape game HUD
-        int menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 340 : 310), (int) (screenWidth * 0.90f));
-        int menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 210 : 250), (int) (screenHeight * 0.70f));
+        // Tactical 3-Layer Compact Layout dimensions (low-profile height, wide horizontal)
+        int menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 430 : 350), (int) (screenWidth * 0.95f));
+        int menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 175 : 220), (int) (screenHeight * 0.60f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -239,7 +245,7 @@ public class Floater {
             logoImagem.setImageBitmap(FloaterStyles.createDefaultIcon());
         }
 
-        // Main Menu Layout (Tactical Split Layout: Left Sidebar + Right Content Area)
+        // Main Menu Layout (3-Layer Layout: Icon Rail + Page 1 + Page 2)
         menuLayout = new LinearLayout(context);
         menuLayout.setLayoutParams(new LinearLayout.LayoutParams(menuWidth, menuHeight));
         menuLayout.setVisibility(View.GONE);
@@ -247,112 +253,170 @@ public class Floater {
         menuLayout.setBackground(FloaterStyles.createCardBackground(context));
         menuLayout.setPadding(0, 0, 0, 0);
 
-        // 1. LEFT SIDEBAR (Width: 105dp, contains Brand Title + Vertical Tabs)
-        LinearLayout sidebar = new LinearLayout(context);
-        int sidebarWidth = FloaterStyles.dp(context, 105);
-        sidebar.setLayoutParams(new LinearLayout.LayoutParams(sidebarWidth, ViewGroup.LayoutParams.MATCH_PARENT));
-        sidebar.setOrientation(LinearLayout.VERTICAL);
-        sidebar.setBackgroundColor(FloaterStyles.ColorSidebarBg);
-        sidebar.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6));
-        sidebar.setOnTouchListener(createDragListener(false));
+        // LAYER 1: Icon-Only Rail (Width: 42dp, NO text)
+        LinearLayout iconRail = new LinearLayout(context);
+        int railWidth = FloaterStyles.dp(context, 42);
+        iconRail.setLayoutParams(new LinearLayout.LayoutParams(railWidth, ViewGroup.LayoutParams.MATCH_PARENT));
+        iconRail.setOrientation(LinearLayout.VERTICAL);
+        iconRail.setBackgroundColor(FloaterStyles.ColorSidebarBg);
+        iconRail.setGravity(Gravity.CENTER_HORIZONTAL);
+        iconRail.setPadding(0, FloaterStyles.dp(context, 6), 0, FloaterStyles.dp(context, 6));
+        iconRail.setOnTouchListener(createDragListener(false));
 
-        // Brand Title
-        TextView brandTitle = new TextView(context);
-        brandTitle.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        brandTitle.setText("NINMODS");
-        brandTitle.setTextColor(FloaterStyles.ColorSectionTitle);
-        brandTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        brandTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        brandTitle.setGravity(Gravity.CENTER_VERTICAL);
-        brandTitle.setPadding(FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 2));
-        sidebar.addView(brandTitle);
+        // Top mini logo
+        ImageView railLogo = new ImageView(context);
+        railLogo.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 22), FloaterStyles.dp(context, 22)));
+        railLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        if (base64Icon != null && !base64Icon.isEmpty()) {
+            Bitmap b = FloaterStyles.base64ToBitmap(base64Icon);
+            if (b != null) railLogo.setImageBitmap(b);
+            else railLogo.setImageBitmap(FloaterStyles.createDefaultIcon());
+        } else {
+            railLogo.setImageBitmap(FloaterStyles.createDefaultIcon());
+        }
+        railLogo.setOnClickListener(v -> closeMenu());
+        iconRail.addView(railLogo);
 
-        // Thin divider under title
-        View brandDivider = new View(context);
-        LinearLayout.LayoutParams bdLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 1));
-        bdLp.topMargin = FloaterStyles.dp(context, 4);
-        bdLp.bottomMargin = FloaterStyles.dp(context, 4);
-        brandDivider.setLayoutParams(bdLp);
-        brandDivider.setBackgroundColor(FloaterStyles.ColorBorder);
-        sidebar.addView(brandDivider);
+        View railSep = new View(context);
+        LinearLayout.LayoutParams rslp = new LinearLayout.LayoutParams(FloaterStyles.dp(context, 24), FloaterStyles.dp(context, 1));
+        rslp.topMargin = FloaterStyles.dp(context, 4);
+        rslp.bottomMargin = FloaterStyles.dp(context, 4);
+        railSep.setLayoutParams(rslp);
+        railSep.setBackgroundColor(FloaterStyles.ColorBorder);
+        iconRail.addView(railSep);
 
-        // Vertical ScrollView for Categories / Tabs
-        ScrollView tabScroll = new ScrollView(context);
-        tabScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
-        tabScroll.setVerticalScrollBarEnabled(false);
-        tabScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        // Icon Buttons: Tab 0 (Aim 🎯), Tab 1 (ESP 👁), Tab 2 (Position Fix 📐), Tab 3 (Settings ⚙)
+        iconTabsContainer = new LinearLayout(context);
+        iconTabsContainer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        iconTabsContainer.setOrientation(LinearLayout.VERTICAL);
+        iconTabsContainer.setGravity(Gravity.CENTER_HORIZONTAL);
 
-        firstSectionMenuContainer = new LinearLayout(context);
-        firstSectionMenuContainer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        firstSectionMenuContainer.setOrientation(LinearLayout.VERTICAL);
-        tabScroll.addView(firstSectionMenuContainer);
-        sidebar.addView(tabScroll);
-        menuLayout.addView(sidebar);
+        railTabButtons.clear();
+        String[] railIcons = new String[]{"🎯", "👁", "📐", "⚙"};
+        for (int i = 0; i < railIcons.length; i++) {
+            final int tabIndex = i;
+            TextView btn = new TextView(context);
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(FloaterStyles.dp(context, 32), FloaterStyles.dp(context, 32));
+            blp.topMargin = FloaterStyles.dp(context, 3);
+            blp.bottomMargin = FloaterStyles.dp(context, 3);
+            btn.setLayoutParams(blp);
+            btn.setGravity(Gravity.CENTER);
+            btn.setText(railIcons[i]);
+            btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            btn.setOnClickListener(v -> selectRailTab(tabIndex));
+            iconTabsContainer.addView(btn);
+            railTabButtons.add(btn);
+        }
+        iconRail.addView(iconTabsContainer);
+        menuLayout.addView(iconRail);
 
-        // 2. VERTICAL DIVIDER LINE
-        View vDivider = new View(context);
-        vDivider.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 1), ViewGroup.LayoutParams.MATCH_PARENT));
-        vDivider.setBackgroundColor(FloaterStyles.ColorBorder);
-        menuLayout.addView(vDivider);
+        // Divider 1
+        View div1 = new View(context);
+        div1.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 1), ViewGroup.LayoutParams.MATCH_PARENT));
+        div1.setBackgroundColor(FloaterStyles.ColorBorder);
+        menuLayout.addView(div1);
 
-        // 3. RIGHT CONTENT AREA (Section Title + Close Button + Options Scroll)
-        LinearLayout contentArea = new LinearLayout(context);
-        LinearLayout.LayoutParams contentLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-        contentArea.setLayoutParams(contentLp);
-        contentArea.setOrientation(LinearLayout.VERTICAL);
-        contentArea.setPadding(FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 6));
+        // LAYER 2: Page 1 (Sub-Panel 1, e.g. AIM ASSIST)
+        LinearLayout page1 = new LinearLayout(context);
+        LinearLayout.LayoutParams p1Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
+        page1.setLayoutParams(p1Lp);
+        page1.setOrientation(LinearLayout.VERTICAL);
+        page1.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 4));
 
-        // Right Header
-        LinearLayout rightHeader = new LinearLayout(context);
-        rightHeader.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        rightHeader.setOrientation(LinearLayout.HORIZONTAL);
-        rightHeader.setGravity(Gravity.CENTER_VERTICAL);
-        rightHeader.setPadding(FloaterStyles.dp(context, 2), 0, FloaterStyles.dp(context, 2), 0);
-        rightHeader.setOnTouchListener(createDragListener(false));
+        LinearLayout p1Header = new LinearLayout(context);
+        p1Header.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        p1Header.setOrientation(LinearLayout.HORIZONTAL);
+        p1Header.setGravity(Gravity.CENTER_VERTICAL);
+        p1Header.setPadding(FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 2));
+        p1Header.setOnTouchListener(createDragListener(false));
 
-        currentSectionTitle = new TextView(context);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        currentSectionTitle.setLayoutParams(titleLp);
-        currentSectionTitle.setText("AIM ASSIST");
-        currentSectionTitle.setTextColor(FloaterStyles.ColorSectionTitle);
-        currentSectionTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        currentSectionTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        rightHeader.addView(currentSectionTitle);
+        page1Title = new TextView(context);
+        page1Title.setText("AIM ASSIST");
+        page1Title.setTextColor(FloaterStyles.ColorSectionTitle);
+        page1Title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        page1Title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        p1Header.addView(page1Title);
+        page1.addView(p1Header);
+
+        View p1Div = new View(context);
+        LinearLayout.LayoutParams p1dLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 1));
+        p1dLp.topMargin = FloaterStyles.dp(context, 2);
+        p1dLp.bottomMargin = FloaterStyles.dp(context, 3);
+        p1Div.setLayoutParams(p1dLp);
+        p1Div.setBackgroundColor(FloaterStyles.ColorBorder);
+        page1.addView(p1Div);
+
+        ScrollView scroll1 = new ScrollView(context);
+        scroll1.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        scroll1.setVerticalScrollBarEnabled(false);
+
+        page1Content = new LinearLayout(context);
+        page1Content.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        page1Content.setOrientation(LinearLayout.VERTICAL);
+        page1Content.setPadding(FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1));
+        scroll1.addView(page1Content);
+        page1.addView(scroll1);
+        menuLayout.addView(page1);
+
+        // Divider 2
+        View div2 = new View(context);
+        div2.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 1), ViewGroup.LayoutParams.MATCH_PARENT));
+        div2.setBackgroundColor(FloaterStyles.ColorBorder);
+        menuLayout.addView(div2);
+
+        // LAYER 3: Page 2 (Sub-Panel 2, e.g. AIM SETTINGS + Close Button)
+        LinearLayout page2 = new LinearLayout(context);
+        LinearLayout.LayoutParams p2Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
+        page2.setLayoutParams(p2Lp);
+        page2.setOrientation(LinearLayout.VERTICAL);
+        page2.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 4));
+
+        LinearLayout p2Header = new LinearLayout(context);
+        p2Header.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        p2Header.setOrientation(LinearLayout.HORIZONTAL);
+        p2Header.setGravity(Gravity.CENTER_VERTICAL);
+        p2Header.setPadding(FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 2), 0);
+        p2Header.setOnTouchListener(createDragListener(false));
+
+        page2Title = new TextView(context);
+        LinearLayout.LayoutParams p2tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        page2Title.setLayoutParams(p2tLp);
+        page2Title.setText("AIM SETTINGS");
+        page2Title.setTextColor(FloaterStyles.ColorSectionTitle);
+        page2Title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        page2Title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        p2Header.addView(page2Title);
 
         TextView closeBtn = new TextView(context);
-        closeBtn.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 24), FloaterStyles.dp(context, 24)));
+        closeBtn.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 22), FloaterStyles.dp(context, 22)));
         closeBtn.setGravity(Gravity.CENTER);
         closeBtn.setText("✕");
         closeBtn.setTextColor(AppColors.WHITE);
-        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         closeBtn.setTypeface(Typeface.DEFAULT_BOLD);
         closeBtn.setOnClickListener(v -> closeMenu());
-        rightHeader.addView(closeBtn);
-        contentArea.addView(rightHeader);
+        p2Header.addView(closeBtn);
+        page2.addView(p2Header);
 
-        // Divider under right header
-        View rightDivider = new View(context);
-        LinearLayout.LayoutParams rdLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 1));
-        rdLp.topMargin = FloaterStyles.dp(context, 4);
-        rdLp.bottomMargin = FloaterStyles.dp(context, 4);
-        rightDivider.setLayoutParams(rdLp);
-        rightDivider.setBackgroundColor(FloaterStyles.ColorBorder);
-        contentArea.addView(rightDivider);
+        View p2Div = new View(context);
+        LinearLayout.LayoutParams p2dLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 1));
+        p2dLp.topMargin = FloaterStyles.dp(context, 2);
+        p2dLp.bottomMargin = FloaterStyles.dp(context, 3);
+        p2Div.setLayoutParams(p2dLp);
+        p2Div.setBackgroundColor(FloaterStyles.ColorBorder);
+        page2.addView(p2Div);
 
-        // Main Body ScrollView
-        mainScroll = new ScrollView(context);
-        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
-        mainScroll.setLayoutParams(scrollParams);
-        mainScroll.setVerticalScrollBarEnabled(false);
+        ScrollView scroll2 = new ScrollView(context);
+        scroll2.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        scroll2.setVerticalScrollBarEnabled(false);
 
-        funcsListLayout = new LinearLayout(context);
-        funcsListLayout.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        funcsListLayout.setOrientation(LinearLayout.VERTICAL);
-        funcsListLayout.setPadding(FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 2));
-        mainScroll.addView(funcsListLayout);
-
-        contentArea.addView(mainScroll);
-        menuLayout.addView(contentArea);
+        page2Content = new LinearLayout(context);
+        page2Content.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        page2Content.setOrientation(LinearLayout.VERTICAL);
+        page2Content.setPadding(FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1));
+        scroll2.addView(page2Content);
+        page2.addView(scroll2);
+        menuLayout.addView(page2);
 
         collapsedRelative.addView(logoImagem);
         rootRelative.addView(collapsedRelative);
@@ -369,6 +433,7 @@ public class Floater {
         }
 
         logoImagem.setOnTouchListener(createDragListener(true));
+        highlightActiveRailTab(0);
 
         // Call genuine native C++ Functions immediately to populate all real features
         try {
@@ -379,25 +444,79 @@ public class Floater {
         }
     }
 
-    private String getCategoryIcon(String catName) {
-        if (catName == null) return "•";
-        String lower = catName.toLowerCase();
-        if (lower.contains("aim")) return "🎯";
-        if (lower.contains("esp") || lower.contains("visual")) return "👁";
-        if (lower.contains("fix") || lower.contains("pos")) return "📐";
-        if (lower.contains("set") || lower.contains("cfg") || lower.contains("config")) return "⚙";
-        return "•";
+    public void selectRailTab(int index) {
+        activeRailIndex = index;
+        highlightActiveRailTab(index);
+        refreshActivePages();
     }
 
-    private String formatSectionHeader(String catName) {
-        if (catName == null) return "TACTICAL";
-        String lower = catName.toLowerCase();
-        if (lower.equals("aim")) return "AIM ASSIST";
-        if (lower.contains("aim") && lower.contains("set")) return "AIM SETTINGS";
-        if (lower.equals("esp")) return "ESP VISUALS";
-        if (lower.contains("esp") && lower.contains("set")) return "ESP SETTINGS";
-        if (lower.contains("pos") || lower.contains("fix")) return "POSITION FIX";
-        return catName.toUpperCase();
+    private void highlightActiveRailTab(int index) {
+        for (int i = 0; i < railTabButtons.size(); i++) {
+            TextView btn = railTabButtons.get(i);
+            if (i == index) {
+                btn.setBackground(FloaterStyles.createActiveIconRailDrawable(context));
+                btn.setTextColor(0xFFFFFFFF);
+            } else {
+                btn.setBackground(FloaterStyles.createInactiveIconRailDrawable(context));
+                btn.setTextColor(0xFF70758F);
+            }
+        }
+    }
+
+    public void refreshActivePages() {
+        if (page1Content == null || page2Content == null) return;
+        page1Content.removeAllViews();
+        page2Content.removeAllViews();
+
+        String p1Cat = "Aim";
+        String p2Cat = "Aim Setting";
+        String p1Header = "AIM ASSIST";
+        String p2Header = "AIM SETTINGS";
+
+        if (activeRailIndex == 0) {
+            p1Cat = "Aim";
+            p2Cat = "Aim Setting";
+            p1Header = "AIM ASSIST";
+            p2Header = "AIM SETTINGS";
+        } else if (activeRailIndex == 1) {
+            p1Cat = "Esp";
+            p2Cat = "Esp Setting";
+            p1Header = "ESP VISUALS";
+            p2Header = "ESP SETTINGS";
+        } else if (activeRailIndex == 2) {
+            p1Cat = "Position Fix";
+            p2Cat = "Position Fix Extra";
+            p1Header = "POSITION FIX";
+            p2Header = "CALIBRATION";
+        } else if (activeRailIndex == 3) {
+            p1Cat = "Preferences";
+            p2Cat = "System";
+            p1Header = "TACTICAL PREFS";
+            p2Header = "ENGINE STATUS";
+        }
+
+        if (page1Title != null) page1Title.setText(p1Header);
+        if (page2Title != null) page2Title.setText(p2Header);
+
+        List<View> p1Views = categoryViews.get(p1Cat);
+        if (p1Views != null) {
+            for (View v : p1Views) {
+                if (v.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) v.getParent()).removeView(v);
+                }
+                page1Content.addView(v);
+            }
+        }
+
+        List<View> p2Views = categoryViews.get(p2Cat);
+        if (p2Views != null) {
+            for (View v : p2Views) {
+                if (v.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) v.getParent()).removeView(v);
+                }
+                page2Content.addView(v);
+            }
+        }
     }
 
     // Dynamic genuine registration from Native C++ JNI
@@ -408,7 +527,7 @@ public class Floater {
             categoryViews.put(catName, new ArrayList<>());
         }
         currentCategory = catName;
-        rebuildCategoryTabs();
+        refreshActivePages();
     }
 
     public void onNativeAddSwitch(final String name, final int id) {
@@ -420,14 +539,14 @@ public class Floater {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        int pad = FloaterStyles.dp(context, 3);
+        int pad = FloaterStyles.dp(context, 2);
         row.setPadding(0, pad, 0, pad);
 
         TextView tv = new TextView(context);
         tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
         tv.setText(name);
         tv.setTextColor(0xFFF0F2F8);
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         tv.setTypeface(Typeface.DEFAULT);
         row.addView(tv);
 
@@ -439,9 +558,7 @@ public class Floater {
         row.addView(sw);
 
         categoryViews.get(currentCategory).add(row);
-        if (currentCategory.equals(selectedCategoryName)) {
-            displayCategory(currentCategory);
-        }
+        refreshActivePages();
     }
 
     private boolean isSelectorOption(String type, int id, int max) {
@@ -480,172 +597,64 @@ public class Floater {
             categoryViews.put(currentCategory, new ArrayList<>());
         }
 
-        if (isSelectorOption(type, id, max)) {
-            // Dropdown / Selector Button matching photo (e.g. Aimbot Bone Target: Head ▼)
-            final String[] options = getOptionLabels(type, id, max);
-            LinearLayout row = new LinearLayout(context);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            int pad = FloaterStyles.dp(context, 3);
-            row.setPadding(0, pad, 0, pad);
+        final boolean isOption = isSelectorOption(type, id, max);
+        final String[] options = isOption ? getOptionLabels(type, id, max) : null;
+        final int seekMax = isOption ? (options.length - 1) : max;
 
-            TextView tv = new TextView(context);
-            tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-            tv.setText(name);
-            tv.setTextColor(0xFFF0F2F8);
-            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            tv.setTypeface(Typeface.DEFAULT);
-            row.addView(tv);
+        // Slide Bar (SeekBar) for both ranges and discrete options per user explicit rule
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        int pad = FloaterStyles.dp(context, 2);
+        row.setPadding(0, pad, 0, pad);
 
-            final TextView btn = new TextView(context);
-            btn.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, FloaterStyles.dp(context, 26)));
-            btn.setGravity(Gravity.CENTER);
-            btn.setPadding(FloaterStyles.dp(context, 10), 0, FloaterStyles.dp(context, 10), 0);
-            btn.setBackground(FloaterStyles.createSelectorBtnDrawable(context));
+        LinearLayout topRow = new LinearLayout(context);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+        topRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-            final int[] currentVal = new int[]{Math.max(0, Math.min(value, options.length - 1))};
-            btn.setText(options[currentVal[0]] + "  ▼");
-            btn.setTextColor(FloaterStyles.ColorAccentBlue);
-            btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            btn.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        TextView tv = new TextView(context);
+        tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        tv.setText(name);
+        tv.setTextColor(0xFFF0F2F8);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        tv.setTypeface(Typeface.DEFAULT);
+        topRow.addView(tv);
 
-            btn.setOnClickListener(v -> {
-                currentVal[0] = (currentVal[0] + 1) % options.length;
-                btn.setText(options[currentVal[0]] + "  ▼");
-                ChangesID(id, currentVal[0]);
-            });
-            row.addView(btn);
+        final TextView valLabel = new TextView(context);
+        valLabel.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        valLabel.setTextColor(FloaterStyles.ColorSectionTitle);
+        valLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        valLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
 
-            categoryViews.get(currentCategory).add(row);
-        } else {
-            // Range Slider with Value Badge (e.g. Aim FOV Range Size: 100.0 px)
-            LinearLayout row = new LinearLayout(context);
-            row.setOrientation(LinearLayout.VERTICAL);
-            row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            int pad = FloaterStyles.dp(context, 3);
-            row.setPadding(0, pad, 0, pad);
+        int initVal = isOption ? Math.max(0, Math.min(value, options.length - 1)) : value;
+        valLabel.setText(isOption ? options[initVal] : (initVal + getSliderUnit(name)));
+        topRow.addView(valLabel);
+        row.addView(topRow);
 
-            LinearLayout topRow = new LinearLayout(context);
-            topRow.setOrientation(LinearLayout.HORIZONTAL);
-            topRow.setGravity(Gravity.CENTER_VERTICAL);
-            topRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-            TextView tv = new TextView(context);
-            tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-            tv.setText(name);
-            tv.setTextColor(0xFFF0F2F8);
-            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            tv.setTypeface(Typeface.DEFAULT);
-            topRow.addView(tv);
-
-            final String unit = getSliderUnit(name);
-            final TextView badge = new TextView(context);
-            badge.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, FloaterStyles.dp(context, 22)));
-            badge.setGravity(Gravity.CENTER);
-            badge.setPadding(FloaterStyles.dp(context, 8), 0, FloaterStyles.dp(context, 8), 0);
-            badge.setBackground(FloaterStyles.createBadgeDrawable(context));
-            badge.setText(value + unit);
-            badge.setTextColor(FloaterStyles.ColorAccentBlue);
-            badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            badge.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-            topRow.addView(badge);
-            row.addView(topRow);
-
-            SeekBar sb = new SeekBar(context);
-            sb.setMax(max);
-            sb.setProgress(value);
-            sb.setPadding(0, FloaterStyles.dp(context, 2), 0, FloaterStyles.dp(context, 2));
-            sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override
-                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                    badge.setText(progress + unit);
-                    ChangesID(id, progress);
+        SeekBar sb = new SeekBar(context);
+        sb.setMax(seekMax);
+        sb.setProgress(initVal);
+        sb.setPadding(0, FloaterStyles.dp(context, 2), 0, FloaterStyles.dp(context, 2));
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (isOption && options != null && progress >= 0 && progress < options.length) {
+                    valLabel.setText(options[progress]);
+                } else {
+                    valLabel.setText(progress + getSliderUnit(name));
                 }
-                @Override
-                public void onStartTrackingTouch(SeekBar seekBar) {}
-                @Override
-                public void onStopTrackingTouch(SeekBar seekBar) {}
-            });
-            row.addView(sb);
-
-            categoryViews.get(currentCategory).add(row);
-        }
-
-        if (currentCategory.equals(selectedCategoryName)) {
-            displayCategory(currentCategory);
-        }
-    }
-
-    public void rebuildCategoryTabs() {
-        if (firstSectionMenuContainer == null) return;
-        firstSectionMenuContainer.removeAllViews();
-        categoryTabViews.clear();
-
-        for (final String catName : categoryViews.keySet()) {
-            TextView tab = new TextView(context);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    FloaterStyles.dp(context, 30)
-            );
-            lp.setMargins(0, 0, 0, FloaterStyles.dp(context, 3));
-            tab.setLayoutParams(lp);
-            tab.setText(getCategoryIcon(catName) + " " + catName);
-            tab.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            tab.setGravity(Gravity.CENTER_VERTICAL);
-            tab.setPadding(FloaterStyles.dp(context, 8), 0, FloaterStyles.dp(context, 4), 0);
-            tab.setTag(catName);
-            tab.setOnClickListener(v -> selectCategory(catName));
-
-            firstSectionMenuContainer.addView(tab);
-            categoryTabViews.add(tab);
-        }
-
-        if (selectedCategoryName == null && !categoryViews.isEmpty()) {
-            selectedCategoryName = categoryViews.keySet().iterator().next();
-        }
-        if (selectedCategoryName != null) {
-            selectCategory(selectedCategoryName);
-        }
-    }
-
-    private void highlightSelectedCategory(String selected) {
-        for (TextView tab : categoryTabViews) {
-            boolean isSel = selected != null && selected.equals(tab.getTag());
-            if (isSel) {
-                tab.setBackground(FloaterStyles.createActiveTabDrawable(context));
-                tab.setTextColor(0xFFFFFFFF);
-                tab.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-            } else {
-                tab.setBackground(FloaterStyles.createInactiveTabDrawable(context));
-                tab.setTextColor(FloaterStyles.ColorTextMuted);
-                tab.setTypeface(Typeface.DEFAULT);
+                ChangesID(id, progress);
             }
-        }
-    }
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        row.addView(sb);
 
-    public void selectCategory(String categoryName) {
-        selectedCategoryName = categoryName;
-        currentCategory = categoryName;
-        if (currentSectionTitle != null) {
-            currentSectionTitle.setText(formatSectionHeader(categoryName));
-        }
-        highlightSelectedCategory(categoryName);
-        displayCategory(categoryName);
-    }
-
-    public void displayCategory(String categoryName) {
-        if (funcsListLayout == null) return;
-        funcsListLayout.removeAllViews();
-        List<View> views = categoryViews.get(categoryName);
-        if (views != null) {
-            for (View v : views) {
-                if (v.getParent() instanceof ViewGroup) {
-                    ((ViewGroup) v.getParent()).removeView(v);
-                }
-                funcsListLayout.addView(v);
-            }
-        }
+        categoryViews.get(currentCategory).add(row);
+        refreshActivePages();
     }
 
     // Official Android WindowManager drag listener (smooth dragging, touch slop aware)

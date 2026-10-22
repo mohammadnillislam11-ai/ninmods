@@ -94,5 +94,21 @@ public final class FloaterStyles {
         drawable.setStroke(dp(context, 1), ColorAccentBlue);
         return drawable;
     }
+
+    public static GradientDrawable createActiveIconRailDrawable(Context context) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setCornerRadius(dp(context, 8));
+        drawable.setColor(ColorAccentBlue);
+        return drawable;
+    }
+
+    public static GradientDrawable createInactiveIconRailDrawable(Context context) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setCornerRadius(dp(context, 8));
+        drawable.setColor(0x00000000);
+        return drawable;
+    }
 }
 
