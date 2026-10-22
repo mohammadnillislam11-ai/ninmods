@@ -61,6 +61,15 @@ public final class FloaterStyles {
         return drawable;
     }
 
+    public static GradientDrawable createLeftRailBackground(Context context) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        int r = dp(context, 10);
+        drawable.setCornerRadii(new float[]{r, r, 0, 0, 0, 0, r, r}); // top-left, top-right, bottom-right, bottom-left
+        drawable.setColor(ColorSidebarBg);
+        return drawable;
+    }
+
     public static GradientDrawable createActiveTabDrawable(Context context) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setShape(GradientDrawable.RECTANGLE);
