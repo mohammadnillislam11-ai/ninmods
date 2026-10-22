@@ -50,7 +50,24 @@ void LogWeaponData(const char* playerName, int weaponId, bool isLocal) {
     NIN_LOGI("DAEMON_WEAPON", "%s | Name: %s | WeaponID: %d", (isLocal ? "Local" : "Enemy"), playerName, weaponId);
 }
 
-// ========== Module Base Address (ROBUST) ==========
+// ========== Pointer Validation (ARM64 64-bit User Pointer Range) ==========
+inline bool IsValidUserPointer64(uintptr_t ptr) {
+    uintptr_t clean = ptr & 0x0000FFFFFFFFFFFFULL;
+    return (clean >= 0x0000001000000000ULL && clean <= 0x00007FFFFFFFFFFFULL);
+}
+
+// ========== ELF Magic Header Checker ==========
+bool is_elf_header(uintptr_t addr) {
+    if (addr == 0 || mem_fd <= 0) return false;
+    unsigned char magic[4] = {0};
+    magic[0] = Read<uint8_t>(addr);
+    magic[1] = Read<uint8_t>(addr + 1);
+    magic[2] = Read<uint8_t>(addr + 2);
+    magic[3] = Read<uint8_t>(addr + 3);
+    return (magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F');
+}
+
+// ========== Module Base Address (ROBUST MULTI-ELF DETECTOR) ==========
 uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
     char mapsPath[64];
     snprintf(mapsPath, sizeof(mapsPath), "/proc/%d/maps", pid);
@@ -61,28 +78,58 @@ uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
     }
 
     char line[512];
-    uintptr_t base = 0;
+    std::vector<uintptr_t> elfBases;
 
     while (fgets(line, sizeof(line), fp)) {
         if (strstr(line, moduleName)) {
             uintptr_t start = 0, offset = 0;
             char perms[5] = {0};
             if (sscanf(line, "%lx-%*lx %4s %lx", &start, perms, &offset) >= 1) {
-                NIN_LOGI("DAEMON", "Maps match: %s", line);
-                if (base == 0) {
-                    base = start;
-                }
-                if (offset == 0 && (perms[0] == 'r' || perms[2] == 'x')) {
-                    base = start;
-                    break;
+                if (offset == 0 && perms[0] == 'r') {
+                    if (is_elf_header(start)) {
+                        elfBases.push_back(start);
+                        NIN_LOGI("DAEMON", "Found ELF mapping for %s: 0x%lx (perms: %s)", moduleName, (unsigned long)start, perms);
+                    }
                 }
             }
         }
     }
-
     fclose(fp);
-    NIN_LOGI("DAEMON", "GetModuleBase(%s) = 0x%lx", moduleName, (unsigned long)base);
-    return base;
+
+    if (elfBases.empty()) {
+        NIN_LOGE("DAEMON", "No ELF headers found for %s", moduleName);
+        return 0;
+    }
+
+    const uintptr_t testOffsets[] = {
+        Offsets::GameFacade,       // 0xA984D48
+        Offsets::GameFacadeAlt1,   // 0xAD6DC18
+        Offsets::GameFacadeAlt2,   // 0xAD68E18
+        Offsets::GameFacadeGlobal, // 0x0C2132B8ULL
+        0xAD74BB0,                 // Player_c
+        0xAD6FDA8,                 // Player_c Alt
+        0x0C21AC20ULL              // OB55 Alt
+    };
+
+    // Test each candidate ELF base against our GameFacade offsets to find the live loaded library
+    for (uintptr_t b : elfBases) {
+        for (uintptr_t off : testOffsets) {
+            uintptr_t candidate = Read<uintptr_t>(b + off);
+            if (IsValidUserPointer64(candidate)) {
+                NIN_LOGI("DAEMON", "VERIFIED libil2cpp base: 0x%lx (tested with offset 0x%lx -> ptr 0x%lx)",
+                         (unsigned long)b, (unsigned long)off, (unsigned long)candidate);
+                return b;
+            }
+        }
+    }
+
+    // Fallback: If not yet initialized, prefer elf2 (the 2nd mapping, as proven in CROSS SRC ROOT)
+    if (elfBases.size() >= 2) {
+        NIN_LOGI("DAEMON", "Defaulting to elf2 base: 0x%lx (out of %d ELF mappings)", (unsigned long)elfBases[1], (int)elfBases.size());
+        return elfBases[1];
+    }
+
+    return elfBases[0];
 }
 
 // ========== Original Code ==========
@@ -311,7 +358,7 @@ void CreateDataList(Response& SendResponse) {
     if (!Actived.activar) return;
 
     if (libAddress == 0) {
-        libAddress = FindLibrary("libil2cpp.so", 1);
+        libAddress = GetModuleBase(target_pid, "libil2cpp.so");
         if (libAddress == 0) return;
         if (mem_fd <= 0) InitMemoryAccess(target_pid);
     }
@@ -320,23 +367,46 @@ void CreateDataList(Response& SendResponse) {
     time_t now = time(nullptr);
     bool shouldLog = (now - lastLogTime >= 3);
 
-    // 1. Resolve GameFacade root static class pointer (Multi-Candidate)
+    // 1. Resolve GameFacade root static class pointer (Multi-Candidate with strict 64-bit user pointer validation)
     uintptr_t GameFacade_c = 0;
     const uintptr_t facadeOffsets[] = {
-        Offsets::GameFacade,
-        Offsets::GameFacadeAlt1,
-        Offsets::GameFacadeAlt2,
-        Offsets::GameFacadeGlobal
+        Offsets::GameFacade,       // 0xA984D48
+        Offsets::GameFacadeAlt1,   // 0xAD6DC18
+        Offsets::GameFacadeAlt2,   // 0xAD68E18
+        Offsets::GameFacadeGlobal, // 0x0C2132B8ULL
+        0xAD74BB0,                 // Player_c
+        0xAD6FDA8,                 // Player_c Alt
+        0x0C21AC20ULL              // OB55 Alt
     };
+
     for (uintptr_t off : facadeOffsets) {
         auto ptr = Read<uintptr_t>(libAddress + off);
-        if (ptr > 0x10000000) {
+        if (IsValidUserPointer64(ptr)) {
             GameFacade_c = ptr;
             break;
         }
     }
 
-    if (GameFacade_c == 0 || GameFacade_c < 0x10000000) {
+    // If not found on current libAddress, try re-querying libAddress
+    if (!IsValidUserPointer64(GameFacade_c)) {
+        static time_t lastBaseRefresh = 0;
+        if (now - lastBaseRefresh >= 2) {
+            lastBaseRefresh = now;
+            uintptr_t freshBase = GetModuleBase(target_pid, "libil2cpp.so");
+            if (freshBase != 0 && freshBase != libAddress) {
+                libAddress = freshBase;
+                for (uintptr_t off : facadeOffsets) {
+                    auto ptr = Read<uintptr_t>(libAddress + off);
+                    if (IsValidUserPointer64(ptr)) {
+                        GameFacade_c = ptr;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!IsValidUserPointer64(GameFacade_c)) {
         if (shouldLog) {
             lastLogTime = now;
             NIN_LOGI("DAEMON_ESP", "Searching GameFacade root in libil2cpp (0x%lx)...", (unsigned long)libAddress);
@@ -344,30 +414,47 @@ void CreateDataList(Response& SendResponse) {
         return;
     }
 
-    // 2. Resolve Match object via Modern Direct (0x8) or Legacy 5-Level Chain
+    // 2. Resolve Match & LocalPlayer across all proven architectures (treasure, New_Brutal, Bull_Team)
     uintptr_t m_Match = 0;
     uintptr_t BaseGame = 0;
+    uintptr_t localPlayer = 0;
 
-    // Path A: Modern Direct CurrentMatchGame (0x8) from GameFacade (ninmods_offsets.h & New_Brutal)
+    // Path A: treasure 4-Step Chain (OB53/OB54/OB55)
+    auto staticClass = Read<uintptr_t>(GameFacade_c + 0x5C);
+    if (!IsValidUserPointer64(staticClass)) staticClass = Read<uintptr_t>(GameFacade_c + 0xB8);
+    if (IsValidUserPointer64(staticClass)) {
+        auto lp = Read<uintptr_t>(staticClass + 0x94);
+        if (!IsValidUserPointer64(lp)) lp = Read<uintptr_t>(staticClass + 0xD8);
+        if (IsValidUserPointer64(lp)) localPlayer = lp;
+    }
+
+    // Path B: Modern Direct CurrentMatchGame (0x8) from GameFacade (ninmods_offsets.h & New_Brutal)
     m_Match = Read<uintptr_t>(GameFacade_c + Offsets::GameFacade_CurrentMatchGame);
-    if (!m_Match || m_Match < 0x10000000) {
+    if (!IsValidUserPointer64(m_Match)) {
         m_Match = Read<uintptr_t>(GameFacade_c + Offsets::GameFacade_CurrentGame);
     }
 
-    // Path B: Legacy 5-Level Indirect Chain (GameFacade -> P2 -> BaseGame -> Match)
+    // Path C: Legacy 5-Level Indirect Chain (GameFacade -> P2 -> BaseGame -> Match)
     auto P2 = Read<uintptr_t>(GameFacade_c + Offsets::FacadeP2);
-    if (P2 > 0x10000000) {
+    if (IsValidUserPointer64(P2)) {
         BaseGame = Read<uintptr_t>(P2 + Offsets::P2BaseGame);
-        if (!BaseGame) BaseGame = Read<uintptr_t>(P2 + Offsets::P2BaseGameAlt);
-        if (!BaseGame) BaseGame = Read<uintptr_t>(P2 + Offsets::P2BaseGameZero);
-        if (BaseGame > 0x10000000 && (!m_Match || m_Match < 0x10000000)) {
+        if (!IsValidUserPointer64(BaseGame)) BaseGame = Read<uintptr_t>(P2 + Offsets::P2BaseGameAlt);
+        if (!IsValidUserPointer64(BaseGame)) BaseGame = Read<uintptr_t>(P2 + Offsets::P2BaseGameZero);
+        if (IsValidUserPointer64(BaseGame) && !IsValidUserPointer64(m_Match)) {
             m_Match = Read<uintptr_t>(BaseGame + Offsets::BaseGameMatch);
-            if (!m_Match) m_Match = Read<uintptr_t>(BaseGame + Offsets::BaseGameMatchAlt);
+            if (!IsValidUserPointer64(m_Match)) m_Match = Read<uintptr_t>(BaseGame + Offsets::BaseGameMatchAlt);
         }
     }
 
+    // Resolve LocalPlayer from m_Match if not already found via Path A
+    if (!IsValidUserPointer64(localPlayer) && IsValidUserPointer64(m_Match)) {
+        localPlayer = Read<uintptr_t>(m_Match + Offsets::MatchLocalPlayer);
+        if (!IsValidUserPointer64(localPlayer)) localPlayer = Read<uintptr_t>(m_Match + Offsets::MatchLocalPlayerAlt);
+        if (!IsValidUserPointer64(localPlayer)) localPlayer = Read<uintptr_t>(m_Match + 0xD8);
+    }
+
     // If still in Lobby or Match not active
-    if (!m_Match || m_Match < 0x10000000) {
+    if (!IsValidUserPointer64(m_Match) && !IsValidUserPointer64(localPlayer)) {
         if (shouldLog) {
             lastLogTime = now;
             NIN_LOGI("DAEMON_ESP", "Lobby State: GameFacade=0x%lx valid, waiting for match start...", (unsigned long)GameFacade_c);
@@ -384,14 +471,10 @@ void CreateDataList(Response& SendResponse) {
         }
     }
 
-    // 3. Resolve LocalPlayer
-    auto localPlayer = Read<uintptr_t>(m_Match + Offsets::MatchLocalPlayer);
-    if (localPlayer == 0) localPlayer = Read<uintptr_t>(m_Match + Offsets::MatchLocalPlayerAlt);
-
-    if (localPlayer == 0 || localPlayer < 0x10000000) {
+    if (!IsValidUserPointer64(localPlayer)) {
         if (shouldLog) {
             lastLogTime = now;
-            NIN_LOGI("DAEMON_ESP", "Match found (0x%lx), waiting for LocalPlayer spawn...", (unsigned long)m_Match);
+            NIN_LOGI("DAEMON_ESP", "Match active (0x%lx), waiting for LocalPlayer spawn...", (unsigned long)m_Match);
         }
         return;
     }
@@ -458,8 +541,29 @@ void CreateDataList(Response& SendResponse) {
         return;
     }
 
-    int numValues = dictionary->getNumValues();
-    auto valuesPtr = dictionary->getValues();
+    int numValues = 0;
+    uintptr_t valuesPtr = 0;
+    bool isMonoDict = false;
+
+    if (dictionary) {
+        numValues = dictionary->getNumValues();
+        valuesPtr = (uintptr_t)dictionary->getValues();
+        isMonoDict = (valuesPtr != 0 && numValues > 0 && numValues < 120);
+    }
+
+    // Fallback: treasure direct Dictionary format (count at 0x18, items at 0x10)
+    if (!isMonoDict && dictionary) {
+        int count = Read<int>((uintptr_t)dictionary + 0x18);
+        if (count > 0 && count < 120) {
+            uintptr_t entries = Read<uintptr_t>((uintptr_t)dictionary + 0x10);
+            if (IsValidUserPointer64(entries)) {
+                numValues = count;
+                valuesPtr = entries;
+                isMonoDict = false;
+            }
+        }
+    }
+
     auto LocalPosition = GetNodePosition(GetPlayerHeadTF(localPlayer));
 
     auto mIsFiring = Read<int>(localPlayer + Offsets::IsFiring);
@@ -472,11 +576,15 @@ void CreateDataList(Response& SendResponse) {
     uintptr_t bestTargetObj = 0;
 
     for (int x = 0; x < numValues && SendResponse.PlayerCount < maxplayerCount; x++) {
-        uintptr_t entryAddr = valuesPtr + (x * Offsets::DictionaryEntrySize);
-        auto enemyList = Read<uintptr_t>(entryAddr + Offsets::EntryEnemyList);
+        uintptr_t enemyList = 0;
+        if (isMonoDict) {
+            uintptr_t entryAddr = valuesPtr + (x * Offsets::DictionaryEntrySize);
+            enemyList = Read<uintptr_t>(entryAddr + Offsets::EntryEnemyList);
+        } else {
+            enemyList = Read<uintptr_t>(valuesPtr + (x * sizeof(uintptr_t)));
+        }
 
-        if (enemyList == 0 || enemyList < 0x100000000) continue;
-        if (enemyList == localPlayer) continue;
+        if (!IsValidUserPointer64(enemyList) || enemyList == localPlayer) continue;
 
         // Check if dead using New_Brutal PL_ISDEAD (0x7C)
         int isDead = Read<int>(enemyList + Offsets::IsDead);
@@ -611,11 +719,11 @@ void CreateDataList(Response& SendResponse) {
         lastLogTime = now;
         NIN_LOGI("OFFSET_AUDIT", "--- LIVE OFFSET VERIFICATION REPORT ---");
         NIN_LOGI("OFFSET_AUDIT", "[1] libil2cpp.so Base: 0x%lx [OK]", (unsigned long)libAddress);
-        NIN_LOGI("OFFSET_AUDIT", "[2] GameFacade Root: 0x%lx [%s]", (unsigned long)GameFacade_c, (GameFacade_c > 0x10000000 ? "VALID" : "NOT_FOUND"));
-        NIN_LOGI("OFFSET_AUDIT", "[3] CurrentMatch: 0x%lx [%s]", (unsigned long)m_Match, (m_Match > 0x10000000 ? "IN_MATCH" : "IN_LOBBY"));
-        NIN_LOGI("OFFSET_AUDIT", "[4] LocalPlayer: 0x%lx [%s]", (unsigned long)localPlayer, (localPlayer > 0x10000000 ? "SPAWNED" : "WAITING"));
+        NIN_LOGI("OFFSET_AUDIT", "[2] GameFacade Root: 0x%lx [%s]", (unsigned long)GameFacade_c, (IsValidUserPointer64(GameFacade_c) ? "VALID" : "NOT_FOUND"));
+        NIN_LOGI("OFFSET_AUDIT", "[3] CurrentMatch: 0x%lx [%s]", (unsigned long)m_Match, (IsValidUserPointer64(m_Match) ? "IN_MATCH" : "IN_LOBBY"));
+        NIN_LOGI("OFFSET_AUDIT", "[4] LocalPlayer: 0x%lx [%s]", (unsigned long)localPlayer, (IsValidUserPointer64(localPlayer) ? "SPAWNED" : "WAITING"));
         NIN_LOGI("OFFSET_AUDIT", "[5] Camera ViewMatrix: _11=%.2f, _22=%.2f [%s]", matrix._11, matrix._22, (matrix._11 != 0.0f ? "VALID" : "PENDING"));
-        NIN_LOGI("OFFSET_AUDIT", "[6] PlayerDictionary: Count=%d [%s]", (dictionary ? dictionary->getNumValues() : 0), (dictionary && dictionary->getNumValues() > 0 ? "PLAYERS_FOUND" : "EMPTY_OR_SCANNING"));
+        NIN_LOGI("OFFSET_AUDIT", "[6] PlayerDictionary: Count=%d [%s]", numValues, (numValues > 0 ? "PLAYERS_FOUND" : "EMPTY_OR_SCANNING"));
         NIN_LOGI("OFFSET_AUDIT", "[7] ESP Enemies Rendered: %d", SendResponse.PlayerCount);
         NIN_LOGI("OFFSET_AUDIT", "---------------------------------------");
     }
