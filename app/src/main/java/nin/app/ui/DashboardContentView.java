@@ -59,10 +59,6 @@ public class DashboardContentView {
         container.addView(menusHeader);
         container.addView(createBrandMenuGrid(context, listener));
 
-        // 2. Tactical Engine Profiles: Paired Cards Side-by-Side
-        TextView enginesHeader = createSectionHeader(context, "TACTICAL ENGINE PROFILES");
-        container.addView(enginesHeader);
-        container.addView(createSideBySideEngineCards(context, currentMode, listener));
 
         // 3. Installed Games Section (Auto-detected from device, Zero buttons, dialog on click)
         TextView gamesHeader = createSectionHeader(context, "INSTALLED GAMES");
@@ -170,97 +166,6 @@ public class DashboardContentView {
         return itemLayout;
     }
 
-    // Side-by-Side Paired Cards for Safe and Extreme Engine Profiles
-    private static View createSideBySideEngineCards(Context context, int currentMode, final DashboardListener listener) {
-        LinearLayout row = new LinearLayout(context);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        rowLp.setMargins(0, 0, 0, dp(context, 14));
-        row.setLayoutParams(rowLp);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-
-        // Safe Engine (Column 1)
-        row.addView(createSingleEngineCard(
-                context,
-                1,
-                context.getString(R.string.mode_safe_title),
-                "Safe Anti-Detection",
-                true,
-                currentMode,
-                listener
-        ));
-
-        // Extreme Engine (Column 2)
-        row.addView(createSingleEngineCard(
-                context,
-                2,
-                context.getString(R.string.mode_extreme_title),
-                "Speed & Aim Hook",
-                false,
-                currentMode,
-                listener
-        ));
-
-        return row;
-    }
-
-    private static View createSingleEngineCard(Context context, final int mode, String title, String subtitle, boolean isLeft, int currentMode, final DashboardListener listener) {
-        LinearLayout card = new LinearLayout(context);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        if (isLeft) {
-            lp.rightMargin = dp(context, 6);
-        } else {
-            lp.leftMargin = dp(context, 6);
-        }
-        card.setLayoutParams(lp);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(context, 14), dp(context, 14), dp(context, 14), dp(context, 14));
-
-        boolean isActive = (currentMode == mode);
-
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(AppColors.MAGENTA_CARD);
-        bg.setCornerRadius(dp(context, 10));
-        if (isActive) {
-            bg.setStroke(dp(context, 1), AppColors.MAGENTA_PRIMARY);
-        }
-        card.setBackground(bg);
-
-        TextView tView = new TextView(context);
-        tView.setText(title);
-        tView.setTextColor(AppColors.WHITE);
-        tView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        tView.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        card.addView(tView);
-
-        TextView sView = new TextView(context);
-        sView.setText(subtitle);
-        sView.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        sView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        sView.setPadding(0, dp(context, 2), 0, dp(context, 10));
-        card.addView(sView);
-
-        Button switchBtn = new Button(context);
-        switchBtn.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 36)));
-        switchBtn.setText(isActive ? "ACTIVE" : "ACTIVATE");
-        switchBtn.setTextColor(AppColors.WHITE);
-        switchBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        switchBtn.setTypeface(Typeface.DEFAULT_BOLD);
-
-        GradientDrawable btnBg = new GradientDrawable();
-        btnBg.setColor(isActive ? AppColors.MAGENTA_PRIMARY : AppColors.MAGENTA_CHIP);
-        btnBg.setCornerRadius(dp(context, 6));
-        switchBtn.setBackground(btnBg);
-
-        switchBtn.setOnClickListener(v -> {
-            if (listener != null) listener.onModeSelected(mode);
-        });
-
-        card.addView(switchBtn);
-        return card;
-    }
 
     // Dynamic Installed Games Section (Shows ONLY actually installed games, zero package names)
     private static View createInstalledGamesSection(Context context, final DashboardListener listener) {

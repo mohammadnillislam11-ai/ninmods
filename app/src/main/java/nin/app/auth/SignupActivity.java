@@ -270,6 +270,11 @@ public class SignupActivity extends Activity {
                 etPassword.setEnabled(true);
                 etConfirmPassword.setEnabled(true);
 
+                nin.app.core.Prefs.with(SignupActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_USERNAME, username);
+                nin.app.core.Prefs.with(SignupActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_EMAIL, username.toLowerCase() + "@ninmods.vip");
+                nin.app.core.Prefs.with(SignupActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_PASSWORD, password);
+                nin.app.core.Prefs.with(SignupActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_PLAN, "16-Day VIP Access (Active)");
+
                 Toast.makeText(SignupActivity.this, message, Toast.LENGTH_LONG).show();
                 finish();
             }

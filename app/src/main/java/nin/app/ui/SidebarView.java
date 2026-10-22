@@ -22,6 +22,8 @@ public class SidebarView {
         void onDashboardClick();
         void onDeviceInfoClick();
         void onModeSelectClick();
+        void onPricingClick();
+        void onProfileClick();
     }
 
     public static View create(Context context, final SidebarListener listener) {
@@ -69,7 +71,17 @@ public class SidebarView {
             if (listener != null) listener.onDashboardClick();
         }));
 
-        // 2. Device Information (Opens DeviceInfoActivity)
+        // 2. Pricing Plans (Opens PricingActivity)
+        navList.addView(createNavItem(context, "Pricing Plans", v -> {
+            if (listener != null) listener.onPricingClick();
+        }));
+
+        // 3. User Profile (Opens ProfileActivity)
+        navList.addView(createNavItem(context, "Account Profile", v -> {
+            if (listener != null) listener.onProfileClick();
+        }));
+
+        // 4. Device Information (Opens DeviceInfoActivity)
         navList.addView(createNavItem(context, "Device Information", v -> {
             if (listener != null) listener.onDeviceInfoClick();
         }));

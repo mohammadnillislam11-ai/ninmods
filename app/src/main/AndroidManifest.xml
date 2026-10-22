@@ -70,6 +70,17 @@
             android:exported="true"
             android:label="Device Information" />
 
+        <activity
+            android:name="nin.app.core.PricingActivity"
+            android:exported="true"
+            android:label="Pricing Plans" />
+
+        <activity
+            android:name="nin.app.core.ProfileActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:label="Account Profile" />
+
         <service
             android:name="nin.app.core.RootServices"
             android:process=":root"

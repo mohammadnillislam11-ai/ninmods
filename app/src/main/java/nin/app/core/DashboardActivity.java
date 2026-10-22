@@ -82,7 +82,17 @@ public class DashboardActivity extends Activity {
         mainContainer.setBackgroundColor(AppColors.BLACK);
 
         // 1. Separate Header File Import (HeaderView)
-        View headerView = HeaderView.create(this, () -> drawerLayout.openDrawer(Gravity.START));
+        View headerView = HeaderView.create(this, new HeaderView.HeaderListener() {
+            @Override
+            public void onMenuClick() {
+                drawerLayout.openDrawer(Gravity.START);
+            }
+
+            @Override
+            public void onProfileClick() {
+                startActivity(new Intent(DashboardActivity.this, ProfileActivity.class));
+            }
+        });
         mainContainer.addView(headerView);
 
         // 2. Separate Dashboard Body File Import (DashboardContentView)
@@ -107,6 +117,18 @@ public class DashboardActivity extends Activity {
             public void onModeSelectClick() {
                 drawerLayout.closeDrawer(Gravity.START);
                 startActivity(new Intent(DashboardActivity.this, ModeSelectActivity.class));
+            }
+
+            @Override
+            public void onPricingClick() {
+                drawerLayout.closeDrawer(Gravity.START);
+                startActivity(new Intent(DashboardActivity.this, PricingActivity.class));
+            }
+
+            @Override
+            public void onProfileClick() {
+                drawerLayout.closeDrawer(Gravity.START);
+                startActivity(new Intent(DashboardActivity.this, ProfileActivity.class));
             }
         });
         drawerLayout.addView(sidebarView);

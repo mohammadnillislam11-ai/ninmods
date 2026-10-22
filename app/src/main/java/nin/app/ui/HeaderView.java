@@ -20,7 +20,24 @@ public class HeaderView {
         void onMenuClick();
     }
 
+    public interface HeaderListener {
+        void onMenuClick();
+        void onProfileClick();
+    }
+
     public static View create(Context context, final OnMenuClickListener menuClickListener) {
+        return create(context, new HeaderListener() {
+            @Override
+            public void onMenuClick() {
+                if (menuClickListener != null) menuClickListener.onMenuClick();
+            }
+
+            @Override
+            public void onProfileClick() {}
+        });
+    }
+
+    public static View create(Context context, final HeaderListener headerListener) {
         LinearLayout header = new LinearLayout(context);
         header.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -28,7 +45,7 @@ public class HeaderView {
         ));
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(context, 12), 0, dp(context, 16), 0);
+        header.setPadding(dp(context, 12), 0, dp(context, 14), 0);
         header.setBackgroundColor(AppColors.MAGENTA_SURFACE); // Clean solid background, zero borders
 
         // 3-Line Hamburger Menu Button (opens sidebar drawer)
@@ -40,8 +57,8 @@ public class HeaderView {
         menuBtn.setTypeface(Typeface.DEFAULT_BOLD);
         menuBtn.setBackgroundColor(Color.TRANSPARENT);
         menuBtn.setOnClickListener(v -> {
-            if (menuClickListener != null) {
-                menuClickListener.onMenuClick();
+            if (headerListener != null) {
+                headerListener.onMenuClick();
             }
         });
         header.addView(menuBtn);
@@ -59,6 +76,34 @@ public class HeaderView {
         brandBox.addView(title);
 
         header.addView(brandBox);
+
+        // Circular Profile Avatar Button (Right Edge)
+        android.widget.FrameLayout profileBtn = new android.widget.FrameLayout(context);
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(dp(context, 38), dp(context, 38));
+        profileBtn.setLayoutParams(pLp);
+
+        android.graphics.drawable.GradientDrawable pBg = new android.graphics.drawable.GradientDrawable();
+        pBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        pBg.setColor(AppColors.MAGENTA_CHIP);
+        pBg.setStroke(dp(context, 1), AppColors.MAGENTA_PRIMARY);
+        profileBtn.setBackground(pBg);
+
+        android.widget.ImageView pIcon = new android.widget.ImageView(context);
+        android.widget.FrameLayout.LayoutParams pIconLp = new android.widget.FrameLayout.LayoutParams(
+                dp(context, 22),
+                dp(context, 22),
+                Gravity.CENTER
+        );
+        pIcon.setLayoutParams(pIconLp);
+        pIcon.setImageResource(R.drawable.ic_user_profile);
+        profileBtn.addView(pIcon);
+
+        profileBtn.setOnClickListener(v -> {
+            if (headerListener != null) {
+                headerListener.onProfileClick();
+            }
+        });
+        header.addView(profileBtn);
 
         return header;
     }

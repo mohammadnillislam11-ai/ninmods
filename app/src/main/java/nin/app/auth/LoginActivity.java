@@ -314,6 +314,15 @@ public class LoginActivity extends Activity {
                     Prefs.with(LoginActivity.this).writeString(PREF_SAVED_PASSWORD, "");
                 }
 
+                Prefs.with(LoginActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_USERNAME, username);
+                if (Prefs.with(LoginActivity.this).readString(nin.app.core.ProfileActivity.PREF_ACTIVE_EMAIL, "").isEmpty()) {
+                    Prefs.with(LoginActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_EMAIL, username.toLowerCase() + "@ninmods.vip");
+                }
+                if (Prefs.with(LoginActivity.this).readString(nin.app.core.ProfileActivity.PREF_ACTIVE_PLAN, "").isEmpty()) {
+                    Prefs.with(LoginActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_PLAN, "16-Day VIP Access (Active)");
+                }
+                Prefs.with(LoginActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_PASSWORD, password);
+
                 AuthManager.setLoggedIn(LoginActivity.this, true);
                 Toast.makeText(LoginActivity.this, message, Toast.LENGTH_SHORT).show();
 
