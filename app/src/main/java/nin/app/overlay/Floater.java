@@ -48,6 +48,9 @@ public class Floater {
     public static int SCREEN_WIDTH = 0;
     public static int SCREEN_HEIGHT = 0;
 
+    public static int Width() { return SCREEN_WIDTH; }
+    public static int Height() { return SCREEN_HEIGHT; }
+
     static Context context;
     private static Utils utils;
     public static Floater activeFloater = null;
