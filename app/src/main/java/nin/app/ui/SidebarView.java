@@ -35,7 +35,7 @@ public class SidebarView {
         sideLp.gravity = Gravity.START;
         sidebar.setLayoutParams(sideLp);
         sidebar.setOrientation(LinearLayout.VERTICAL);
-        sidebar.setBackgroundColor(AppColors.MAGENTA_CARD); // Matches card and header color exactly
+        sidebar.setBackgroundColor(Color.parseColor("#1B0824")); // Opaque dark magenta surface prevents background cards bleeding through
 
         // Sidebar Header
         LinearLayout sideHeader = new LinearLayout(context);
@@ -88,16 +88,6 @@ public class SidebarView {
 
         sidebar.addView(navList);
 
-        // Sidebar Footer
-        TextView footer = new TextView(context);
-        footer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        footer.setText("Version: " + context.getString(R.string.app_version) + " (Official Build)");
-        footer.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        footer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        footer.setGravity(Gravity.CENTER);
-        footer.setPadding(dp(context, 16), dp(context, 12), dp(context, 16), dp(context, 16));
-        sidebar.addView(footer);
-
         return sidebar;
     }
 
@@ -116,6 +106,7 @@ public class SidebarView {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(AppColors.MAGENTA_CHIP);
         bg.setCornerRadius(dp(context, 8));
+        bg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
         btn.setBackground(bg);
         btn.setOnClickListener(onClickListener);
         return btn;
