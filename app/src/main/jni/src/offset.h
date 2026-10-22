@@ -6,19 +6,22 @@
 // Synchronized directly with ninmods_offsets.h & New_Brutal
 // ========================================================
 namespace Offsets {
-    // Player Component / Bone Offsets (Prioritized for Normal Free Fire)
-    constexpr uintptr_t Head = 0x6478;
-    constexpr uintptr_t HeadFallback = 0x6A8;
-    constexpr uintptr_t HeadOld = 0x640;
+    // Player Component / Bone Offsets (Prioritized for Normal Free Fire & Mayur OB55)
+    constexpr uintptr_t MainCameraTransform = 0x3F0; // from Mayur pAdress.h (MainCam)
+    constexpr uintptr_t MainCameraTransformAlt = 0x3E8ULL; // from ninmods_offsets.h (OFFSET_Player_MainCameraTransform)
+    constexpr uintptr_t MainCamera = 0x3F0; // Corrected from 0x38 (0x38 is m_PlayerAimEvt)
+    constexpr uintptr_t MainCameraAlt = 0x3E8;
+    constexpr uintptr_t MainCameraOld = 0x38;
+
+    constexpr uintptr_t Head = 0x3F0; // Eye/Head camera level in OB55 (Mayur MainCam)
+    constexpr uintptr_t HeadFallback = 0x3E8; // ninmods_offsets.h MainCameraTransform
+    constexpr uintptr_t HeadOld = 0x6478;
 
     constexpr uintptr_t Spine = 0x6548;
     constexpr uintptr_t SpineFallback = 0x6B0;
 
     constexpr uintptr_t Feet = 0x60;
     constexpr uintptr_t FeetFallback = 0x6D0;
-
-    constexpr uintptr_t MainCamera = 0x38;
-    constexpr uintptr_t MainCameraTransform = 0x3E8ULL; // from ninmods_offsets.h (COW.GamePlay.Player.MainCameraTransform)
     
     // Transform Offsets
     constexpr uintptr_t TransformObj = 0x110;
@@ -77,14 +80,18 @@ namespace Offsets {
     constexpr uintptr_t MatchLocalPlayer = 0xD8;
     constexpr uintptr_t MatchLocalPlayerAlt = 0x94;
 
-    constexpr uintptr_t BaseGameDictionary = 0xC0;
-    constexpr uintptr_t BaseGameDictionaryAlt = 0x148;
-    constexpr uintptr_t DictionaryEntrySize = 0x18;
-    constexpr uintptr_t EntryEnemyList = 0x10;
+    // Dictionary Offsets (Mayur ListPlayer / m_ShortIDToPlayers = 0x148)
+    constexpr uintptr_t BaseGameDictionary = 0x148;
+    constexpr uintptr_t BaseGameDictionaryAlt = 0xC0;
+    constexpr uintptr_t DictionaryEntries = 0x18; // Mayur UnityArray<DictionaryEntry>* at 0x18
+    constexpr uintptr_t DictionaryCount = 0x20;   // Mayur count at 0x20
+    constexpr uintptr_t DictionaryEntrySize = 0x18; // sizeof(DictionaryEntry) = 24 bytes
+    constexpr uintptr_t EntryEnemyList = 0x10;    // value is at +0x10
     
     // Camera
-    constexpr uintptr_t FollowCamera = 0x38;
-    constexpr uintptr_t FollowCameraAlt = 0x698;
+    constexpr uintptr_t FollowCamera = 0x3F0; // Corrected from 0x38 to Mayur MainCam (0x3F0)
+    constexpr uintptr_t FollowCameraAlt = 0x3E8; // ninmods_offsets.h MainCameraTransform
+    constexpr uintptr_t FollowCameraFallback = 0x698;
     constexpr uintptr_t FollowCameraOld = 0x638;
 
     constexpr uintptr_t FollowCameraObj = 0x30;
@@ -94,6 +101,7 @@ namespace Offsets {
     // Newer Free Fire: IsFiring = 0x850 (Older was 0x7E0)
     constexpr uintptr_t IsFiring = 0x850;
     constexpr uintptr_t IsFiringOld = 0x7E0;
+    constexpr uintptr_t IsFiringAlt = 0x259; // UGCStartFiring from ninmods_offsets.h
 
     // Newer Free Fire: PlayerRotation = 0x61C (Older was 0x5BC)
     constexpr uintptr_t PlayerRotation = 0x61C;
@@ -105,11 +113,10 @@ namespace Offsets {
     constexpr uintptr_t WeaponAimlockOld = 0x4DC;
     
     // Enemy/Bot State
-    // Newer Free Fire: IsClientBot = 0x4A8, NamePtr = 0x498, AvatarManager = 0x778, AvatarSimple = 0x138
-    constexpr uintptr_t IsClientBot = 0x4A8;
-    constexpr uintptr_t IsClientBotOld = 0x450;
+    constexpr uintptr_t IsClientBot = 0x4A0; // Corrected from 0x4A8 to 0x4A0 (ninmods_offsets.h OFFSET_Player_IsClientBot)
+    constexpr uintptr_t IsClientBotOld = 0x4A8;
 
-    constexpr uintptr_t NamePtr = 0x498;
+    constexpr uintptr_t NamePtr = 0x498; // ninmods_offsets.h OFFSET_Player_OriginalNickName
     constexpr uintptr_t NamePtrOld = 0x448;
 
     constexpr uintptr_t AvatarManager = 0x778;
@@ -213,6 +220,80 @@ namespace Offsets {
         constexpr const char* CustomGravityMethod = "get_CustomGravity";
         constexpr const char* InSwapWeaponCDMethod = "get_InSwapWeaponCD";
         constexpr const char* IsGodMethod = "get_IsGod";
+    }
+
+    // ========================================================
+    // MAYUR OB55 LIVE OFFSETS (Synchronized from pAdress.h)
+    // ========================================================
+    namespace Mayur {
+        // Camera
+        constexpr uintptr_t Camera_main            = 0xa0c9acc;
+        constexpr uintptr_t WorldToScreenPoint     = 0xa0c9750;
+        constexpr uintptr_t Camera_get_fieldOfView = 0xa0c819c;
+        constexpr uintptr_t Camera_set_fieldOfView = 0xa0c81d8;
+
+        // Input
+        constexpr uintptr_t Input_get_touchCount    = 0xA15304C;
+        constexpr uintptr_t Input_GetTouch          = 0xA152A74;
+        constexpr uintptr_t Input_get_mousePosition = 0xA152D94;
+
+        // Screen
+        constexpr uintptr_t Screen_get_width   = 0xa0d71d4;
+        constexpr uintptr_t Screen_get_height  = 0xa0d71fc;
+        constexpr uintptr_t Screen_get_density = 0xa0d7224;
+
+        // Transform
+        constexpr uintptr_t GetForward            = 0xa1201c8;
+        constexpr uintptr_t Transform_GetPosition = 0xa11fc4c;
+        constexpr uintptr_t Transform_SetPosition = 0xa11fce4;
+        constexpr uintptr_t Transform_Position    = 0xa11fbf0;
+        constexpr uintptr_t Transform_Rotation    = 0xa11fde0;
+
+        // Component
+        constexpr uintptr_t Component_GetTransform = 0xa1116f8;
+
+        // Player Offsets
+        constexpr uintptr_t MainCam        = 0x3f0;
+        constexpr uintptr_t GetLocalPlayer = 0x4e76054;
+        constexpr uintptr_t Current_Match  = 0x75ebd88;
+        constexpr uintptr_t ListPlayer     = 0x148;
+        constexpr uintptr_t m_ShortIDToPlayers = 0x148;
+
+        // Player Methods
+        constexpr uintptr_t Head         = 0x7099fbc;
+        constexpr uintptr_t Hip          = 0x709a148;
+        constexpr uintptr_t HeadCollider = 0x7015e3c;
+        constexpr uintptr_t Name         = 0x7012ad4;
+        constexpr uintptr_t MaxHP        = 0x6ff81b8;
+        constexpr uintptr_t CurHP        = 0x707e2e4;
+        constexpr uintptr_t IsVisible    = 0x701b26c;
+        constexpr uintptr_t IsLocalTeam  = 0x75ec964;
+        constexpr uintptr_t Die          = 0x7000800;
+        constexpr uintptr_t Scope        = 0x700c05c;
+        constexpr uintptr_t Fire         = 0x7003790;
+        constexpr uintptr_t LocalBool    = 0x6fe2244;
+        constexpr uintptr_t CarLocal     = 0x7018ff8;
+        constexpr uintptr_t GetCar       = 0x6ff9dec;
+        constexpr uintptr_t Aim          = 0x7014450;
+        constexpr uintptr_t IsGod        = 0x6fe24a4;
+
+        // String
+        constexpr uintptr_t u3str   = 0x9EE6714;
+        constexpr uintptr_t CharGet = 0x9daae88;
+
+        // Raycast
+        constexpr uintptr_t Raycast = 0x7c5289c;
+
+        // Game Timer
+        constexpr uintptr_t m_Timer    = 0x75EA614;
+        constexpr uintptr_t m_GetTimer = 0x83583E0;
+        constexpr uintptr_t m_SetTimer = 0x8358414;
+
+        // Unity Time
+        constexpr uintptr_t Time_deltaTime = 0xA109624;
+
+        // Aim Collider
+        constexpr uintptr_t LAimCollider = 0x7246a50;
     }
 }
 

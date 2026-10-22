@@ -112,7 +112,13 @@ uintptr_t GetPlayerPeTF(uintptr_t player) {
 }
 
 uintptr_t GetPlayerMainCamera(uintptr_t player) {
-    auto ptr = Read<uintptr_t>(player + Offsets::MainCamera);
+    auto ptr = Read<uintptr_t>(player + Offsets::MainCameraTransform);
+    if (!ptr || ptr < 0x10000000) {
+        ptr = Read<uintptr_t>(player + Offsets::MainCameraTransformAlt);
+    }
+    if (!ptr || ptr < 0x10000000) {
+        ptr = Read<uintptr_t>(player + Offsets::MainCamera);
+    }
     return ptr;
 }
 
@@ -183,9 +189,10 @@ static Vector3 GetPosition(uintptr_t Transform) {
 }
 
 static Vector3 GetNodePosition(uintptr_t nodeTransform) {
+    if (!nodeTransform) return Vector3::Zero();
     auto transformValue = Read<uintptr_t>(nodeTransform + Offsets::TransformObj);
     if (transformValue == 0) {
-        return Vector3::Zero();
+        return GetPosition(nodeTransform);
     }
     return GetPosition(transformValue);
 }
