@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Basic Palette -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+
+    <!-- Particles -->
     <color name="particle_glow_1">#3000F2FF</color>
     <color name="particle_glow_2">#307000FF</color>
     <color name="snow_particle">#C7D1FF</color>
     <color name="text_close">#FCE8FC</color>
-    <color name="white">#FFFFFF</color>
-    
+
+    <!-- Theme Brand Colors (Magenta/Pink Theme) -->
     <color name="nin_primary">#E637E6</color>
     <color name="nin_accent">#F76BF7</color>
     <color name="nin_neon_blue">#3A88FF</color>
@@ -19,4 +25,19 @@
     <color name="nin_border_subtle">#2B0E38</color>
     <color name="nin_switch_track_on">#16D8FF</color>
     <color name="nin_switch_track_off">#2C3A4A</color>
+
+    <!-- Tactical Floater Overlay Glassmorphism Colors (100% XML Driven) -->
+    <!-- Semi-transparent alpha (0xC4 / ~77%) produces translucent frosted glass where background shines through -->
+    <color name="floater_bg_dark">#C414081C</color>
+    <color name="floater_sidebar_bg">#990D0412</color>
+    <color name="floater_border">#55F76BF7</color>
+    <color name="floater_accent_pink">#E637E6</color>
+    <color name="floater_section_title">#F76BF7</color>
+    <color name="floater_text_primary">#F0F2F8</color>
+    <color name="floater_text_muted">#D99ED9</color>
+    <color name="floater_button_dark">#80220A2E</color>
+    <color name="floater_button_stroke">#804D1C63</color>
+    <color name="floater_badge_close">#E53935</color>
+    <color name="floater_icon_active">#FFFFFF</color>
+    <color name="floater_icon_inactive">#8870758F</color>
 </resources>

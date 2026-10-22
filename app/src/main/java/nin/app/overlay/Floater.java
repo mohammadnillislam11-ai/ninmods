@@ -51,9 +51,8 @@ public class Floater {
     public static int Width() { return SCREEN_WIDTH; }
     public static int Height() { return SCREEN_HEIGHT; }
 
-    static Context context;
-    private static Utils utils;
-    public static Floater activeFloater = null;
+    private static final Handler mainHandler = new Handler(Looper.getMainLooper());
+    public static volatile Floater activeFloater = null;
 
     private WindowManager windowManager;
     private WindowManager.LayoutParams windowManagerParams;
@@ -62,8 +61,8 @@ public class Floater {
 
     private FrameLayout rootFrame;
     private RelativeLayout rootRelative;
-    private RelativeLayout collapsedRelative;
-    private LinearLayout menuLayout;
+    private FrameLayout collapsedRelative;
+    private FrameLayout menuLayout;
     private ImageView logoImagem;
     private int menuWidth;
     private int menuHeight;
@@ -82,7 +81,7 @@ public class Floater {
     // Strict Singleton & Lifecycle Control
     public static synchronized void start(Context ctx) {
         if (activeFloater != null && activeFloater.isAttached()) {
-            activeFloater.openMenu();
+            activeFloater.closeMenu();
             return;
         }
         if (activeFloater != null) {
@@ -90,9 +89,6 @@ public class Floater {
         }
         Context targetCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
         new Floater(targetCtx);
-        if (activeFloater != null) {
-            activeFloater.openMenu();
-        }
     }
 
     public static synchronized void stop() {
@@ -117,6 +113,7 @@ public class Floater {
                     try {
                         windowManager.removeView(rootFrame);
                     } catch (Exception ignored) {}
+                    rootFrame.removeAllViews();
                 }
                 if (drawView != null) {
                     drawView.stop();
@@ -126,6 +123,8 @@ public class Floater {
                 }
             }
         } catch (Exception ignored) {}
+        categoryViews.clear();
+        railTabButtons.clear();
         activeFloater = null;
     }
 
@@ -212,8 +211,8 @@ public class Floater {
         SCREEN_HEIGHT = screenHeight;
 
         boolean isLandscape = screenWidth > screenHeight;
-        // Tactical 3-Layer Compact Layout dimensions (low-profile height, wide horizontal)
-        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 470 : 385), (int) (screenWidth * 0.96f));
+        // Tactical 3-Layer Compact Layout dimensions (increased width for spacious controls)
+        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 520 : 430), (int) (screenWidth * 0.96f));
         menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 180 : 230), (int) (screenHeight * 0.65f));
 
         rootFrame = new FrameLayout(context);
@@ -226,48 +225,37 @@ public class Floater {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        collapsedRelative = new RelativeLayout(context);
-        collapsedRelative.setLayoutParams(new LinearLayout.LayoutParams(
+        collapsedRelative = new FrameLayout(context);
+        collapsedRelative.setLayoutParams(new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
-        collapsedRelative.setAlpha(0.96f);
         collapsedRelative.setVisibility(View.VISIBLE);
 
-        int logoSize = FloaterStyles.dp(context, 48);
+        int logoSize = FloaterStyles.dp(context, 50);
         logoImagem = new ImageView(context);
-        RelativeLayout.LayoutParams logoLp = new RelativeLayout.LayoutParams(logoSize, logoSize);
-        logoLp.setMargins(FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 4));
+        FrameLayout.LayoutParams logoLp = new FrameLayout.LayoutParams(logoSize, logoSize);
         logoImagem.setLayoutParams(logoLp);
         logoImagem.setImageResource(nin.app.R.drawable.nin_logo);
         logoImagem.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        logoImagem.setPadding(FloaterStyles.dp(context, 3), FloaterStyles.dp(context, 3), FloaterStyles.dp(context, 3), FloaterStyles.dp(context, 3));
-
-        GradientDrawable logoBg = new GradientDrawable();
-        logoBg.setShape(GradientDrawable.OVAL);
-        logoBg.setColor(FloaterStyles.ColorDarkBg);
-        logoBg.setStroke(FloaterStyles.dp(context, 2), FloaterStyles.ColorAccentBlue);
-        logoImagem.setBackground(logoBg);
+        logoImagem.setBackground(null); // Pure PNG without circular background
         collapsedRelative.addView(logoImagem);
 
-        // Corner Close Badge (✕) on the floating logo
+        // Corner Close Badge (✕) directly on top-right of the logo
         TextView logoCloseBadge = new TextView(context);
-        int badgeSize = FloaterStyles.dp(context, 19);
-        RelativeLayout.LayoutParams badgeLp = new RelativeLayout.LayoutParams(badgeSize, badgeSize);
-        badgeLp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-        badgeLp.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
-        badgeLp.topMargin = 0;
-        badgeLp.rightMargin = 0;
+        int badgeSize = FloaterStyles.dp(context, 17);
+        FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(badgeSize, badgeSize);
+        badgeLp.gravity = Gravity.TOP | Gravity.RIGHT;
         logoCloseBadge.setLayoutParams(badgeLp);
         logoCloseBadge.setGravity(Gravity.CENTER);
         logoCloseBadge.setText("✕");
         logoCloseBadge.setTextColor(Color.WHITE);
-        logoCloseBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
+        logoCloseBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
         logoCloseBadge.setTypeface(Typeface.DEFAULT_BOLD);
 
         GradientDrawable badgeBg = new GradientDrawable();
         badgeBg.setShape(GradientDrawable.OVAL);
-        badgeBg.setColor(0xFFE53935); // Crimson red
-        badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFFFFFFFF);
+        badgeBg.setColor(FloaterStyles.getColorBadgeClose(context));
+        badgeBg.setStroke(FloaterStyles.dp(context, 1), FloaterStyles.getColor(context, nin.app.R.color.white));
         logoCloseBadge.setBackground(badgeBg);
 
         logoCloseBadge.setOnClickListener(v -> {
@@ -275,16 +263,37 @@ public class Floater {
         });
         collapsedRelative.addView(logoCloseBadge);
 
-        // Main Menu Layout (3-Layer Layout: Icon Rail + Page 1 + Page 2)
-        menuLayout = new LinearLayout(context);
+        // Main Menu Layout (Translucent Glass Container with Body Watermark Logo)
+        menuLayout = new FrameLayout(context);
         menuLayout.setLayoutParams(new LinearLayout.LayoutParams(menuWidth, menuHeight));
         menuLayout.setVisibility(View.GONE);
-        menuLayout.setOrientation(LinearLayout.HORIZONTAL);
         menuLayout.setBackground(FloaterStyles.createCardBackground(context));
         menuLayout.setPadding(0, 0, 0, 0);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             menuLayout.setClipToOutline(true);
         }
+
+        // Large Brand Logo Watermark in Menu Body (per user specification & main_app style)
+        ImageView bodyWatermark = new ImageView(context);
+        int watermarkSize = Math.min(FloaterStyles.dp(context, 140), (int) (menuHeight * 0.85f));
+        FrameLayout.LayoutParams wmLp = new FrameLayout.LayoutParams(watermarkSize, watermarkSize);
+        wmLp.gravity = Gravity.CENTER;
+        wmLp.leftMargin = FloaterStyles.dp(context, 20);
+        bodyWatermark.setLayoutParams(wmLp);
+        bodyWatermark.setImageResource(nin.app.R.drawable.nin_logo);
+        bodyWatermark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        bodyWatermark.setAlpha(0.16f);
+        bodyWatermark.setClickable(false);
+        bodyWatermark.setFocusable(false);
+        menuLayout.addView(bodyWatermark);
+
+        // Content Horizontal Row: Icon Rail + Page 1 + Page 2
+        LinearLayout menuContent = new LinearLayout(context);
+        menuContent.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        menuContent.setOrientation(LinearLayout.HORIZONTAL);
+        menuContent.setPadding(0, 0, 0, 0);
 
         // LAYER 1: Icon-Only Rail (Width: 38dp, Smooth Left Rounded Corners)
         LinearLayout iconRail = new LinearLayout(context);
@@ -308,7 +317,7 @@ public class Floater {
         rslp.topMargin = FloaterStyles.dp(context, 4);
         rslp.bottomMargin = FloaterStyles.dp(context, 4);
         railSep.setLayoutParams(rslp);
-        railSep.setBackgroundColor(FloaterStyles.ColorBorder);
+        railSep.setBackgroundColor(FloaterStyles.getColorBorder(context));
         iconRail.addView(railSep);
 
         // Vector Icon Buttons: Tab 0 (Aim), Tab 1 (ESP), Tab 2 (Position Fix), Tab 3 (Settings)
@@ -339,13 +348,13 @@ public class Floater {
             railTabButtons.add(btn);
         }
         iconRail.addView(iconTabsContainer);
-        menuLayout.addView(iconRail);
+        menuContent.addView(iconRail);
 
         // Divider 1
         View div1 = new View(context);
         div1.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 1), ViewGroup.LayoutParams.MATCH_PARENT));
-        div1.setBackgroundColor(FloaterStyles.ColorBorder);
-        menuLayout.addView(div1);
+        div1.setBackgroundColor(FloaterStyles.getColorBorder(context));
+        menuContent.addView(div1);
 
         // LAYER 2: Page 1 (Sub-Panel 1, e.g. AIM ASSIST)
         LinearLayout page1 = new LinearLayout(context);
@@ -362,7 +371,7 @@ public class Floater {
 
         page1Title = new TextView(context);
         page1Title.setText("AIM ASSIST");
-        page1Title.setTextColor(FloaterStyles.ColorSectionTitle);
+        page1Title.setTextColor(FloaterStyles.getColorSectionTitle(context));
         page1Title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         page1Title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         p1Header.addView(page1Title);
@@ -373,7 +382,7 @@ public class Floater {
         p1dLp.topMargin = FloaterStyles.dp(context, 2);
         p1dLp.bottomMargin = FloaterStyles.dp(context, 3);
         p1Div.setLayoutParams(p1dLp);
-        p1Div.setBackgroundColor(FloaterStyles.ColorBorder);
+        p1Div.setBackgroundColor(FloaterStyles.getColorBorder(context));
         page1.addView(p1Div);
 
         ScrollView scroll1 = new ScrollView(context);
@@ -386,13 +395,13 @@ public class Floater {
         page1Content.setPadding(FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1));
         scroll1.addView(page1Content);
         page1.addView(scroll1);
-        menuLayout.addView(page1);
+        menuContent.addView(page1);
 
         // Divider 2
         View div2 = new View(context);
         div2.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 1), ViewGroup.LayoutParams.MATCH_PARENT));
-        div2.setBackgroundColor(FloaterStyles.ColorBorder);
-        menuLayout.addView(div2);
+        div2.setBackgroundColor(FloaterStyles.getColorBorder(context));
+        menuContent.addView(div2);
 
         // LAYER 3: Page 2 (Sub-Panel 2, e.g. AIM SETTINGS + Close Button)
         LinearLayout page2 = new LinearLayout(context);
@@ -411,7 +420,7 @@ public class Floater {
         LinearLayout.LayoutParams p2tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         page2Title.setLayoutParams(p2tLp);
         page2Title.setText("AIM SETTINGS");
-        page2Title.setTextColor(FloaterStyles.ColorSectionTitle);
+        page2Title.setTextColor(FloaterStyles.getColorSectionTitle(context));
         page2Title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         page2Title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         p2Header.addView(page2Title);
@@ -420,7 +429,7 @@ public class Floater {
         closeBtn.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 22), FloaterStyles.dp(context, 22)));
         closeBtn.setGravity(Gravity.CENTER);
         closeBtn.setText("✕");
-        closeBtn.setTextColor(AppColors.WHITE);
+        closeBtn.setTextColor(FloaterStyles.getColor(context, nin.app.R.color.white));
         closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         closeBtn.setTypeface(Typeface.DEFAULT_BOLD);
         closeBtn.setOnClickListener(v -> closeMenu());
@@ -432,7 +441,7 @@ public class Floater {
         p2dLp.topMargin = FloaterStyles.dp(context, 2);
         p2dLp.bottomMargin = FloaterStyles.dp(context, 3);
         p2Div.setLayoutParams(p2dLp);
-        p2Div.setBackgroundColor(FloaterStyles.ColorBorder);
+        p2Div.setBackgroundColor(FloaterStyles.getColorBorder(context));
         page2.addView(p2Div);
 
         ScrollView scroll2 = new ScrollView(context);
@@ -445,7 +454,8 @@ public class Floater {
         page2Content.setPadding(FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 1));
         scroll2.addView(page2Content);
         page2.addView(scroll2);
-        menuLayout.addView(page2);
+        menuContent.addView(page2);
+        menuLayout.addView(menuContent);
 
         rootRelative.addView(collapsedRelative);
         rootRelative.addView(menuLayout);
@@ -460,14 +470,10 @@ public class Floater {
             e.printStackTrace();
         }
 
-        View.OnTouchListener touchListener = createOnTouchListener();
-        rootFrame.setOnTouchListener(touchListener);
-        logoImagem.setOnTouchListener(touchListener);
-        logoImagem.setOnClickListener(v -> openMenu());
-        iconRail.setOnTouchListener(touchListener);
-        p1Header.setOnTouchListener(touchListener);
-        p2Header.setOnTouchListener(touchListener);
-        menuLayout.setOnTouchListener(touchListener);
+        logoImagem.setOnTouchListener(createLogoTouchListener());
+        iconRail.setOnTouchListener(createMenuDragListener());
+        p1Header.setOnTouchListener(createMenuDragListener());
+        p2Header.setOnTouchListener(createMenuDragListener());
 
         highlightActiveRailTab(0);
 
@@ -478,6 +484,7 @@ public class Floater {
         } catch (Throwable t) {
             t.printStackTrace();
         }
+        refreshActivePages();
     }
 
     public void selectRailTab(int index) {
@@ -491,10 +498,10 @@ public class Floater {
             ImageView btn = railTabButtons.get(i);
             if (i == index) {
                 btn.setBackground(FloaterStyles.createActiveIconRailDrawable(context));
-                btn.setColorFilter(0xFFFFFFFF);
+                btn.setColorFilter(FloaterStyles.getColorIconActive(context));
             } else {
                 btn.setBackground(FloaterStyles.createInactiveIconRailDrawable(context));
-                btn.setColorFilter(0xFF70758F);
+                btn.setColorFilter(FloaterStyles.getColorIconInactive(context));
             }
         }
     }
@@ -583,7 +590,7 @@ public class Floater {
         tv.setText(name);
         tv.setSingleLine(true);
         tv.setMaxLines(1);
-        tv.setTextColor(0xFFF0F2F8);
+        tv.setTextColor(FloaterStyles.getColorTextPrimary(context));
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
         tv.setTypeface(Typeface.DEFAULT);
         row.addView(tv);
@@ -598,7 +605,7 @@ public class Floater {
         row.addView(sw);
 
         categoryViews.get(currentCategory).add(row);
-        refreshActivePages();
+        schedulePageRefresh();
     }
 
     private boolean isSelectorOption(String type, int id, int max) {
@@ -658,14 +665,14 @@ public class Floater {
         tv.setText(name);
         tv.setSingleLine(true);
         tv.setMaxLines(1);
-        tv.setTextColor(0xFFF0F2F8);
+        tv.setTextColor(FloaterStyles.getColorTextPrimary(context));
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
         tv.setTypeface(Typeface.DEFAULT);
         topRow.addView(tv);
 
         final TextView valLabel = new TextView(context);
         valLabel.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        valLabel.setTextColor(FloaterStyles.ColorSectionTitle);
+        valLabel.setTextColor(FloaterStyles.getColorSectionTitle(context));
         valLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
         valLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         valLabel.setPadding(0, 0, FloaterStyles.dp(context, 4), 0);
@@ -697,11 +704,17 @@ public class Floater {
         row.addView(sb);
 
         categoryViews.get(currentCategory).add(row);
-        refreshActivePages();
+        schedulePageRefresh();
     }
 
-    // Official Android WindowManager touch listener from original main_app (smooth, zero lag, direct 1:1 dragging)
-    private View.OnTouchListener createOnTouchListener() {
+    private final Runnable debouncedRefresh = this::refreshActivePages;
+    private void schedulePageRefresh() {
+        mainHandler.removeCallbacks(debouncedRefresh);
+        mainHandler.postDelayed(debouncedRefresh, 50);
+    }
+
+    // Dedicated smooth 1:1 touch listener for floating logo
+    private View.OnTouchListener createLogoTouchListener() {
         return new View.OnTouchListener() {
             private int initialX;
             private int initialY;
@@ -732,10 +745,44 @@ public class Floater {
                         int xDiff = (int) (event.getRawX() - initialTouchX);
                         int yDiff = (int) (event.getRawY() - initialTouchY);
                         if (Math.abs(xDiff) < 10 && Math.abs(yDiff) < 10) {
-                            if (v == logoImagem) {
-                                openMenu();
-                            }
+                            openMenu();
                         }
+                        return true;
+                }
+                return false;
+            }
+        };
+    }
+
+    // Dedicated smooth 1:1 touch listener for menu headers
+    private View.OnTouchListener createMenuDragListener() {
+        return new View.OnTouchListener() {
+            private int initialX;
+            private int initialY;
+            private float initialTouchX;
+            private float initialTouchY;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        initialX = windowManagerParams.x;
+                        initialY = windowManagerParams.y;
+                        initialTouchX = event.getRawX();
+                        initialTouchY = event.getRawY();
+                        return true;
+
+                    case MotionEvent.ACTION_MOVE:
+                        windowManagerParams.x = initialX + (int) (event.getRawX() - initialTouchX);
+                        windowManagerParams.y = initialY + (int) (event.getRawY() - initialTouchY);
+                        try {
+                            if (rootFrame != null && rootFrame.isAttachedToWindow()) {
+                                windowManager.updateViewLayout(rootFrame, windowManagerParams);
+                            }
+                        } catch (Exception ignored) {}
+                        return true;
+
+                    case MotionEvent.ACTION_UP:
                         return true;
                 }
                 return false;
@@ -761,20 +808,29 @@ public class Floater {
 
     // Static bridge methods called directly by Native C++ JNI
     public static void addCategory(final String name) {
-        new Handler(Looper.getMainLooper()).post(() -> {
-            if (activeFloater != null) activeFloater.onNativeAddCategory(name);
+        mainHandler.post(() -> {
+            Floater instance = activeFloater;
+            if (instance != null && instance.isAttached()) {
+                instance.onNativeAddCategory(name);
+            }
         });
     }
 
     public static void addSwitch(final String name, final int ID) {
-        new Handler(Looper.getMainLooper()).post(() -> {
-            if (activeFloater != null) activeFloater.onNativeAddSwitch(name, ID);
+        mainHandler.post(() -> {
+            Floater instance = activeFloater;
+            if (instance != null && instance.isAttached()) {
+                instance.onNativeAddSwitch(name, ID);
+            }
         });
     }
 
     public static void addSeekBar(final String name, final int value, final int max, final String type, final int ID) {
-        new Handler(Looper.getMainLooper()).post(() -> {
-            if (activeFloater != null) activeFloater.onNativeAddSeekBar(name, value, max, type, ID);
+        mainHandler.post(() -> {
+            Floater instance = activeFloater;
+            if (instance != null && instance.isAttached()) {
+                instance.onNativeAddSeekBar(name, value, max, type, ID);
+            }
         });
     }
 }
