@@ -769,6 +769,7 @@ public class Floater {
         page2Content.addView(termCol);
 
         logScroll.post(() -> logScroll.fullScroll(View.FOCUS_DOWN));
+    }
 
     // Dynamic genuine registration from Native C++ JNI
     public void onNativeAddCategory(final String name) {
