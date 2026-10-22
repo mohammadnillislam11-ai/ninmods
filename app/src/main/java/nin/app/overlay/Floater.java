@@ -155,10 +155,10 @@ public class Floater {
         updateScreenDimensions();
 
         boolean isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
-        // Dynamically compute expansive width so sliders and dual columns have generous breathing room
-        int targetWidth = isLandscape ? FloaterStyles.dp(context, 860) : FloaterStyles.dp(context, 660);
-        menuWidth = Math.min(targetWidth, (int) (SCREEN_WIDTH * 0.94f));
-        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 220 : 270), (int) (SCREEN_HEIGHT * 0.78f));
+        // Dynamically compute expansive width so sliders have ample space, while strictly preserving original compact height
+        int targetWidth = isLandscape ? FloaterStyles.dp(context, 940) : FloaterStyles.dp(context, 740);
+        menuWidth = Math.min(targetWidth, (int) (SCREEN_WIDTH * 0.96f));
+        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 195 : 240), (int) (SCREEN_HEIGHT * 0.70f));
 
         if (menuLayout != null && menuLayout.getLayoutParams() != null) {
             menuLayout.getLayoutParams().width = menuWidth;
@@ -167,7 +167,7 @@ public class Floater {
         }
 
         if (bodyWatermark != null && bodyWatermark.getLayoutParams() != null) {
-            int watermarkSize = Math.min(FloaterStyles.dp(context, 200), (int) (menuHeight * 0.94f));
+            int watermarkSize = Math.min(FloaterStyles.dp(context, 180), (int) (menuHeight * 0.90f));
             bodyWatermark.getLayoutParams().width = watermarkSize;
             bodyWatermark.getLayoutParams().height = watermarkSize;
         }
@@ -261,10 +261,10 @@ public class Floater {
         SCREEN_HEIGHT = screenHeight;
 
         boolean isLandscape = screenWidth > screenHeight;
-        // Tactical 3-Layer Compact Layout dimensions (Ultra wide 860dp per user explicit request)
-        int targetWidth = isLandscape ? FloaterStyles.dp(context, 860) : FloaterStyles.dp(context, 660);
-        menuWidth = Math.min(targetWidth, (int) (screenWidth * 0.94f));
-        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 220 : 270), (int) (screenHeight * 0.78f));
+        // Tactical 3-Layer Compact Layout dimensions (Expansive width per user request, compact height preserved)
+        int targetWidth = isLandscape ? FloaterStyles.dp(context, 940) : FloaterStyles.dp(context, 740);
+        menuWidth = Math.min(targetWidth, (int) (screenWidth * 0.96f));
+        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 195 : 240), (int) (screenHeight * 0.70f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -328,7 +328,7 @@ public class Floater {
 
         // Large Brand Logo Watermark in Menu Body (Enlarged per user request)
         bodyWatermark = new ImageView(context);
-        int watermarkSize = Math.min(FloaterStyles.dp(context, 200), (int) (menuHeight * 0.94f));
+        int watermarkSize = Math.min(FloaterStyles.dp(context, 180), (int) (menuHeight * 0.90f));
         FrameLayout.LayoutParams wmLp = new FrameLayout.LayoutParams(watermarkSize, watermarkSize);
         wmLp.gravity = Gravity.CENTER;
         wmLp.leftMargin = FloaterStyles.dp(context, 20);
@@ -412,18 +412,20 @@ public class Floater {
 
         // LAYER 2: Page 1 (Sub-Panel 1, e.g. AIM ASSIST)
         LinearLayout page1 = new LinearLayout(context);
-        LinearLayout.LayoutParams p1Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.08f);
+        LinearLayout.LayoutParams p1Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
         page1.setLayoutParams(p1Lp);
         page1.setOrientation(LinearLayout.VERTICAL);
-        page1.setPadding(FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 4));
+        page1.setPadding(FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 4));
 
         LinearLayout p1Header = new LinearLayout(context);
-        p1Header.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        p1Header.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 26)));
         p1Header.setOrientation(LinearLayout.HORIZONTAL);
         p1Header.setGravity(Gravity.CENTER_VERTICAL);
-        p1Header.setPadding(FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 2));
+        p1Header.setPadding(FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 4), 0);
 
         page1Title = new TextView(context);
+        LinearLayout.LayoutParams p1tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        page1Title.setLayoutParams(p1tLp);
         page1Title.setText("AIM ASSIST");
         page1Title.setTextColor(FloaterStyles.getColorSectionTitle(context));
         page1Title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
@@ -462,10 +464,10 @@ public class Floater {
         LinearLayout.LayoutParams p2Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
         page2.setLayoutParams(p2Lp);
         page2.setOrientation(LinearLayout.VERTICAL);
-        page2.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 10), FloaterStyles.dp(context, 4));
+        page2.setPadding(FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 8), FloaterStyles.dp(context, 4));
 
         LinearLayout p2Header = new LinearLayout(context);
-        p2Header.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        p2Header.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 26)));
         p2Header.setOrientation(LinearLayout.HORIZONTAL);
         p2Header.setGravity(Gravity.CENTER_VERTICAL);
         p2Header.setPadding(FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 4), 0);
@@ -480,11 +482,11 @@ public class Floater {
         p2Header.addView(page2Title);
 
         TextView closeBtn = new TextView(context);
-        closeBtn.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 24), FloaterStyles.dp(context, 24)));
+        closeBtn.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 22), FloaterStyles.dp(context, 22)));
         closeBtn.setGravity(Gravity.CENTER);
         closeBtn.setText("✕");
         closeBtn.setTextColor(FloaterStyles.getColorAccentPink(context));
-        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         closeBtn.setTypeface(Typeface.DEFAULT_BOLD);
         closeBtn.setOnClickListener(v -> closeMenu());
         p2Header.addView(closeBtn);
