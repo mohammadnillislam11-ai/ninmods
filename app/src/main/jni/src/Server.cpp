@@ -124,6 +124,15 @@ uintptr_t DecodeAdrpLdr(uintptr_t pc) {
     return 0;
 }
 
+// ========== Mathematical ViewMatrix Validator (Checks Real 3D Perspective Properties) ==========
+static bool IsValidViewMatrix(const D3DMatrix& m) {
+    if (std::isnan(m._11) || std::isnan(m._22) || std::isnan(m._33) || std::isnan(m._44)) return false;
+    // Perspective projection aspect and FOV scalers must be non-zero and physically reasonable
+    if (fabsf(m._11) < 0.15f || fabsf(m._11) > 8.0f) return false;
+    if (fabsf(m._22) < 0.15f || fabsf(m._22) > 8.0f) return false;
+    return true;
+}
+
 // ========== Module Base Address (ROBUST MULTI-ELF DETECTOR) ==========
 uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
     char mapsPath[64];
@@ -529,37 +538,79 @@ void CreateDataList(Response& SendResponse) {
         }
     }
 
-    // 4. Resolve Camera & ViewMatrix
-    uintptr_t FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCamera);
-    if (!IsValidUserPointer64(FollowCamera)) FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCameraAlt);
-    if (!IsValidUserPointer64(FollowCamera)) FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCameraFallback);
-    if (!IsValidUserPointer64(FollowCamera)) FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCameraOld);
-
+    // 4. Resolve Camera & ViewMatrix (Proven CROSS SRC ROOT, Bull_Team, treasure, Mayur)
+    D3DMatrix matrix = {0};
     uintptr_t Camera = 0;
-    if (IsValidUserPointer64(FollowCamera)) {
-        Camera = Read<uintptr_t>(FollowCamera + Offsets::FollowCameraObj);
-        if (!IsValidUserPointer64(Camera)) Camera = FollowCamera;
+    uintptr_t IntPtrCam = 0;
+
+    // A. FollowCamera chain on localPlayer (CROSS SRC ROOT & Bull_Team)
+    const uintptr_t followCamOffsets[] = {
+        Offsets::FollowCamera,         // 0x698
+        Offsets::FollowCameraAlt,      // 0x638
+        Offsets::FollowCameraFallback, // 0x640
+        Offsets::FollowCameraOld       // 0x6A8
+    };
+
+    for (uintptr_t fcOff : followCamOffsets) {
+        uintptr_t fc = Read<uintptr_t>(localPlayer + fcOff);
+        if (!IsValidUserPointer64(fc)) continue;
+
+        uintptr_t cam = Read<uintptr_t>(fc + Offsets::FollowCameraObj); // 0x30
+        if (!IsValidUserPointer64(cam)) cam = fc;
+
+        uintptr_t ipc = Read<uintptr_t>(cam + Offsets::CameraIntPtr); // 0x10
+        if (!IsValidUserPointer64(ipc)) ipc = cam;
+
+        const uintptr_t matrixOffsets[] = { 0x100, 0xBC, 0xDC, 0xC0, 0x90, 0x80, 0x10, 0xD0, 0xE0, 0x110, 0x120 };
+        for (uintptr_t mOff : matrixOffsets) {
+            auto candMat = Read<D3DMatrix>(ipc + mOff);
+            if (IsValidViewMatrix(candMat)) {
+                matrix = candMat;
+                Camera = cam;
+                IntPtrCam = ipc;
+                break;
+            }
+        }
+        if (IsValidViewMatrix(matrix)) break;
     }
 
-    // Static Camera.main fallback (Mayur: 0xa0c9acc / ninmods: 0xa13fd00)
-    if (!IsValidUserPointer64(Camera)) {
-        uintptr_t staticCamAddr = DecodeAdrpLdr(libAddress + Offsets::Mayur::Camera_main);
-        if (IsValidUserPointer64(staticCamAddr)) {
-            Camera = Read<uintptr_t>(staticCamAddr);
+    // B. Static GameFacade / treasure Direct ViewMatrix (staticClass + 0xBC / 0x100)
+    if (!IsValidViewMatrix(matrix) && IsValidUserPointer64(GameFacade_c)) {
+        const uintptr_t staticOffsets[] = { 0xB8, 0x5C, 0x0 };
+        for (uintptr_t sOff : staticOffsets) {
+            uintptr_t staticFields = (sOff == 0) ? GameFacade_c : Read<uintptr_t>(GameFacade_c + sOff);
+            if (!IsValidUserPointer64(staticFields)) continue;
+
+            const uintptr_t matOffsets[] = { 0xBC, 0x100, 0xDC, 0xC0 };
+            for (uintptr_t mOff : matOffsets) {
+                auto candMat = Read<D3DMatrix>(staticFields + mOff);
+                if (IsValidViewMatrix(candMat)) {
+                    matrix = candMat;
+                    break;
+                }
+            }
+            if (IsValidViewMatrix(matrix)) break;
         }
     }
 
-    auto IntPtrCam = IsValidUserPointer64(Camera) ? Read<uintptr_t>(Camera + Offsets::CameraIntPtr) : 0;
-    if (!IsValidUserPointer64(IntPtrCam)) IntPtrCam = Camera;
-
-    D3DMatrix matrix = {0};
-    if (IsValidUserPointer64(IntPtrCam)) {
-        const uintptr_t matrixOffsets[] = { 0x10, 0x100, 0xDC, 0xC0, 0x90, 0x80 };
-        for (uintptr_t mOff : matrixOffsets) {
-            auto candMat = Read<D3DMatrix>(IntPtrCam + mOff);
-            if (candMat._11 != 0.0f || candMat._22 != 0.0f || candMat._33 != 0.0f) {
-                matrix = candMat;
-                break;
+    // C. Static Camera_main Fallback (Mayur: 0xa0c9acc)
+    if (!IsValidViewMatrix(matrix)) {
+        uintptr_t staticCamAddr = DecodeAdrpLdr(libAddress + Offsets::Mayur::Camera_main);
+        if (IsValidUserPointer64(staticCamAddr)) {
+            uintptr_t cam = Read<uintptr_t>(staticCamAddr);
+            if (IsValidUserPointer64(cam)) {
+                uintptr_t ipc = Read<uintptr_t>(cam + Offsets::CameraIntPtr);
+                if (!IsValidUserPointer64(ipc)) ipc = cam;
+                const uintptr_t matrixOffsets[] = { 0x100, 0xBC, 0xDC, 0xC0, 0x90, 0x80, 0x10 };
+                for (uintptr_t mOff : matrixOffsets) {
+                    auto candMat = Read<D3DMatrix>(ipc + mOff);
+                    if (IsValidViewMatrix(candMat)) {
+                        matrix = candMat;
+                        Camera = cam;
+                        IntPtrCam = ipc;
+                        break;
+                    }
+                }
             }
         }
     }
@@ -574,34 +625,105 @@ void CreateDataList(Response& SendResponse) {
     ViewMatrix = matrix;
     MainCameraTransformPos = myCamPos;
 
-    // 5. Resolve Player Dictionary from Match, BaseGame, or static fields
+    // 5. Multi-Candidate Smart Dictionary Resolution (Mayur, New_Brutal, CROSS SRC ROOT, treasure)
     uintptr_t dictionary = 0;
+    int numValues = 0;
+    uintptr_t valuesPtr = 0;
+    bool isMonoDict = false;
+
     const uintptr_t dictOffsets[] = {
-        Offsets::BaseGameDictionary,     // 0x148 (Mayur ListPlayer / m_ShortIDToPlayers)
-        Offsets::BaseGameDictionaryAlt,  // 0xC0
-        0x60,                            // New_Brutal ListPlayer
-        0x68,
-        0x70,
-        0x140
+        Offsets::BaseGameDictionary,     // 0x148 (Mayur / New_Brutal ListPlayer)
+        Offsets::BaseGameDictionaryAlt,  // 0xC0 (CROSS SRC ROOT)
+        Offsets::BaseGameDictionaryAlt2, // 0x68 (treasure)
+        Offsets::BaseGameDictionaryAlt3, // 0x60 (New_Brutal)
+        Offsets::BaseGameDictionaryAlt4, // 0x70
+        Offsets::BaseGameDictionaryAlt5, // 0x140
+        0x80,
+        0x90
     };
 
-    if (IsValidUserPointer64(m_Match)) {
+    std::vector<uintptr_t> roots;
+    if (IsValidUserPointer64(m_Match)) roots.push_back(m_Match);
+    if (IsValidUserPointer64(BaseGame)) roots.push_back(BaseGame);
+
+    for (uintptr_t root : roots) {
         for (uintptr_t off : dictOffsets) {
-            auto d = Read<uintptr_t>(m_Match + off);
-            if (IsValidUserPointer64(d)) {
-                dictionary = d;
-                break;
+            uintptr_t candDict = Read<uintptr_t>(root + off);
+            if (!IsValidUserPointer64(candDict)) continue;
+
+            // Approach A: Mayur / New_Brutal / IL2CPP MyDictionary
+            // candDict + 0x18 = UnityArray<DictionaryEntry>* entries
+            // candDict + 0x20 = int count
+            uintptr_t entriesArray = Read<uintptr_t>(candDict + Offsets::DictionaryEntries);
+            int dictCount = Read<int>(candDict + Offsets::DictionaryCount);
+
+            if (IsValidUserPointer64(entriesArray)) {
+                int maxLen = Read<int>(entriesArray + 0x18);
+                if (maxLen > 0 && maxLen <= 512) {
+                    int total = (dictCount > 0 && dictCount <= maxLen) ? dictCount : maxLen;
+                    if (total > 0 && total <= 120) {
+                        dictionary = candDict;
+                        numValues = total;
+                        valuesPtr = entriesArray + 0x20;
+                        isMonoDict = true;
+                        break;
+                    }
+                }
+            }
+
+            // Approach B: treasure direct Dictionary format (count at 0x18, items at 0x10)
+            if (numValues == 0) {
+                int count = Read<int>(candDict + 0x18);
+                if (count > 0 && count <= 120) {
+                    uintptr_t entries = Read<uintptr_t>(candDict + 0x10);
+                    if (IsValidUserPointer64(entries)) {
+                        dictionary = candDict;
+                        numValues = count;
+                        valuesPtr = entries;
+                        isMonoDict = false;
+                        break;
+                    }
+                }
+            }
+
+            // Approach C: MonoDictionary standard virtual layout
+            if (numValues == 0) {
+                auto monoD = (MonoDictionary*)candDict;
+                int mCount = monoD->getNumValues();
+                uintptr_t mValues = (uintptr_t)monoD->getValues();
+                if (mValues != 0 && mCount > 0 && mCount <= 120) {
+                    dictionary = candDict;
+                    numValues = mCount;
+                    valuesPtr = mValues;
+                    isMonoDict = true;
+                    break;
+                }
             }
         }
+        if (numValues > 0) break;
     }
 
-    if (!dictionary && IsValidUserPointer64(BaseGame)) {
-        for (uintptr_t off : dictOffsets) {
-            auto d = Read<uintptr_t>(BaseGame + off);
-            if (IsValidUserPointer64(d)) {
-                dictionary = d;
-                break;
+    // Fallback: If no populated dictionary found yet, locate first structurally valid dictionary container
+    if (!dictionary) {
+        for (uintptr_t root : roots) {
+            for (uintptr_t off : dictOffsets) {
+                uintptr_t candDict = Read<uintptr_t>(root + off);
+                if (!IsValidUserPointer64(candDict)) continue;
+                uintptr_t entriesArray = Read<uintptr_t>(candDict + Offsets::DictionaryEntries);
+                if (IsValidUserPointer64(entriesArray)) {
+                    int maxLen = Read<int>(entriesArray + 0x18);
+                    int dictCount = Read<int>(candDict + Offsets::DictionaryCount);
+                    int total = (dictCount > 0 && dictCount <= maxLen) ? dictCount : maxLen;
+                    if (total >= 0 && total <= 120) {
+                        dictionary = candDict;
+                        numValues = total;
+                        valuesPtr = entriesArray + 0x20;
+                        isMonoDict = true;
+                        break;
+                    }
+                }
             }
+            if (dictionary) break;
         }
     }
 
@@ -611,51 +733,6 @@ void CreateDataList(Response& SendResponse) {
             NIN_LOGI("DAEMON_ESP", "In Match: LocalPlayer OK (0x%lx), searching player dictionary...", (unsigned long)localPlayer);
         }
         return;
-    }
-
-    int numValues = 0;
-    uintptr_t valuesPtr = 0;
-    bool isMonoDict = false;
-
-    // Approach A: Mayur / IL2CPP generic MyDictionary structure
-    // dictionary + 0x18 = UnityArray<DictionaryEntry>* entries
-    // dictionary + 0x20 = int count
-    uintptr_t entriesArray = Read<uintptr_t>(dictionary + Offsets::DictionaryEntries); // 0x18
-    int dictCount = Read<int>(dictionary + Offsets::DictionaryCount); // 0x20
-
-    if (IsValidUserPointer64(entriesArray)) {
-        int maxLen = Read<int>(entriesArray + 0x18);
-        int total = (dictCount > 0 && dictCount <= maxLen) ? dictCount : maxLen;
-        if (total > 0 && total <= 120) {
-            numValues = total;
-            valuesPtr = entriesArray + 0x20; // vector elements start at 0x20
-            isMonoDict = true; // stride 0x18, value at +0x10
-        }
-    }
-
-    // Approach B: MonoDictionary standard virtual layout
-    if (!isMonoDict) {
-        auto monoD = (MonoDictionary*)dictionary;
-        int mCount = monoD->getNumValues();
-        uintptr_t mValues = (uintptr_t)monoD->getValues();
-        if (mValues != 0 && mCount > 0 && mCount < 120) {
-            numValues = mCount;
-            valuesPtr = mValues;
-            isMonoDict = true;
-        }
-    }
-
-    // Approach C: treasure direct Dictionary format (count at 0x18, items at 0x10)
-    if (!isMonoDict) {
-        int count = Read<int>(dictionary + 0x18);
-        if (count > 0 && count < 120) {
-            uintptr_t entries = Read<uintptr_t>(dictionary + 0x10);
-            if (IsValidUserPointer64(entries)) {
-                numValues = count;
-                valuesPtr = entries;
-                isMonoDict = false;
-            }
-        }
     }
 
     auto LocalPosition = GetNodePosition(GetPlayerHeadTF(localPlayer));
@@ -826,7 +903,7 @@ void CreateDataList(Response& SendResponse) {
         NIN_LOGI("OFFSET_AUDIT", "[2] GameFacade Root: 0x%lx [%s]", (unsigned long)GameFacade_c, (IsValidUserPointer64(GameFacade_c) ? "VALID" : "NOT_FOUND"));
         NIN_LOGI("OFFSET_AUDIT", "[3] CurrentMatch: 0x%lx [%s]", (unsigned long)m_Match, (IsValidUserPointer64(m_Match) ? "IN_MATCH" : "IN_LOBBY"));
         NIN_LOGI("OFFSET_AUDIT", "[4] LocalPlayer: 0x%lx [%s]", (unsigned long)localPlayer, (IsValidUserPointer64(localPlayer) ? "SPAWNED" : "WAITING"));
-        NIN_LOGI("OFFSET_AUDIT", "[5] Camera ViewMatrix: _11=%.2f, _22=%.2f [%s]", matrix._11, matrix._22, (matrix._11 != 0.0f ? "VALID" : "PENDING"));
+        NIN_LOGI("OFFSET_AUDIT", "[5] Camera ViewMatrix: _11=%.2f, _22=%.2f [%s]", matrix._11, matrix._22, (IsValidViewMatrix(matrix) ? "VALID" : "PENDING"));
         NIN_LOGI("OFFSET_AUDIT", "[6] PlayerDictionary: Count=%d [%s]", numValues, (numValues > 0 ? "PLAYERS_FOUND" : "EMPTY_OR_SCANNING"));
         NIN_LOGI("OFFSET_AUDIT", "[7] ESP Enemies Rendered: %d", SendResponse.PlayerCount);
         NIN_LOGI("OFFSET_AUDIT", "---------------------------------------");

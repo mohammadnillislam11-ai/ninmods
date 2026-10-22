@@ -83,19 +83,26 @@ namespace Offsets {
     // Dictionary Offsets (Mayur ListPlayer / m_ShortIDToPlayers = 0x148)
     constexpr uintptr_t BaseGameDictionary = 0x148;
     constexpr uintptr_t BaseGameDictionaryAlt = 0xC0;
+    constexpr uintptr_t BaseGameDictionaryAlt2 = 0x68;
+    constexpr uintptr_t BaseGameDictionaryAlt3 = 0x60;
+    constexpr uintptr_t BaseGameDictionaryAlt4 = 0x70;
+    constexpr uintptr_t BaseGameDictionaryAlt5 = 0x140;
     constexpr uintptr_t DictionaryEntries = 0x18; // Mayur UnityArray<DictionaryEntry>* at 0x18
     constexpr uintptr_t DictionaryCount = 0x20;   // Mayur count at 0x20
     constexpr uintptr_t DictionaryEntrySize = 0x18; // sizeof(DictionaryEntry) = 24 bytes
     constexpr uintptr_t EntryEnemyList = 0x10;    // value is at +0x10
     
-    // Camera
-    constexpr uintptr_t FollowCamera = 0x3F0; // Corrected from 0x38 to Mayur MainCam (0x3F0)
-    constexpr uintptr_t FollowCameraAlt = 0x3E8; // ninmods_offsets.h MainCameraTransform
-    constexpr uintptr_t FollowCameraFallback = 0x698;
-    constexpr uintptr_t FollowCameraOld = 0x638;
+    // Camera Components & ViewMatrix (Proven from CROSS SRC ROOT & Bull_Team)
+    constexpr uintptr_t FollowCamera = 0x698; // Proven Primary FollowCamera Component on Player
+    constexpr uintptr_t FollowCameraAlt = 0x638; // Proven Secondary FollowCamera Component
+    constexpr uintptr_t FollowCameraFallback = 0x640;
+    constexpr uintptr_t FollowCameraOld = 0x6A8;
 
     constexpr uintptr_t FollowCameraObj = 0x30;
     constexpr uintptr_t CameraIntPtr = 0x10;
+    constexpr uintptr_t Matrix = 0x100;
+    constexpr uintptr_t MatrixAlt1 = 0xBC;
+    constexpr uintptr_t MatrixAlt2 = 0xDC;
     
     // Local Player
     // Newer Free Fire: IsFiring = 0x850 (Older was 0x7E0)
