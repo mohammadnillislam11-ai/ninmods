@@ -25,8 +25,8 @@
     <string name="mode_select_subtitle">Select optimal operational profile for your device</string>
     <string name="mode_safe_title">Safe Engine</string>
     <string name="mode_safe_desc">Main account safe anti-ban bypass profile</string>
-    <string name="mode_extreme_title">Extreme Engine</string>
-    <string name="mode_extreme_desc">Tactical precision and aggressive memory hook profile</string>
+    <string name="mode_extreme_title">External Engine</string>
+    <string name="mode_extreme_desc">External hook and tactical combat profile</string>
 
     <!-- Action Buttons -->
     <string name="btn_activate">ACTIVATE</string>

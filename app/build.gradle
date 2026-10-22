@@ -20,8 +20,8 @@ android {
         applicationId "nin.app"
         minSdkVersion 21
         targetSdkVersion 28
-        versionCode getVersionProp("version_code", "79").toInteger()
-        versionName getVersionProp("app_version", "79.0")
+        versionCode getVersionProp("version_code", "80").toInteger()
+        versionName getVersionProp("app_version", "80.0")
 
         ndk {
             abiFilters 'arm64-v8a', 'x86_64'

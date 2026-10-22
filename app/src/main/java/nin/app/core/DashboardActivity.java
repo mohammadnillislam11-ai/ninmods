@@ -170,7 +170,7 @@ public class DashboardActivity extends Activity {
         ));
         dialogRoot.setPadding(dp(16), dp(16), dp(16), dp(16));
 
-        LinearLayout card = new LinearLayout(this);
+        final LinearLayout card = new LinearLayout(this);
         card.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -195,25 +195,24 @@ public class DashboardActivity extends Activity {
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         card.addView(icon);
 
-        // 2. Title
+        // 2. Title (Brand Name + KEY)
         TextView title = new TextView(this);
         title.setText(menu.getDisplayName(this) + " KEY");
         title.setTextColor(AppColors.WHITE);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         title.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.bottomMargin = dp(14);
+        title.setLayoutParams(titleLp);
         card.addView(title);
 
-        // 3. Subtitle
-        TextView subtitle = new TextView(this);
-        subtitle.setText("Enter key to launch " + menu.getDisplayName(this));
-        subtitle.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, dp(4), 0, dp(14));
-        card.addView(subtitle);
+        // STAGE 1: Key Input Stage Container
+        final LinearLayout stageKeyInput = new LinearLayout(this);
+        stageKeyInput.setOrientation(LinearLayout.VERTICAL);
+        stageKeyInput.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // 4. Error text (Strictly positioned ABOVE Key input field per user explicit instruction)
+        // Error text (Positioned ABOVE Key input field)
         final TextView tvError = new TextView(this);
         LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         errLp.bottomMargin = dp(8);
@@ -222,50 +221,42 @@ public class DashboardActivity extends Activity {
         tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         tvError.setGravity(Gravity.CENTER);
         tvError.setVisibility(View.GONE);
-        card.addView(tvError);
+        stageKeyInput.addView(tvError);
 
-        // 5. Key Input Field
+        // Key Input Field with clean hint
         final EditText etKey = new EditText(this);
         etKey.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
-        etKey.setHint("Enter Key (e.g. " + AuthConstants.DEV_FREE_LICENSE_KEY + ")");
+        etKey.setHint("Enter your key");
         etKey.setHintTextColor(AppColors.MAGENTA_TEXT_DIM);
         etKey.setTextColor(AppColors.WHITE);
         etKey.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         etKey.setSingleLine(true);
-        etKey.setPadding(dp(12), 0, dp(12), 0);
+        etKey.setPadding(dp(14), 0, dp(14), 0);
 
         GradientDrawable inputBg = new GradientDrawable();
         inputBg.setColor(AppColors.MAGENTA_CHIP);
         inputBg.setCornerRadius(dp(8));
         inputBg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
         etKey.setBackground(inputBg);
-        card.addView(etKey);
+        stageKeyInput.addView(etKey);
 
-        // 6. Dev Free Key Hint
-        TextView tvDevHint = new TextView(this);
-        tvDevHint.setText("Free Test Key: " + AuthConstants.DEV_FREE_LICENSE_KEY);
-        tvDevHint.setTextColor(AppColors.MAGENTA_LIGHT);
-        tvDevHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        tvDevHint.setGravity(Gravity.CENTER);
-        tvDevHint.setPadding(0, dp(8), 0, dp(12));
-        card.addView(tvDevHint);
-
-        // 7. Official Android Native Circular Loading Component
+        // Official Android Native Circular Loading Component
         final ProgressBar progressBar = new ProgressBar(this);
         LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(dp(36), dp(36));
         pbLp.gravity = Gravity.CENTER_HORIZONTAL;
-        pbLp.topMargin = dp(8);
+        pbLp.topMargin = dp(12);
         pbLp.bottomMargin = dp(4);
         progressBar.setLayoutParams(pbLp);
         progressBar.setIndeterminate(true);
         progressBar.setVisibility(View.GONE);
-        card.addView(progressBar);
+        stageKeyInput.addView(progressBar);
 
-        // 8. Verify & Launch Button
+        // Verify Button
         final Button btnVerify = new Button(this);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        btnLp.topMargin = dp(12);
         btnVerify.setLayoutParams(btnLp);
-        btnVerify.setText("VERIFY & LAUNCH");
+        btnVerify.setText("VERIFY KEY");
         btnVerify.setTextColor(AppColors.WHITE);
         btnVerify.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         btnVerify.setTypeface(Typeface.DEFAULT_BOLD);
@@ -274,40 +265,109 @@ public class DashboardActivity extends Activity {
         btnBg.setColor(menu.getThemeColor());
         btnBg.setCornerRadius(dp(8));
         btnVerify.setBackground(btnBg);
+        stageKeyInput.addView(btnVerify);
 
+        // Cancel Button
+        Button btnCancel = new Button(this);
+        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38));
+        cancelLp.topMargin = dp(6);
+        btnCancel.setLayoutParams(cancelLp);
+        btnCancel.setText("CANCEL");
+        btnCancel.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        btnCancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btnCancel.setBackgroundColor(Color.TRANSPARENT);
+        btnCancel.setOnClickListener(v -> dialog.dismiss());
+        stageKeyInput.addView(btnCancel);
+
+        card.addView(stageKeyInput);
+
+        // STAGE 2: Engine Selection Stage Container (Appears with smooth native animation on key success)
+        final LinearLayout stageEngineSelect = new LinearLayout(this);
+        stageEngineSelect.setOrientation(LinearLayout.VERTICAL);
+        stageEngineSelect.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        stageEngineSelect.setVisibility(View.GONE);
+
+        // Success Indicator
+        TextView tvSuccess = new TextView(this);
+        tvSuccess.setText("Key Verified Successfully!");
+        tvSuccess.setTextColor(Color.parseColor("#00E676"));
+        tvSuccess.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tvSuccess.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        tvSuccess.setGravity(Gravity.CENTER);
+        tvSuccess.setPadding(0, 0, 0, dp(6));
+        stageEngineSelect.addView(tvSuccess);
+
+        // Prompt Subtitle
+        TextView tvPrompt = new TextView(this);
+        tvPrompt.setText("SELECT OPERATIONAL ENGINE");
+        tvPrompt.setTextColor(AppColors.WHITE);
+        tvPrompt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvPrompt.setTypeface(Typeface.DEFAULT_BOLD);
+        tvPrompt.setGravity(Gravity.CENTER);
+        tvPrompt.setPadding(0, 0, 0, dp(12));
+        stageEngineSelect.addView(tvPrompt);
+
+        // 1. Safe Engine Option Card
+        View cardSafe = createEngineOptionItem(this, "Safe Engine", "Anti-Detection & Memory Protection", "#00E676", v -> {
+            currentMode = MODE_SAFE;
+            Prefs.with(DashboardActivity.this).writeInt(PREF_KEY_MODE, MODE_SAFE);
+            setModeNative(MODE_SAFE);
+            refreshBody();
+            dialog.dismiss();
+            launchMenuWithOverlayCheck(menu, "Safe Engine");
+        });
+        stageEngineSelect.addView(cardSafe);
+
+        // 2. External Engine Option Card
+        String themeHex = String.format("#%06X", (0xFFFFFF & menu.getThemeColor()));
+        View cardExternal = createEngineOptionItem(this, "External Engine", "Tactical Combat & External Hook", themeHex, v -> {
+            currentMode = MODE_EXTREME;
+            Prefs.with(DashboardActivity.this).writeInt(PREF_KEY_MODE, MODE_EXTREME);
+            setModeNative(MODE_EXTREME);
+            refreshBody();
+            dialog.dismiss();
+            launchMenuWithOverlayCheck(menu, "External Engine");
+        });
+        stageEngineSelect.addView(cardExternal);
+
+        // Cancel in Stage 2
+        Button btnCancelStage2 = new Button(this);
+        btnCancelStage2.setLayoutParams(cancelLp);
+        btnCancelStage2.setText("CANCEL");
+        btnCancelStage2.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        btnCancelStage2.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btnCancelStage2.setBackgroundColor(Color.TRANSPARENT);
+        btnCancelStage2.setOnClickListener(v -> dialog.dismiss());
+        stageEngineSelect.addView(btnCancelStage2);
+
+        card.addView(stageEngineSelect);
+
+        // Key verification execution
         btnVerify.setOnClickListener(v -> {
             String inputKey = etKey.getText() != null ? etKey.getText().toString().trim() : "";
             if (inputKey.isEmpty()) {
-                tvError.setText("Please enter your license key.");
+                tvError.setText("Please enter your key.");
                 tvError.setVisibility(View.VISIBLE);
                 return;
             }
 
-            // Start Official Android Native Loading Component
+            // Start Android Native Circular Loading Component
             tvError.setVisibility(View.GONE);
             btnVerify.setVisibility(View.GONE);
             progressBar.setVisibility(View.VISIBLE);
-
             etKey.setEnabled(false);
 
-            // Forward license key to Node.js /api/v2/license/verify endpoint
             AuthApiController.verifyLicenseKey(DashboardActivity.this, inputKey, menu.getId(), new AuthApiController.ApiCallback() {
                 @Override
                 public void onSuccess(String message) {
                     if (!dialog.isShowing()) return;
-                    dialog.dismiss();
 
-                    // Check overlay permission
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(DashboardActivity.this)) {
-                        Toast.makeText(DashboardActivity.this, "Please grant Overlay Permission to display menu", Toast.LENGTH_SHORT).show();
-                        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:" + getPackageName()));
-                        startActivity(intent);
-                        return;
+                    // Native Android Default Component Transition Animation
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                        android.transition.TransitionManager.beginDelayedTransition(card);
                     }
-
-                    Toast.makeText(DashboardActivity.this, menu.getDisplayName(DashboardActivity.this) + " Launched!", Toast.LENGTH_SHORT).show();
-                    MenuRouter.launchMenu(DashboardActivity.this, menu.getId());
+                    stageKeyInput.setVisibility(View.GONE);
+                    stageEngineSelect.setVisibility(View.VISIBLE);
                 }
 
                 @Override
@@ -321,19 +381,6 @@ public class DashboardActivity extends Activity {
                 }
             });
         });
-        card.addView(btnVerify);
-
-        // 9. Cancel / Close Button
-        Button btnCancel = new Button(this);
-        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38));
-        cancelLp.topMargin = dp(8);
-        btnCancel.setLayoutParams(cancelLp);
-        btnCancel.setText("CANCEL");
-        btnCancel.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        btnCancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        btnCancel.setBackgroundColor(Color.TRANSPARENT);
-        btnCancel.setOnClickListener(v -> dialog.dismiss());
-        card.addView(btnCancel);
 
         dialogRoot.addView(card);
         dialog.setContentView(dialogRoot);
@@ -353,6 +400,81 @@ public class DashboardActivity extends Activity {
             }
         }
         dialog.show();
+    }
+
+    private View createEngineOptionItem(Context context, String title, String subtitle, String accentHex, View.OnClickListener onClickListener) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54));
+        lp.bottomMargin = dp(10);
+        row.setLayoutParams(lp);
+        row.setPadding(dp(14), dp(8), dp(14), dp(8));
+
+        int accentColor = Color.parseColor(accentHex);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(AppColors.MAGENTA_CHIP);
+        bg.setCornerRadius(dp(10));
+        bg.setStroke(dp(1), accentColor);
+        row.setBackground(bg);
+
+        // Indicator Dot
+        View dot = new View(context);
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(10), dp(10));
+        dotLp.rightMargin = dp(12);
+        dot.setLayoutParams(dotLp);
+        GradientDrawable dotBg = new GradientDrawable();
+        dotBg.setShape(GradientDrawable.OVAL);
+        dotBg.setColor(accentColor);
+        dot.setBackground(dotBg);
+        row.addView(dot);
+
+        // Text Column
+        LinearLayout textCol = new LinearLayout(context);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        textCol.setLayoutParams(textLp);
+
+        TextView tvTitle = new TextView(context);
+        tvTitle.setText(title);
+        tvTitle.setTextColor(AppColors.WHITE);
+        tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        textCol.addView(tvTitle);
+
+        TextView tvSub = new TextView(context);
+        tvSub.setText(subtitle);
+        tvSub.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        tvSub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        textCol.addView(tvSub);
+
+        row.addView(textCol);
+
+        // Action Indicator
+        TextView tvSelect = new TextView(context);
+        tvSelect.setText("START");
+        tvSelect.setTextColor(accentColor);
+        tvSelect.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        tvSelect.setTypeface(Typeface.DEFAULT_BOLD);
+        tvSelect.setPadding(dp(8), dp(4), dp(4), dp(4));
+        row.addView(tvSelect);
+
+        row.setOnClickListener(onClickListener);
+        return row;
+    }
+
+    private void launchMenuWithOverlayCheck(IMenuProject menu, String engineName) {
+        if (menu == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "Please grant Overlay Permission to display menu", Toast.LENGTH_SHORT).show();
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+            return;
+        }
+
+        Toast.makeText(this, menu.getDisplayName(this) + " (" + engineName + ") Launched!", Toast.LENGTH_SHORT).show();
+        MenuRouter.launchMenu(this, menu.getId());
     }
 
     private int dp(int value) {
