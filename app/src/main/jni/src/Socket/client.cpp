@@ -84,7 +84,7 @@ int SocketClient::sendData(void *inData, size_t size) {
 
     while (size) {
         do {
-            numSent = send(sockfd, buffer, size, MSG_NOSIGNAL);
+            numSent = ::send(sockfd, buffer, size, MSG_NOSIGNAL);
         } while (numSent == -1 && EINTR == errno);
 
         if (numSent <= 0) {
@@ -112,7 +112,7 @@ int SocketClient::recvData(void *outData, size_t size) {
 
     while (size) {
         do {
-            numReceived = recv(sockfd, buffer, size, 0);
+            numReceived = ::recv(sockfd, buffer, size, 0);
         } while (numReceived == -1 && EINTR == errno);
 
         if (numReceived <= 0) {
