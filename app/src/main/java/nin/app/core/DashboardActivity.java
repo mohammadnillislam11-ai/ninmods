@@ -72,6 +72,7 @@ public class DashboardActivity extends BaseActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+        drawerLayout.setScrimColor(Color.parseColor("#B3000000")); // Deep 70% black dim scrim behind open drawer
 
         // Main Layout Container (Transparent so blurred particle animation shines through)
         mainContainer = new LinearLayout(this);

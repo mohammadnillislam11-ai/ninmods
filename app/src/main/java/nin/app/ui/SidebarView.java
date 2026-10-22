@@ -36,14 +36,22 @@ public class SidebarView {
         sideLp.gravity = Gravity.START;
         sidebar.setLayoutParams(sideLp);
         sidebar.setOrientation(LinearLayout.VERTICAL);
-        sidebar.setBackgroundColor(Color.parseColor("#1B0824")); // Opaque dark magenta surface prevents background cards bleeding through
+        
+        GradientDrawable panelBg = new GradientDrawable();
+        panelBg.setColor(Color.parseColor("#140620")); // 100% solid, fully opaque dark cyberpunk background (Zero glass, zero transparency)
+        panelBg.setStroke(dp(context, 1), Color.parseColor("#2E0D42")); // Solid edge separating drawer from main screen
+        sidebar.setBackground(panelBg);
 
         // Sidebar Header
         LinearLayout sideHeader = new LinearLayout(context);
         sideHeader.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         sideHeader.setOrientation(LinearLayout.VERTICAL);
         sideHeader.setPadding(dp(context, 20), dp(context, 28), dp(context, 20), dp(context, 20));
-        sideHeader.setBackgroundColor(AppColors.MAGENTA_CARD);
+        
+        GradientDrawable headerBg = new GradientDrawable();
+        headerBg.setColor(Color.parseColor("#1D092E")); // 100% solid dark header (Zero glass)
+        headerBg.setStroke(dp(context, 1), Color.parseColor("#381354"));
+        sideHeader.setBackground(headerBg);
 
         TextView sTitle = new TextView(context);
         sTitle.setText(context.getString(R.string.app_name));
@@ -105,9 +113,9 @@ public class SidebarView {
         btn.setPadding(dp(context, 16), 0, dp(context, 16), 0);
 
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(AppColors.MAGENTA_CHIP);
+        bg.setColor(Color.parseColor("#220A33")); // 100% solid button background (Zero glass, zero transparency)
         bg.setCornerRadius(dp(context, 8));
-        bg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
+        bg.setStroke(dp(context, 1), Color.parseColor("#441666")); // Solid crisp accent border
         btn.setBackground(bg);
         btn.setOnClickListener(onClickListener);
         return btn;
