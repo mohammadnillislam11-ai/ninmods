@@ -52,15 +52,15 @@ jobs:
         run: |
           APK_SRC=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
           echo "Found APK at: $APK_SRC"
-          VERSION=$(grep '<string name="version_code">' app/src/main/res/values/version.xml | tr -cd '0-9')
-          if [ -z "$VERSION" ]; then VERSION="78"; fi
-          echo "Building Main_V${VERSION}.apk"
+          APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
+          if [ -z "$APP_VER" ]; then APP_VER="90.1"; fi
+          echo "Building Main_V${APP_VER}.apk"
           if [ ! -f "release.keystore" ]; then
             keytool -genkey -v -keystore release.keystore -alias ninmods -keyalg RSA -keysize 2048 -validity 10000 -storepass ninmods123 -keypass ninmods123 -dname "CN=NINMODS, OU=Mobile, O=NIN, L=Dhaka, S=Dhaka, C=BD"
           fi
           $ANDROID_HOME/build-tools/34.0.0/zipalign -p -f 4 "$APK_SRC" main_aligned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V${VERSION}.apk" main_aligned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V${VERSION}.apk"
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V${APP_VER}.apk" main_aligned.apk
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V${APP_VER}.apk"
 
       - name: Fetch Latest Loader APK
         env:
@@ -82,20 +82,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(grep '<string name="version_code">' app/src/main/res/values/version.xml | tr -cd '0-9')
-          if [ -z "$VERSION" ]; then VERSION="78"; fi
+          APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
+          if [ -z "$APP_VER" ]; then APP_VER="90.1"; fi
           echo "Cleaning up all older releases..."
           for old_tag in $(gh release list --limit 50 --json tagName -q '.[].tagName'); do
             echo "Deleting old release: $old_tag"
             gh release delete "$old_tag" --yes --cleanup-tag || true
           done
 
-          RELEASE_TAG="v${VERSION}.0-$(date +'%Y%m%d%H%M%S')"
-          ASSETS="Main_V${VERSION}.apk"
+          RELEASE_TAG="v${APP_VER}-$(date +'%Y%m%d%H%M%S')"
+          ASSETS="Main_V${APP_VER}.apk"
           if [ -f "Loader_V45.apk" ]; then
-            ASSETS="Main_V${VERSION}.apk Loader_V45.apk"
+            ASSETS="Main_V${APP_VER}.apk Loader_V45.apk"
           fi
           gh release create "$RELEASE_TAG" \
             $ASSETS \
             --title "Release $RELEASE_TAG" \
-            --notes "NINMODS Release $RELEASE_TAG with Advanced Dashboard Architecture and Native Floating Overlay"
+            --notes "NINMODS Release $RELEASE_TAG with Permanent 90.X Architecture"

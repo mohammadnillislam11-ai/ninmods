@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Single Central Version Definition for the entire NINMODS project -->
+    <!-- Major version 90 is PERMANENT and NEVER changes: 90.1 -> 90.2 -> 90.3... -->
     <!-- Update here and it updates build.gradle, Sidebar, and all UI components automatically -->
-    <string name="app_version">106.0</string>
-    <string name="version_code">106</string>
+    <string name="app_version">90.1</string>
+    <string name="version_code">901</string>
 </resources>
