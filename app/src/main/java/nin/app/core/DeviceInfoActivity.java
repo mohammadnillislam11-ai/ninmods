@@ -23,6 +23,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 
+import nin.app.R;
+
 public class DeviceInfoActivity extends BaseActivity {
 
     @Override
