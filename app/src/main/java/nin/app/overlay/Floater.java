@@ -1,14 +1,10 @@
 package nin.app.overlay;
 
-import nin.app.core.AppColors;
-import nin.app.core.Prefs;
-import nin.app.core.Utils;
 import nin.app.graphics.ESPView;
 
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
-import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -56,7 +52,6 @@ public class Floater {
     public static volatile Floater activeFloater = null;
 
     private Context context;
-    private Utils utils;
 
     private WindowManager windowManager;
     private WindowManager.LayoutParams windowManagerParams;
@@ -68,6 +63,7 @@ public class Floater {
     private FrameLayout collapsedRelative;
     private FrameLayout menuLayout;
     private ImageView logoImagem;
+    private ImageView bodyWatermark;
     private int menuWidth;
     private int menuHeight;
 
@@ -101,10 +97,6 @@ public class Floater {
                 }
             }
         } catch (Exception ignored) {}
-    }
-
-    public static void logTerminal(String msg) {
-        // UI terminal box completely removed per user request
     }
 
     // Strict Singleton & Lifecycle Control
@@ -161,7 +153,25 @@ public class Floater {
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.GONE);
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
         updateScreenDimensions();
-        logTerminal("> [HUD] Tactical Menu Expanded");
+
+        boolean isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
+        // Dynamically compute expansive width so sliders and dual columns have generous breathing room
+        int targetWidth = isLandscape ? FloaterStyles.dp(context, 860) : FloaterStyles.dp(context, 660);
+        menuWidth = Math.min(targetWidth, (int) (SCREEN_WIDTH * 0.94f));
+        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 220 : 270), (int) (SCREEN_HEIGHT * 0.78f));
+
+        if (menuLayout != null && menuLayout.getLayoutParams() != null) {
+            menuLayout.getLayoutParams().width = menuWidth;
+            menuLayout.getLayoutParams().height = menuHeight;
+            menuLayout.requestLayout();
+        }
+
+        if (bodyWatermark != null && bodyWatermark.getLayoutParams() != null) {
+            int watermarkSize = Math.min(FloaterStyles.dp(context, 200), (int) (menuHeight * 0.94f));
+            bodyWatermark.getLayoutParams().width = watermarkSize;
+            bodyWatermark.getLayoutParams().height = watermarkSize;
+        }
+
         if (rootFrame != null) {
             rootFrame.requestLayout();
             try {
@@ -193,7 +203,6 @@ public class Floater {
         isLogoDragged = false;
         if (menuLayout != null) menuLayout.setVisibility(View.GONE);
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.VISIBLE);
-        logTerminal("> [HUD] Menu Collapsed to Floating Icon");
         if (rootFrame != null) {
             rootFrame.requestLayout();
             try {
@@ -210,7 +219,6 @@ public class Floater {
         }
         activeFloater = this;
         context = globContext.getApplicationContext() != null ? globContext.getApplicationContext() : globContext;
-        utils = new Utils(context);
         onCreate();
     }
 
@@ -253,9 +261,10 @@ public class Floater {
         SCREEN_HEIGHT = screenHeight;
 
         boolean isLandscape = screenWidth > screenHeight;
-        // Tactical 3-Layer Compact Layout dimensions (increased width per user request)
-        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 720 : 580), (int) (screenWidth * 0.96f));
-        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 210 : 260), (int) (screenHeight * 0.75f));
+        // Tactical 3-Layer Compact Layout dimensions (Ultra wide 860dp per user explicit request)
+        int targetWidth = isLandscape ? FloaterStyles.dp(context, 860) : FloaterStyles.dp(context, 660);
+        menuWidth = Math.min(targetWidth, (int) (screenWidth * 0.94f));
+        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 220 : 270), (int) (screenHeight * 0.78f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -318,8 +327,8 @@ public class Floater {
         }
 
         // Large Brand Logo Watermark in Menu Body (Enlarged per user request)
-        ImageView bodyWatermark = new ImageView(context);
-        int watermarkSize = Math.min(FloaterStyles.dp(context, 195), (int) (menuHeight * 0.94f));
+        bodyWatermark = new ImageView(context);
+        int watermarkSize = Math.min(FloaterStyles.dp(context, 200), (int) (menuHeight * 0.94f));
         FrameLayout.LayoutParams wmLp = new FrameLayout.LayoutParams(watermarkSize, watermarkSize);
         wmLp.gravity = Gravity.CENTER;
         wmLp.leftMargin = FloaterStyles.dp(context, 20);
@@ -348,12 +357,13 @@ public class Floater {
         iconRail.setGravity(Gravity.CENTER_HORIZONTAL);
         iconRail.setPadding(0, FloaterStyles.dp(context, 6), 0, FloaterStyles.dp(context, 6));
 
-        // Top mini logo
+        // Top mini logo (Brand display only, strictly non-clickable per user requirement)
         ImageView railLogo = new ImageView(context);
         railLogo.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 24), FloaterStyles.dp(context, 24)));
         railLogo.setImageResource(nin.app.R.drawable.nin_logo);
         railLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        railLogo.setOnClickListener(v -> closeMenu());
+        railLogo.setClickable(false);
+        railLogo.setFocusable(false);
         iconRail.addView(railLogo);
 
         View railSep = new View(context);
@@ -470,11 +480,11 @@ public class Floater {
         p2Header.addView(page2Title);
 
         TextView closeBtn = new TextView(context);
-        closeBtn.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 22), FloaterStyles.dp(context, 22)));
+        closeBtn.setLayoutParams(new LinearLayout.LayoutParams(FloaterStyles.dp(context, 24), FloaterStyles.dp(context, 24)));
         closeBtn.setGravity(Gravity.CENTER);
         closeBtn.setText("✕");
-        closeBtn.setTextColor(FloaterStyles.getColor(context, nin.app.R.color.white));
-        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        closeBtn.setTextColor(FloaterStyles.getColorAccentPink(context));
+        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         closeBtn.setTypeface(Typeface.DEFAULT_BOLD);
         closeBtn.setOnClickListener(v -> closeMenu());
         p2Header.addView(closeBtn);
@@ -526,9 +536,6 @@ public class Floater {
         try {
             Functions();
             ftKZXivSr(context);
-            logTerminal("> [SYS] Engine Functions Loaded (" + categoryViews.size() + " categories)");
-            logTerminal("> [OK] Secure Driver Channel Active");
-            logTerminal("> [STATUS] System Ready. Touch logo to open.");
         } catch (Throwable t) {
             t.printStackTrace();
         }
@@ -677,7 +684,6 @@ public class Floater {
 
         sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
             ChangesID(id, isChecked ? 1 : 0);
-            logTerminal("> [EXEC] " + name + " -> " + (isChecked ? "ON" : "OFF"));
         });
         row.addView(sw);
 
@@ -791,9 +797,7 @@ public class Floater {
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                logTerminal("> [SET] " + name + " -> " + valLabel.getText());
-            }
+            public void onStopTrackingTouch(SeekBar seekBar) {}
         });
         row.addView(sb);
 

@@ -1,11 +1,8 @@
 package nin.app.overlay;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
-import android.util.Base64;
 import android.util.TypedValue;
 
 import nin.app.R;
@@ -107,22 +104,6 @@ public final class FloaterStyles {
         );
     }
 
-    public static Bitmap base64ToBitmap(String base64Str) {
-        try {
-            byte[] decodedBytes = Base64.decode(base64Str, Base64.DEFAULT);
-            return BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    public static Bitmap createDefaultIcon(Context context) {
-        Bitmap bitmap = Bitmap.createBitmap(55, 45, Bitmap.Config.ARGB_8888);
-        bitmap.eraseColor(getColorAccentPink(context));
-        return bitmap;
-    }
-
     public static GradientDrawable createCardBackground(Context context) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setShape(GradientDrawable.RECTANGLE);
@@ -138,40 +119,6 @@ public final class FloaterStyles {
         int r = dp(context, 10);
         drawable.setCornerRadii(new float[]{r, r, 0, 0, 0, 0, r, r}); // top-left, top-right, bottom-right, bottom-left
         drawable.setColor(getColorSidebarBg(context));
-        return drawable;
-    }
-
-    public static GradientDrawable createActiveTabDrawable(Context context) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(dp(context, 6));
-        drawable.setColor(getColorAccentPink(context));
-        return drawable;
-    }
-
-    public static GradientDrawable createInactiveTabDrawable(Context context) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(dp(context, 6));
-        drawable.setColor(0x00000000);
-        return drawable;
-    }
-
-    public static GradientDrawable createSelectorBtnDrawable(Context context) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(dp(context, 4));
-        drawable.setColor(getColorButtonDark(context));
-        drawable.setStroke(dp(context, 1), getColorButtonStroke(context));
-        return drawable;
-    }
-
-    public static GradientDrawable createBadgeDrawable(Context context) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(dp(context, 4));
-        drawable.setColor(getColorButtonDark(context));
-        drawable.setStroke(dp(context, 1), getColorAccentPink(context));
         return drawable;
     }
 
