@@ -622,6 +622,11 @@ void CreateDataList(Response& SendResponse) {
     if (myCamPos.X == 0 && myCamPos.Y == 0 && myCamPos.Z == 0) {
         myCamPos = GetNodePosition(localPlayer) + Vector3(0, 1.9f, 0);
     }
+    if (!IsValidViewMatrix(matrix)) {
+        Quaternion myCamRot = GetTransformRotation(myCam);
+        float aspect = (g_screenHeight > 0) ? ((float)g_screenWidth / (float)g_screenHeight) : 1.777778f;
+        matrix = BuildViewMatrix(myCamPos, myCamRot, 60.0f, aspect);
+    }
     ViewMatrix = matrix;
     MainCameraTransformPos = myCamPos;
 
@@ -754,6 +759,8 @@ void CreateDataList(Response& SendResponse) {
         uintptr_t enemyList = 0;
         if (isMonoDict) {
             uintptr_t entryAddr = valuesPtr + (x * Offsets::DictionaryEntrySize);
+            int32_t hashCode = Read<int32_t>(entryAddr);
+            if (hashCode < 0) continue; // Skip empty hash slot in Dictionary
             enemyList = Read<uintptr_t>(entryAddr + Offsets::EntryEnemyList);
         } else {
             enemyList = Read<uintptr_t>(valuesPtr + (x * sizeof(uintptr_t)));
@@ -761,21 +768,18 @@ void CreateDataList(Response& SendResponse) {
 
         if (!IsValidUserPointer64(enemyList) || enemyList == localPlayer) continue;
 
-        // Check if dead using New_Brutal PL_ISDEAD (0x7C)
-        int isDead = Read<int>(enemyList + Offsets::IsDead);
-        if (isDead != 0) continue;
-
         auto isClientBot = Read<bool>(enemyList + Offsets::IsClientBot);
         if (isClientBot != 1 && isClientBot != 0) {
             isClientBot = Read<bool>(enemyList + Offsets::IsClientBotOld);
         }
 
-        // Get Positions (using New_Brutal toe + height logic and Mayur root position fallback)
-        uintptr_t targetBone = GetTargetBone(enemyList);
-        Vector3 EnemyPosition = GetNodePosition(targetBone);
+        // Get Positions (using Mayur MainCam 0x3F0 and root position getPosition(enemy))
+        uintptr_t headTF = Read<uintptr_t>(enemyList + Offsets::Mayur::MainCam);
+        if (!IsValidUserPointer64(headTF)) headTF = GetPlayerHeadTF(enemyList);
+        Vector3 EnemyPosition = GetNodePosition(headTF);
         Vector3 EnemyPositionPe = GetNodePosition(GetPlayerPeTF(enemyList));
 
-        // If bone reading is null, check root position (Mayur getPosition(enemy))
+        // If bone reading is null, check root position (Mayur getPosition(enemy) + 1.85f)
         if (EnemyPosition == Vector3::Zero() && EnemyPositionPe == Vector3::Zero()) {
             Vector3 rootPos = GetNodePosition(enemyList);
             if (rootPos != Vector3::Zero()) {
@@ -793,8 +797,15 @@ void CreateDataList(Response& SendResponse) {
         // Screen projection
         auto LocationHeadBox = WorldToScreenPoint(matrix, EnemyPosition);
         auto LocationToeBox = WorldToScreenPoint(matrix, EnemyPositionPe);
-        if (LocationHeadBox.X <= 0.0f && LocationHeadBox.Y <= 0.0f) continue;
-        if (LocationToeBox.X <= 0.0f && LocationToeBox.Y <= 0.0f) continue;
+        if (LocationHeadBox.X <= 0.0f && LocationHeadBox.Y <= 0.0f && LocationToeBox.X <= 0.0f && LocationToeBox.Y <= 0.0f) continue;
+        if (LocationHeadBox.X <= 0.0f && LocationHeadBox.Y <= 0.0f) {
+            LocationHeadBox = LocationToeBox;
+            LocationHeadBox.Y -= 30.0f;
+        }
+        if (LocationToeBox.X <= 0.0f && LocationToeBox.Y <= 0.0f) {
+            LocationToeBox = LocationHeadBox;
+            LocationToeBox.Y += 30.0f;
+        }
 
         float distanceToEnemy = Vector3::Distance(LocalPosition, EnemyPosition);
         float fovRadius = (pPlayer.AimFov / 180.0f) * (g_screenHeight / 2.0f);
@@ -805,6 +816,7 @@ void CreateDataList(Response& SendResponse) {
         data->Toe = LocationToeBox;
         data->Distancia = distanceToEnemy;
         data->Name = isClientBot;
+        data->IsCaido = false;
 
         // Health
         int Health = 100;

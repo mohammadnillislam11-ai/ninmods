@@ -197,6 +197,68 @@ static Vector3 GetNodePosition(uintptr_t nodeTransform) {
     return GetPosition(transformValue);
 }
 
+static Quaternion GetTransformRotation(uintptr_t Transform) {
+    if (!Transform) return Quaternion::Identity();
+    auto transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObj);
+    if (!transformObjValue) return Quaternion::Identity();
+
+    auto indexValue = Read<uintptr_t>(transformObjValue + Offsets::TransformIndex);
+    auto matrixValue = Read<uintptr_t>(transformObjValue + Offsets::TransformMatrix);
+    if (!matrixValue) return Quaternion::Identity();
+
+    auto matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixList);
+    auto matrixIndicesValue = Read<uintptr_t>(matrixValue + Offsets::MatrixIndices);
+    if (!matrixListValue || !matrixIndicesValue) return Quaternion::Identity();
+
+    auto selfMatrix = Read<Matrix>(matrixListValue + (indexValue * Offsets::MatrixDataSize));
+    Quaternion rot = selfMatrix.Rotation;
+
+    int maxTries = 30;
+    int tries = 0;
+    auto transformIndexValue = Read<int>(matrixIndicesValue + (indexValue * 4));
+    while (transformIndexValue >= 0 && tries < maxTries) {
+        tries++;
+        auto parentMatrix = Read<Matrix>(matrixListValue + (transformIndexValue * Offsets::MatrixDataSize));
+        rot = parentMatrix.Rotation * rot;
+        transformIndexValue = Read<int>(matrixIndicesValue + (transformIndexValue * 4));
+    }
+    return rot;
+}
+
+static D3DMatrix BuildViewMatrix(Vector3 camPos, Quaternion rot, float fovDeg, float aspect) {
+    if (rot.X == 0.0f && rot.Y == 0.0f && rot.Z == 0.0f && rot.W == 0.0f) {
+        rot = Quaternion::Identity();
+    }
+    Vector3 fwd = rot * Vector3(0.0f, 0.0f, 1.0f);
+    Vector3 right = rot * Vector3(1.0f, 0.0f, 0.0f);
+    Vector3 up = rot * Vector3(0.0f, 1.0f, 0.0f);
+
+    float rad = fovDeg * 0.5f * (3.14159265f / 180.0f);
+    float tanHalf = tanf(rad);
+    if (tanHalf < 0.01f) tanHalf = 0.57735f; // ~60 deg default
+    float fovY = 1.0f / tanHalf;
+    float fovX = fovY / (aspect > 0.1f ? aspect : 1.777778f);
+
+    D3DMatrix m = {0};
+    m._11 = right.X * fovX;
+    m._12 = up.X * fovY;
+    m._14 = fwd.X;
+
+    m._21 = right.Y * fovX;
+    m._22 = up.Y * fovY;
+    m._24 = fwd.Y;
+
+    m._31 = right.Z * fovX;
+    m._32 = up.Z * fovY;
+    m._34 = fwd.Z;
+
+    m._41 = -Vector3::Dot(camPos, right) * fovX;
+    m._42 = -Vector3::Dot(camPos, up) * fovY;
+    m._44 = -Vector3::Dot(camPos, fwd);
+
+    return m;
+}
+
 static auto WorldToScreenPoint(D3DMatrix viewMatrix, Vector3 ScreenPos) {
     auto result = Vector3(-1, -1, -1);
 
