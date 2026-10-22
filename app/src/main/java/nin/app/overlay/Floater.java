@@ -54,6 +54,9 @@ public class Floater {
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
     public static volatile Floater activeFloater = null;
 
+    private Context context;
+    private Utils utils;
+
     private WindowManager windowManager;
     private WindowManager.LayoutParams windowManagerParams;
     ESPView drawView;
