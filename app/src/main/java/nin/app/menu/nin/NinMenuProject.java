@@ -25,7 +25,7 @@ public class NinMenuProject implements IMenuProject {
 
     @Override
     public String getDisplayName(Context context) {
-        String customName = Prefs.with(context).readString(PREF_BRAND_NAME, null);
+        String customName = Prefs.with(context).readString(PREF_BRAND_NAME, "");
         if (customName != null && !customName.trim().isEmpty()) {
             return customName;
         }

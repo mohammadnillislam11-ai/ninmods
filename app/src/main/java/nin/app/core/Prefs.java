@@ -113,6 +113,14 @@ public class Prefs {
         sharedPreferences.edit().putString(where, what).apply();
     }
 
+    public String readString(String what, String defaultString) {
+        return read(what, defaultString);
+    }
+
+    public void writeString(String where, String what) {
+        write(where, what);
+    }
+
     // int related methods
 
     public int readInt(String what) {
