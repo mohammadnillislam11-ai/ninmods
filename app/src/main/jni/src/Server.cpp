@@ -50,10 +50,31 @@ void LogWeaponData(const char* playerName, int weaponId, bool isLocal) {
     NIN_LOGI("DAEMON_WEAPON", "%s | Name: %s | WeaponID: %d", (isLocal ? "Local" : "Enemy"), playerName, weaponId);
 }
 
-// ========== Pointer Validation (ARM64 64-bit User Pointer Range) ==========
+// ========== Pointer Validation (Strict ARM64 64-bit User Space Pointer) ==========
 inline bool IsValidUserPointer64(uintptr_t ptr) {
-    uintptr_t clean = ptr & 0x0000FFFFFFFFFFFFULL;
-    return (clean >= 0x0000001000000000ULL && clean <= 0x00007FFFFFFFFFFFULL);
+    // 1. High 16 bits must be strictly 0x0000 (rejects instructions like 0xa902... or packed opcodes)
+    if ((ptr >> 48) != 0) return false;
+    // 2. Must be in ARM64 Linux user-space memory range (above 4GB and below 128TB)
+    if (ptr < 0x0000001000000000ULL || ptr > 0x0000007FFFFFFFFFULL) return false;
+    // 3. Must be aligned to at least 4 bytes (ARM64 heap objects and pointers are aligned)
+    if ((ptr & 0x3) != 0) return false;
+    return true;
+}
+
+// ========== Genuine Player Object Validator ==========
+bool IsValidPlayerObject(uintptr_t player) {
+    if (!IsValidUserPointer64(player)) return false;
+    // Check if player has a valid HeadBone / Feet Transform pointer
+    uintptr_t head = Read<uintptr_t>(player + Offsets::Head);
+    if (!IsValidUserPointer64(head)) head = Read<uintptr_t>(player + Offsets::HeadFallback);
+    if (!IsValidUserPointer64(head)) head = Read<uintptr_t>(player + Offsets::HeadOld);
+    if (IsValidUserPointer64(head)) return true;
+
+    uintptr_t feet = Read<uintptr_t>(player + Offsets::Feet);
+    if (!IsValidUserPointer64(feet)) feet = Read<uintptr_t>(player + Offsets::FeetFallback);
+    if (IsValidUserPointer64(feet)) return true;
+
+    return false;
 }
 
 // ========== ELF Magic Header Checker ==========
@@ -367,8 +388,12 @@ void CreateDataList(Response& SendResponse) {
     time_t now = time(nullptr);
     bool shouldLog = (now - lastLogTime >= 3);
 
-    // 1. Resolve GameFacade root static class pointer (Multi-Candidate with strict 64-bit user pointer validation)
+    // 1. Scan candidate roots for genuine LocalPlayer and Match (Bull_Team, CROSS SRC ROOT, treasure, New_Brutal)
     uintptr_t GameFacade_c = 0;
+    uintptr_t m_Match = 0;
+    uintptr_t BaseGame = 0;
+    uintptr_t localPlayer = 0;
+
     const uintptr_t facadeOffsets[] = {
         Offsets::GameFacade,       // 0xA984D48
         Offsets::GameFacadeAlt1,   // 0xAD6DC18
@@ -379,117 +404,87 @@ void CreateDataList(Response& SendResponse) {
         0x0C21AC20ULL              // OB55 Alt
     };
 
-    for (uintptr_t off : facadeOffsets) {
-        auto ptr = Read<uintptr_t>(libAddress + off);
-        if (IsValidUserPointer64(ptr)) {
-            GameFacade_c = ptr;
-            break;
-        }
-    }
+    for (uintptr_t fOff : facadeOffsets) {
+        uintptr_t classPtr = Read<uintptr_t>(libAddress + fOff);
+        if (!IsValidUserPointer64(classPtr)) continue;
 
-    // If not found on current libAddress, try re-querying libAddress
-    if (!IsValidUserPointer64(GameFacade_c)) {
-        static time_t lastBaseRefresh = 0;
-        if (now - lastBaseRefresh >= 2) {
-            lastBaseRefresh = now;
-            uintptr_t freshBase = GetModuleBase(target_pid, "libil2cpp.so");
-            if (freshBase != 0 && freshBase != libAddress) {
-                libAddress = freshBase;
-                for (uintptr_t off : facadeOffsets) {
-                    auto ptr = Read<uintptr_t>(libAddress + off);
-                    if (IsValidUserPointer64(ptr)) {
-                        GameFacade_c = ptr;
-                        break;
+        // Static fields candidates: 0xB8 (Standard IL2CPP), 0x5C (treasure), 0x0 (Direct)
+        const uintptr_t staticOffsets[] = { 0xB8, 0x5C, 0x0 };
+        for (uintptr_t sOff : staticOffsets) {
+            uintptr_t staticFields = (sOff == 0) ? classPtr : Read<uintptr_t>(classPtr + sOff);
+            if (!IsValidUserPointer64(staticFields)) continue;
+
+            // Approach 1: Bull_Team & CROSS SRC ROOT (staticFields -> BaseGame -> Match -> LocalPlayer)
+            const uintptr_t baseOffsets[] = { 0x0, 0x8 };
+            for (uintptr_t bOff : baseOffsets) {
+                uintptr_t bg = Read<uintptr_t>(staticFields + bOff);
+                if (!IsValidUserPointer64(bg)) continue;
+
+                const uintptr_t matchOffsets[] = { 0x90, 0x930, 0x8 };
+                for (uintptr_t mOff : matchOffsets) {
+                    uintptr_t match = Read<uintptr_t>(bg + mOff);
+                    if (!IsValidUserPointer64(match)) continue;
+
+                    const uintptr_t lpOffsets[] = { 0xD8, 0x94, 0x110, 0x88 };
+                    for (uintptr_t lpOff : lpOffsets) {
+                        uintptr_t lp = Read<uintptr_t>(match + lpOff);
+                        if (IsValidPlayerObject(lp)) {
+                            localPlayer = lp;
+                            m_Match = match;
+                            BaseGame = bg;
+                            GameFacade_c = classPtr;
+                            break;
+                        }
                     }
+                    if (localPlayer) break;
+                }
+                if (localPlayer) break;
+            }
+            if (localPlayer) break;
+
+            // Approach 2: treasure 4-Step (staticFields -> LocalPlayer directly)
+            const uintptr_t directLpOffsets[] = { 0x94, 0xD8, 0x110, 0x88 };
+            for (uintptr_t dOff : directLpOffsets) {
+                uintptr_t lp = Read<uintptr_t>(staticFields + dOff);
+                if (IsValidPlayerObject(lp)) {
+                    localPlayer = lp;
+                    GameFacade_c = classPtr;
+                    break;
                 }
             }
+            if (localPlayer) break;
         }
+        if (localPlayer) break;
     }
 
-    if (!IsValidUserPointer64(GameFacade_c)) {
+    if (!IsValidPlayerObject(localPlayer)) {
         if (shouldLog) {
             lastLogTime = now;
-            NIN_LOGI("DAEMON_ESP", "Searching GameFacade root in libil2cpp (0x%lx)...", (unsigned long)libAddress);
-        }
-        return;
-    }
-
-    // 2. Resolve Match & LocalPlayer across all proven architectures (treasure, New_Brutal, Bull_Team)
-    uintptr_t m_Match = 0;
-    uintptr_t BaseGame = 0;
-    uintptr_t localPlayer = 0;
-
-    // Path A: treasure 4-Step Chain (OB53/OB54/OB55)
-    auto staticClass = Read<uintptr_t>(GameFacade_c + 0x5C);
-    if (!IsValidUserPointer64(staticClass)) staticClass = Read<uintptr_t>(GameFacade_c + 0xB8);
-    if (IsValidUserPointer64(staticClass)) {
-        auto lp = Read<uintptr_t>(staticClass + 0x94);
-        if (!IsValidUserPointer64(lp)) lp = Read<uintptr_t>(staticClass + 0xD8);
-        if (IsValidUserPointer64(lp)) localPlayer = lp;
-    }
-
-    // Path B: Modern Direct CurrentMatchGame (0x8) from GameFacade (ninmods_offsets.h & New_Brutal)
-    m_Match = Read<uintptr_t>(GameFacade_c + Offsets::GameFacade_CurrentMatchGame);
-    if (!IsValidUserPointer64(m_Match)) {
-        m_Match = Read<uintptr_t>(GameFacade_c + Offsets::GameFacade_CurrentGame);
-    }
-
-    // Path C: Legacy 5-Level Indirect Chain (GameFacade -> P2 -> BaseGame -> Match)
-    auto P2 = Read<uintptr_t>(GameFacade_c + Offsets::FacadeP2);
-    if (IsValidUserPointer64(P2)) {
-        BaseGame = Read<uintptr_t>(P2 + Offsets::P2BaseGame);
-        if (!IsValidUserPointer64(BaseGame)) BaseGame = Read<uintptr_t>(P2 + Offsets::P2BaseGameAlt);
-        if (!IsValidUserPointer64(BaseGame)) BaseGame = Read<uintptr_t>(P2 + Offsets::P2BaseGameZero);
-        if (IsValidUserPointer64(BaseGame) && !IsValidUserPointer64(m_Match)) {
-            m_Match = Read<uintptr_t>(BaseGame + Offsets::BaseGameMatch);
-            if (!IsValidUserPointer64(m_Match)) m_Match = Read<uintptr_t>(BaseGame + Offsets::BaseGameMatchAlt);
-        }
-    }
-
-    // Resolve LocalPlayer from m_Match if not already found via Path A
-    if (!IsValidUserPointer64(localPlayer) && IsValidUserPointer64(m_Match)) {
-        localPlayer = Read<uintptr_t>(m_Match + Offsets::MatchLocalPlayer);
-        if (!IsValidUserPointer64(localPlayer)) localPlayer = Read<uintptr_t>(m_Match + Offsets::MatchLocalPlayerAlt);
-        if (!IsValidUserPointer64(localPlayer)) localPlayer = Read<uintptr_t>(m_Match + 0xD8);
-    }
-
-    // If still in Lobby or Match not active
-    if (!IsValidUserPointer64(m_Match) && !IsValidUserPointer64(localPlayer)) {
-        if (shouldLog) {
-            lastLogTime = now;
-            NIN_LOGI("DAEMON_ESP", "Lobby State: GameFacade=0x%lx valid, waiting for match start...", (unsigned long)GameFacade_c);
+            NIN_LOGI("DAEMON_ESP", "Scanning game memory in libil2cpp (0x%lx)... Waiting for local player spawn.", (unsigned long)libAddress);
         }
         return;
     }
 
     // TimeService Speedhack ONLY if explicitly enabled
-    if (speedHackEnabled && BaseGame > 0x10000000) {
+    if (speedHackEnabled && IsValidUserPointer64(BaseGame)) {
         uintptr_t timeService = Read<uintptr_t>(BaseGame + Offsets::BaseGameTimeService);
-        if (timeService > 0x10000000) {
+        if (IsValidUserPointer64(timeService)) {
             float speedVal = 0.03299999982f * pPlayer.gameSpeed;
             Write<float>(timeService + Offsets::TimeServiceSpeed, speedVal);
         }
     }
 
-    if (!IsValidUserPointer64(localPlayer)) {
-        if (shouldLog) {
-            lastLogTime = now;
-            NIN_LOGI("DAEMON_ESP", "Match active (0x%lx), waiting for LocalPlayer spawn...", (unsigned long)m_Match);
-        }
-        return;
-    }
-
     // 4. Resolve Camera & ViewMatrix
     auto FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCamera);
-    if (!FollowCamera) FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCameraAlt);
-    if (!FollowCamera) FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCameraOld);
-    if (FollowCamera == 0 || FollowCamera < 0x10000000) return;
+    if (!IsValidUserPointer64(FollowCamera)) FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCameraAlt);
+    if (!IsValidUserPointer64(FollowCamera)) FollowCamera = Read<uintptr_t>(localPlayer + Offsets::FollowCameraOld);
+    if (!IsValidUserPointer64(FollowCamera)) return;
 
     auto Camera = Read<uintptr_t>(FollowCamera + Offsets::FollowCameraObj);
-    if (Camera == 0 || Camera < 0x10000000) return;
+    if (!IsValidUserPointer64(Camera)) return;
 
     auto IntPtrCam = Read<uintptr_t>(Camera + Offsets::CameraIntPtr);
-    if (IntPtrCam == 0 || IntPtrCam < 0x10000000) return;
+    if (!IsValidUserPointer64(IntPtrCam)) return;
 
     uintptr_t matrixOffset = string2Offset(WRAPPER_MARCO(OFFSET_CAMERA_MATRIX_STR));
     auto matrix = Read<D3DMatrix>(IntPtrCam + matrixOffset);
@@ -502,7 +497,7 @@ void CreateDataList(Response& SendResponse) {
     ViewMatrix = matrix;
     MainCameraTransformPos = myCamPos;
 
-    // 5. Resolve Player Dictionary from Match (New_Brutal & Bull_Team) or BaseGame
+    // 5. Resolve Player Dictionary from Match, BaseGame, or static fields
     MonoDictionary* dictionary = nullptr;
     const uintptr_t dictOffsets[] = {
         Offsets::BaseGameDictionary,     // 0xC0
@@ -513,20 +508,20 @@ void CreateDataList(Response& SendResponse) {
         0x140
     };
 
-    // Check on m_Match first
-    for (uintptr_t off : dictOffsets) {
-        auto d = Read<MonoDictionary*>(m_Match + off);
-        if (d && (uintptr_t)d > 0x10000000 && d->getNumValues() > 0 && d->getNumValues() < 120) {
-            dictionary = d;
-            break;
+    if (IsValidUserPointer64(m_Match)) {
+        for (uintptr_t off : dictOffsets) {
+            auto d = Read<MonoDictionary*>(m_Match + off);
+            if (d && IsValidUserPointer64((uintptr_t)d)) {
+                dictionary = d;
+                break;
+            }
         }
     }
 
-    // Fallback check on BaseGame
-    if (!dictionary && BaseGame > 0x10000000) {
+    if (!dictionary && IsValidUserPointer64(BaseGame)) {
         for (uintptr_t off : dictOffsets) {
             auto d = Read<MonoDictionary*>(BaseGame + off);
-            if (d && (uintptr_t)d > 0x10000000 && d->getNumValues() > 0 && d->getNumValues() < 120) {
+            if (d && IsValidUserPointer64((uintptr_t)d)) {
                 dictionary = d;
                 break;
             }
