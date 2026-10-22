@@ -126,7 +126,7 @@ uintptr_t DecodeAdrpLdr(uintptr_t pc) {
 
 // ========== Mathematical ViewMatrix Validator (Checks Real 3D Perspective Properties) ==========
 static bool IsValidViewMatrix(const D3DMatrix& m) {
-    if (std::isnan(m._11) || std::isnan(m._22) || std::isnan(m._33) || std::isnan(m._44)) return false;
+    if (m._11 != m._11 || m._22 != m._22 || m._33 != m._33 || m._44 != m._44) return false;
     // Perspective projection aspect and FOV scalers must be non-zero and physically reasonable
     if (fabsf(m._11) < 0.15f || fabsf(m._11) > 8.0f) return false;
     if (fabsf(m._22) < 0.15f || fabsf(m._22) > 8.0f) return false;
