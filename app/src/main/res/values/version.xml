@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Single Central Version Definition for the entire NINMODS project -->
+    <!-- Update here and it updates build.gradle, Sidebar, and all UI components automatically -->
+    <string name="app_version">67.0</string>
+    <string name="version_code">67</string>
+</resources>

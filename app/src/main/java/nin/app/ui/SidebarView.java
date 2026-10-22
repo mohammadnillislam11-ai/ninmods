@@ -50,7 +50,7 @@ public class SidebarView {
         sideHeader.addView(sTitle);
 
         TextView sSub = new TextView(context);
-        sSub.setText("Tactical Suite v66.0");
+        sSub.setText("Tactical Suite v" + context.getString(R.string.app_version));
         sSub.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         sSub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         sSub.setPadding(0, dp(context, 2), 0, 0);
@@ -74,17 +74,12 @@ public class SidebarView {
             if (listener != null) listener.onDeviceInfoClick();
         }));
 
-        // 3. Tactical Mode Selection (Opens ModeSelectActivity)
-        navList.addView(createNavItem(context, "Tactical Mode Selection", v -> {
-            if (listener != null) listener.onModeSelectClick();
-        }));
-
         sidebar.addView(navList);
 
         // Sidebar Footer
         TextView footer = new TextView(context);
         footer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        footer.setText("Version 66.0 (Official Build)");
+        footer.setText("Version " + context.getString(R.string.app_version) + " (Official Build)");
         footer.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         footer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         footer.setGravity(Gravity.CENTER);

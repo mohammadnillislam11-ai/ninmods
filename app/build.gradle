@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+def getVersionProp(String name, String defaultVal) {
+    def f = file("src/main/res/values/version.xml")
+    if (f.exists()) {
+        def matcher = f.text =~ /<string name="${name}">([^<]+)<\/string>/
+        if (matcher.find()) {
+            return matcher.group(1).trim()
+        }
+    }
+    return defaultVal
+}
+
 android {
     compileSdkVersion 34
 
@@ -9,8 +20,8 @@ android {
         applicationId "nin.app"
         minSdkVersion 21
         targetSdkVersion 28
-        versionCode 66
-        versionName "66.0"
+        versionCode getVersionProp("version_code", "67").toInteger()
+        versionName getVersionProp("app_version", "67.0")
 
         ndk {
             abiFilters 'arm64-v8a', 'x86_64'

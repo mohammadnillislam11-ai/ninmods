@@ -3,7 +3,6 @@ package nin.app.ui;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -59,27 +58,6 @@ public class HeaderView {
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         brandBox.addView(title);
 
-        LinearLayout statusRow = new LinearLayout(context);
-        statusRow.setOrientation(LinearLayout.HORIZONTAL);
-        statusRow.setGravity(Gravity.CENTER_VERTICAL);
-        statusRow.setPadding(0, dp(context, 2), 0, 0);
-
-        View dot = new View(context);
-        dot.setLayoutParams(new LinearLayout.LayoutParams(dp(context, 6), dp(context, 6)));
-        GradientDrawable dotBg = new GradientDrawable();
-        dotBg.setShape(GradientDrawable.OVAL);
-        dotBg.setColor(AppColors.STATUS_BADGE_GREEN);
-        dot.setBackground(dotBg);
-        statusRow.addView(dot);
-
-        TextView statusText = new TextView(context);
-        statusText.setText(" " + context.getString(R.string.status_online_root));
-        statusText.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        statusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        statusText.setTypeface(Typeface.DEFAULT_BOLD);
-        statusRow.addView(statusText);
-
-        brandBox.addView(statusRow);
         header.addView(brandBox);
 
         return header;

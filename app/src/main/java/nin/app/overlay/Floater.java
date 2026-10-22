@@ -27,7 +27,6 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -79,6 +78,8 @@ public class Floater {
     private RelativeLayout collapsedRelative;
     private LinearLayout menuLayout;
     private ImageView logoImagem;
+    private int menuWidth;
+    private int menuHeight;
 
     private ScrollView mainScroll;
     public static LinearLayout funcsListLayout;
@@ -107,6 +108,9 @@ public class Floater {
         }
         Context targetCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
         new Floater(targetCtx);
+        if (activeFloater != null) {
+            activeFloater.openMenu();
+        }
     }
 
     public static synchronized void stop() {
@@ -146,11 +150,35 @@ public class Floater {
     public void openMenu() {
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.GONE);
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
+        if (rootFrame != null) {
+            rootFrame.requestLayout();
+            try {
+                if (windowManager != null && rootFrame.isAttachedToWindow()) {
+                    if (SCREEN_WIDTH > 0 && SCREEN_HEIGHT > 0 && menuWidth > 0 && menuHeight > 0) {
+                        int maxX = Math.max(0, SCREEN_WIDTH - menuWidth);
+                        int maxY = Math.max(0, SCREEN_HEIGHT - menuHeight);
+                        if (windowManagerParams.x > maxX) windowManagerParams.x = maxX;
+                        if (windowManagerParams.y > maxY) windowManagerParams.y = maxY;
+                        if (windowManagerParams.x < 0) windowManagerParams.x = 0;
+                        if (windowManagerParams.y < 0) windowManagerParams.y = 0;
+                    }
+                    windowManager.updateViewLayout(rootFrame, windowManagerParams);
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     public void closeMenu() {
         if (menuLayout != null) menuLayout.setVisibility(View.GONE);
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.VISIBLE);
+        if (rootFrame != null) {
+            rootFrame.requestLayout();
+            try {
+                if (windowManager != null && rootFrame.isAttachedToWindow()) {
+                    windowManager.updateViewLayout(rootFrame, windowManagerParams);
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     public Floater(Context globContext) {
@@ -205,8 +233,8 @@ public class Floater {
 
         boolean isLandscape = screenWidth > screenHeight;
         // Tactical 3-Layer Compact Layout dimensions (low-profile height, wide horizontal)
-        int menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 470 : 385), (int) (screenWidth * 0.96f));
-        int menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 180 : 230), (int) (screenHeight * 0.65f));
+        menuWidth = Math.min(FloaterStyles.dp(context, isLandscape ? 470 : 385), (int) (screenWidth * 0.96f));
+        menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 180 : 230), (int) (screenHeight * 0.65f));
 
         rootFrame = new FrameLayout(context);
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
@@ -286,7 +314,6 @@ public class Floater {
         iconRail.setBackground(FloaterStyles.createLeftRailBackground(context));
         iconRail.setGravity(Gravity.CENTER_HORIZONTAL);
         iconRail.setPadding(0, FloaterStyles.dp(context, 6), 0, FloaterStyles.dp(context, 6));
-        iconRail.setOnTouchListener(createDragListener(false));
 
         // Top mini logo
         ImageView railLogo = new ImageView(context);
@@ -352,7 +379,6 @@ public class Floater {
         p1Header.setOrientation(LinearLayout.HORIZONTAL);
         p1Header.setGravity(Gravity.CENTER_VERTICAL);
         p1Header.setPadding(FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 2), FloaterStyles.dp(context, 4), FloaterStyles.dp(context, 2));
-        p1Header.setOnTouchListener(createDragListener(false));
 
         page1Title = new TextView(context);
         page1Title.setText("AIM ASSIST");
@@ -400,7 +426,6 @@ public class Floater {
         p2Header.setOrientation(LinearLayout.HORIZONTAL);
         p2Header.setGravity(Gravity.CENTER_VERTICAL);
         p2Header.setPadding(FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 4), 0);
-        p2Header.setOnTouchListener(createDragListener(false));
 
         page2Title = new TextView(context);
         LinearLayout.LayoutParams p2tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
@@ -442,7 +467,6 @@ public class Floater {
         page2.addView(scroll2);
         menuLayout.addView(page2);
 
-        collapsedRelative.addView(logoImagem);
         rootRelative.addView(collapsedRelative);
         rootRelative.addView(menuLayout);
         rootFrame.addView(rootRelative);
@@ -456,7 +480,15 @@ public class Floater {
             e.printStackTrace();
         }
 
-        logoImagem.setOnTouchListener(createDragListener(true));
+        View.OnTouchListener touchListener = createOnTouchListener();
+        rootFrame.setOnTouchListener(touchListener);
+        logoImagem.setOnTouchListener(touchListener);
+        logoImagem.setOnClickListener(v -> openMenu());
+        iconRail.setOnTouchListener(touchListener);
+        p1Header.setOnTouchListener(touchListener);
+        p2Header.setOnTouchListener(touchListener);
+        menuLayout.setOnTouchListener(touchListener);
+
         highlightActiveRailTab(0);
 
         // Call genuine native C++ Functions immediately to populate all real features
@@ -688,15 +720,13 @@ public class Floater {
         refreshActivePages();
     }
 
-    // Official Android WindowManager drag listener (smooth dragging, touch slop aware)
-    private View.OnTouchListener createDragListener(final boolean isLogo) {
-        final int touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+    // Official Android WindowManager touch listener from original main_app (smooth, zero lag, direct 1:1 dragging)
+    private View.OnTouchListener createOnTouchListener() {
         return new View.OnTouchListener() {
             private int initialX;
             private int initialY;
             private float initialTouchX;
             private float initialTouchY;
-            private boolean isDragging;
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -706,27 +736,25 @@ public class Floater {
                         initialY = windowManagerParams.y;
                         initialTouchX = event.getRawX();
                         initialTouchY = event.getRawY();
-                        isDragging = false;
                         return true;
 
                     case MotionEvent.ACTION_MOVE:
-                        int dx = (int) (event.getRawX() - initialTouchX);
-                        int dy = (int) (event.getRawY() - initialTouchY);
-                        if (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop) {
-                            isDragging = true;
-                            windowManagerParams.x = initialX + dx;
-                            windowManagerParams.y = initialY + dy;
-                            try {
-                                if (rootFrame != null && rootFrame.isAttachedToWindow()) {
-                                    windowManager.updateViewLayout(rootFrame, windowManagerParams);
-                                }
-                            } catch (Exception ignored) {}
-                        }
+                        windowManagerParams.x = initialX + (int) (event.getRawX() - initialTouchX);
+                        windowManagerParams.y = initialY + (int) (event.getRawY() - initialTouchY);
+                        try {
+                            if (rootFrame != null && rootFrame.isAttachedToWindow()) {
+                                windowManager.updateViewLayout(rootFrame, windowManagerParams);
+                            }
+                        } catch (Exception ignored) {}
                         return true;
 
                     case MotionEvent.ACTION_UP:
-                        if (!isDragging && isLogo) {
-                            openMenu();
+                        int xDiff = (int) (event.getRawX() - initialTouchX);
+                        int yDiff = (int) (event.getRawY() - initialTouchY);
+                        if (Math.abs(xDiff) < 10 && Math.abs(yDiff) < 10) {
+                            if (v == logoImagem) {
+                                openMenu();
+                            }
                         }
                         return true;
                 }

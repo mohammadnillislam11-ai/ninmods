@@ -97,9 +97,18 @@ public class DashboardActivity extends Activity {
             @Override
             public void onStartMenu() {
                 try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(DashboardActivity.this)) {
+                        android.widget.Toast.makeText(DashboardActivity.this, "Please grant Overlay Permission", android.widget.Toast.LENGTH_SHORT).show();
+                        android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                        return;
+                    }
                     Floater.start(DashboardActivity.this);
+                    android.widget.Toast.makeText(DashboardActivity.this, "Floating Menu Started", android.widget.Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     e.printStackTrace();
+                    android.widget.Toast.makeText(DashboardActivity.this, "Error starting menu: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
                 }
             }
 
@@ -107,6 +116,7 @@ public class DashboardActivity extends Activity {
             public void onStopMenu() {
                 try {
                     Floater.stop();
+                    android.widget.Toast.makeText(DashboardActivity.this, "Floating Menu Stopped", android.widget.Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
