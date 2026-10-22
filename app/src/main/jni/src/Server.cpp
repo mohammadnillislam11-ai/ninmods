@@ -610,9 +610,17 @@ void CreateDataList(Response& SendResponse) {
         currentBestTargetPos = Vector3::Zero();  
     }
 
-    if (shouldLog && SendResponse.PlayerCount > 0) {
+    if (shouldLog) {
         lastLogTime = now;
-        NIN_LOGI("DAEMON_ESP", "Active Match: Rendering %d players on screen (LocalPlayer: 0x%lx)", SendResponse.PlayerCount, (unsigned long)localPlayer);
+        NIN_LOGI("OFFSET_AUDIT", "--- LIVE OFFSET VERIFICATION REPORT ---");
+        NIN_LOGI("OFFSET_AUDIT", "[1] libil2cpp.so Base: 0x%lx [OK]", (unsigned long)libAddress);
+        NIN_LOGI("OFFSET_AUDIT", "[2] GameFacade Root: 0x%lx [%s]", (unsigned long)GameFacade_c, (GameFacade_c > 0x10000000 ? "VALID" : "NOT_FOUND"));
+        NIN_LOGI("OFFSET_AUDIT", "[3] CurrentMatch: 0x%lx [%s]", (unsigned long)m_Match, (m_Match > 0x10000000 ? "IN_MATCH" : "IN_LOBBY"));
+        NIN_LOGI("OFFSET_AUDIT", "[4] LocalPlayer: 0x%lx [%s]", (unsigned long)localPlayer, (localPlayer > 0x10000000 ? "SPAWNED" : "WAITING"));
+        NIN_LOGI("OFFSET_AUDIT", "[5] Camera ViewMatrix: _11=%.2f, _22=%.2f [%s]", matrix._11, matrix._22, (matrix._11 != 0.0f ? "VALID" : "PENDING"));
+        NIN_LOGI("OFFSET_AUDIT", "[6] PlayerDictionary: Count=%d [%s]", (dictionary ? dictionary->getNumValues() : 0), (dictionary && dictionary->getNumValues() > 0 ? "PLAYERS_FOUND" : "EMPTY_OR_SCANNING"));
+        NIN_LOGI("OFFSET_AUDIT", "[7] ESP Enemies Rendered: %d", SendResponse.PlayerCount);
+        NIN_LOGI("OFFSET_AUDIT", "---------------------------------------");
     }
 }
 
