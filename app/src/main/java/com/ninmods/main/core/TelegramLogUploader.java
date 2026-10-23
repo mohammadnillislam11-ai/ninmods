@@ -86,7 +86,7 @@ public final class TelegramLogUploader {
                 long remSec = ctx != null ? AuthManager.getRemainingSeconds(ctx) : 0;
                 String deviceModel = Build.MANUFACTURER + " " + Build.MODEL + " (Android " + Build.VERSION.RELEASE + ", API " + Build.VERSION.SDK_INT + ")";
                 String driverStatus = DriverManager.isDriverActive() ? "ACTIVE (" + DriverManager.getActiveDriverNode() + ")" : "OFFLINE";
-                String appVersion = ctx != null ? ctx.getString(com.ninmods.main.R.string.app_version) : "90.15";
+                String appVersion = ctx != null ? ctx.getString(com.ninmods.main.R.string.app_version) : "90.17";
 
                 String timestamp = sTimeFormat.format(new Date());
 
