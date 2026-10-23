@@ -340,7 +340,7 @@ public class DashboardActivity extends BaseActivity {
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setColor(AppColors.DIALOG_BACKGROUND);
         cardBg.setCornerRadius(dp(16));
-        cardBg.setStroke(dp(1.5f), menu.getThemeColor());
+        cardBg.setStroke((int) dp(1.5f), menu.getThemeColor());
         card.setBackground(cardBg);
 
         // 1. Brand Icon
@@ -591,7 +591,7 @@ public class DashboardActivity extends BaseActivity {
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setColor(AppColors.DIALOG_BACKGROUND);
         cardBg.setCornerRadius(dp(16));
-        cardBg.setStroke(dp(1.5f), Color.parseColor("#4A1D4F"));
+        cardBg.setStroke((int) dp(1.5f), Color.parseColor("#4A1D4F"));
         card.setBackground(cardBg);
 
         // Header Title

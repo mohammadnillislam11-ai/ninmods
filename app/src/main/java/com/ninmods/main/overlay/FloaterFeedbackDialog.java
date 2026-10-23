@@ -72,7 +72,7 @@ public final class FloaterFeedbackDialog {
                 card.setOrientation(LinearLayout.VERTICAL);
                 FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
                 card.setLayoutParams(cardLp);
-                card.setPadding(dp(context, 20), dp(22), dp(context, 20), dp(context, 18));
+                card.setPadding(dp(context, 20), dp(context, 22), dp(context, 20), dp(context, 18));
 
                 GradientDrawable cardBg = new GradientDrawable();
                 cardBg.setColor(AppColors.DIALOG_BACKGROUND);
