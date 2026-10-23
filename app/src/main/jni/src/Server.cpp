@@ -324,12 +324,35 @@ void ContinuousAim(uintptr_t oneself) {
 
         bool shouldLock = pPlayer.aimbotlock || (mIsFiring > 0);
 
-        // 1. Camera LookRotation Aimbot (matches Kernel & Scarecrow)
+        // 1. Camera LookRotation Aimbot & ViewRotation (matches Kernel & Scarecrow)
         if ((pPlayer.aimbot || pPlayer.aimbotlock) && shouldLock) {
             Vector3 camPos = MainCameraTransformPos;
+            if (camPos == Vector3::Zero()) {
+                uintptr_t myCam = GetPlayerMainCamera(oneself);
+                if (IsValidUserPointer64(myCam)) camPos = GetPosition(myCam);
+            }
             if (camPos == Vector3::Zero()) camPos = GetNodePosition(oneself) + Vector3(0, 1.85f, 0);
-            Quaternion targetRot = GetRotationToTheLocation(currentBestTargetPos, 0.0f, camPos);
+
+            // Dynamic bone height adjustment (Bull_Team & Scarecrow)
+            float aimHeight = 0.0f;
+            if (!pPlayer.silentAimHead && (rand() % 100) >= pPlayer.headshotRate) {
+                aimHeight = -0.35f; // Chest / Neck level
+            }
+
+            Quaternion targetRot = GetRotationToTheLocation(currentBestTargetPos, aimHeight, camPos);
+
+            // Write character orientation (0x61C / 0x5BC)
             Write<Quaternion>(oneself + Offsets::PlayerRotation, targetRot);
+            Write<Quaternion>(oneself + Offsets::PlayerRotationOld, targetRot);
+
+            // Write primary camera view rotation (Scarecrow 0x214)
+            Write<Quaternion>(oneself + Offsets::Player_ViewRotation, targetRot);
+
+            // Increment aim rotation counter to register in Unity engine
+            int rotCount = Read<int>(oneself + Offsets::CallSetAimRotationCount);
+            if (rotCount >= 0) {
+                Write<int>(oneself + Offsets::CallSetAimRotationCount, rotCount + 1);
+            }
         }
 
         // 2. Silent Bullet Ray Redirection (matches Kernel sAim2 & sAim4)
@@ -354,7 +377,7 @@ void ContinuousAim(uintptr_t oneself) {
         }
 
         // 3. Instant Head Collider Lock (Scarecrow AimTargetWrite)
-        if (pPlayer.aimbotlock && IsValidUserPointer64(currentBestTargetObj)) {
+        if ((pPlayer.aimbotlock || pPlayer.silen4a || pPlayer.aimbot) && shouldLock && IsValidUserPointer64(currentBestTargetObj)) {
             uintptr_t headCollider = Read<uintptr_t>(currentBestTargetObj + Offsets::Player_HeadCollider);
             if (IsValidUserPointer64(headCollider)) {
                 Write<uintptr_t>(currentBestTargetObj + Offsets::Player_AimTargetWrite, headCollider);
@@ -905,7 +928,14 @@ void CreateDataList(Response& SendResponse) {
             float priorityValue = pPlayer.targetByDistance ? distanceToEnemy : screenDist;
             if (priorityValue < bestPriority) {
                 bestPriority = priorityValue;
-                bestTargetPos = EnemyPosition;
+                // Target bone selection (Head vs Chest/Body)
+                Vector3 targetPos = EnemyPosition;
+                if (!pPlayer.silentAimHead && EnemyPositionPe != Vector3::Zero()) {
+                    targetPos.X = EnemyPosition.X + (EnemyPositionPe.X - EnemyPosition.X) * 0.35f;
+                    targetPos.Y = EnemyPosition.Y + (EnemyPositionPe.Y - EnemyPosition.Y) * 0.35f;
+                    targetPos.Z = EnemyPosition.Z + (EnemyPositionPe.Z - EnemyPosition.Z) * 0.35f;
+                }
+                bestTargetPos = targetPos;
                 bestTargetPosPe = EnemyPositionPe;
                 bestTargetObj = enemyList;
                 hasValidTarget = true;

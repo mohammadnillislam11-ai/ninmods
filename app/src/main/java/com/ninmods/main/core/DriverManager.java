@@ -184,15 +184,17 @@ public class DriverManager {
                     String status = obj.optString("status", "");
                     if ("ACTIVE".equalsIgnoreCase(status)) {
                         info.isActive = true;
-                        info.statusText = "Active (Ring 0 Kernel RT)";
+                        if ("ROOT_RAM".equalsIgnoreCase(info.loaderMode)) {
+                            info.statusText = "ACTIVE & RESPONDING (RAM Daemon)";
+                        } else {
+                            info.statusText = "ACTIVE & RESPONDING (Ring 0 Kernel RT)";
+                        }
                     }
                 }
             } catch (Throwable ignored) {}
         }
 
-        if (info.isActive) {
-            info.statusText = "ACTIVE & RESPONDING (Ring 0)";
-        } else {
+        if (!info.isActive) {
             info.statusText = "NOT LOADED / INACTIVE";
         }
 
