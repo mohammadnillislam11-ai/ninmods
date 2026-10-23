@@ -64,14 +64,15 @@ public class ProfileActivity extends BaseActivity {
 
         currentEmail = Prefs.with(this).readString(PREF_ACTIVE_EMAIL, "");
         if (currentEmail == null || currentEmail.trim().isEmpty()) {
-            currentEmail = currentUsername.toLowerCase() + "@ninmods.vip";
-            Prefs.with(this).writeString(PREF_ACTIVE_EMAIL, currentEmail);
+            currentEmail = currentUsername;
         }
 
-        currentPlan = Prefs.with(this).readString(PREF_ACTIVE_PLAN, "");
-        if (currentPlan == null || currentPlan.trim().isEmpty()) {
-            currentPlan = "16-Day VIP Access (Active)";
-            Prefs.with(this).writeString(PREF_ACTIVE_PLAN, currentPlan);
+        String expiresAt = Prefs.with(this).readString("license_expires_at", "");
+        int remainingSec = Prefs.with(this).readInt("license_remaining_sec", 0);
+        if (remainingSec > 0 || !expiresAt.isEmpty()) {
+            currentPlan = "Active (" + (remainingSec > 0 ? (remainingSec / 3600) + "h remaining" : expiresAt) + ")";
+        } else {
+            currentPlan = "No Active License";
         }
     }
 

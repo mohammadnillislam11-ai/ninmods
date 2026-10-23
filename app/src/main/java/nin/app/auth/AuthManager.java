@@ -4,70 +4,61 @@ import android.content.Context;
 import nin.app.core.Prefs;
 
 /**
- * Offline Authentication & License Key Verification Handler.
- * Designed to easily interface with future backend APIs without affecting UI components.
+ * Session State & Authentication Persistence Handler.
+ * All credentials and license verifications are strictly performed online via AuthApiController.
+ * Zero offline bypasses or hardcoded validations exist in this codebase.
  */
 public final class AuthManager {
 
     private static final String PREF_KEY_AUTH_STATUS = "auth_logged_in";
+    private static final String PREF_KEY_ACTIVE_TOKEN = "auth_session_token";
+    private static final String PREF_KEY_ACTIVE_KEY = "active_license_key";
 
     private AuthManager() {}
-
-    /**
-     * Verifies username and password against offline development credentials.
-     */
-    public static boolean verifyLogin(String username, String password) {
-        if (username == null || password == null) return false;
-        String u = username.trim();
-        String p = password.trim();
-        if (u.isEmpty() || p.isEmpty()) return false;
-
-        return (u.equalsIgnoreCase(AuthConstants.DEV_DEFAULT_USER) && p.equals(AuthConstants.DEV_DEFAULT_PASS))
-                || (u.equalsIgnoreCase(AuthConstants.DEV_ALT_USER) && p.equals(AuthConstants.DEV_ALT_PASS))
-                || (u.equalsIgnoreCase("admin") && p.equals("admin"));
-    }
-
-    /**
-     * Verifies license key against offline development keys.
-     */
-    public static boolean verifyLicenseKey(String key) {
-        if (key == null) return false;
-        String k = key.trim();
-        if (k.isEmpty()) return false;
-
-        return k.equalsIgnoreCase(AuthConstants.DEV_FREE_LICENSE_KEY)
-                || k.equalsIgnoreCase(AuthConstants.DEV_SIMPLE_KEY)
-                || k.equalsIgnoreCase(AuthConstants.DEV_NUMERIC_KEY);
-    }
-
-    /**
-     * Registers a user in offline development mode.
-     */
-    public static boolean registerUser(String username, String password) {
-        if (username == null || password == null) return false;
-        String u = username.trim();
-        String p = password.trim();
-        return !u.isEmpty() && !p.isEmpty();
-    }
-
-    /**
-     * Resets a user's password in offline development mode.
-     */
-    public static boolean resetPassword(String username, String newPassword) {
-        if (username == null || newPassword == null) return false;
-        String u = username.trim();
-        String p = newPassword.trim();
-        return !u.isEmpty() && !p.isEmpty();
-    }
 
     public static void setLoggedIn(Context context, boolean loggedIn) {
         if (context != null) {
             Prefs.with(context).writeBoolean(PREF_KEY_AUTH_STATUS, loggedIn);
+            if (!loggedIn) {
+                clearSession(context);
+            }
         }
     }
 
     public static boolean isLoggedIn(Context context) {
         if (context == null) return false;
         return Prefs.with(context).readBoolean(PREF_KEY_AUTH_STATUS, false);
+    }
+
+    public static void setSessionToken(Context context, String token) {
+        if (context != null && token != null) {
+            Prefs.with(context).writeString(PREF_KEY_ACTIVE_TOKEN, token);
+        }
+    }
+
+    public static String getSessionToken(Context context) {
+        if (context == null) return "";
+        return Prefs.with(context).readString(PREF_KEY_ACTIVE_TOKEN, "");
+    }
+
+    public static void setActiveLicenseKey(Context context, String key) {
+        if (context != null && key != null) {
+            Prefs.with(context).writeString(PREF_KEY_ACTIVE_KEY, key);
+        }
+    }
+
+    public static String getActiveLicenseKey(Context context) {
+        if (context == null) return "";
+        return Prefs.with(context).readString(PREF_KEY_ACTIVE_KEY, "");
+    }
+
+    public static void clearSession(Context context) {
+        if (context != null) {
+            Prefs.with(context).writeBoolean(PREF_KEY_AUTH_STATUS, false);
+            Prefs.with(context).writeString(PREF_KEY_ACTIVE_TOKEN, "");
+            Prefs.with(context).writeString(PREF_KEY_ACTIVE_KEY, "");
+            Prefs.with(context).writeInt("license_remaining_sec", 0);
+            Prefs.with(context).writeString("license_expires_at", "");
+        }
     }
 }

@@ -17,46 +17,115 @@
 
 pid_t target_pid = -1;
 uintptr_t libAddress, anogs;
-int mem_fd = 0;
+int driver_fd = -1;
+char active_driver_node[128] = {0};
 
-__attribute__((always_inline))
-static inline int my_open_mem(int pid) {
-    char path[64];
-    sprintf(path, "/proc/%d/mem", pid);
-    
-#if defined(__aarch64__)
-    return syscall(56, -100, path, 2, 0); // openat
-#elif defined(__x86_64__)
-    return syscall(2, path, 2); // open
-#else
-    return open(path, O_RDWR);
-#endif
+#include <sys/ioctl.h>
+
+#pragma pack(push, 8)
+struct DriverMemoryIo {
+    uint32_t pid;
+    uint32_t _pad;
+    uint64_t address;
+    uint64_t buffer;
+    uint64_t size;
+};
+
+struct DriverModuleBaseIo {
+    uint32_t pid;
+    uint32_t _pad;
+    uint64_t name_ptr;
+    uint64_t base;
+};
+#pragma pack(pop)
+
+#define IOCTL_RT_READ      0x801
+#define IOCTL_RT_WRITE     0x802
+#define IOCTL_RT_BASE      0x803
+#define IOCTL_RT_PING      0x804
+#define IOCTL_CHECK_DRIVER 0x8004A801
+
+static inline int OpenDriver() {
+    if (driver_fd > 0) return driver_fd;
+
+    const char* candidate_nodes[] = {
+        "/dev/health_storage_service_alloc",
+        "/dev/BYNb",
+        "/dev/sched_debug",
+        "/dev/uevents_records"
+    };
+
+    for (const char* node : candidate_nodes) {
+        int fd = open(node, O_RDWR);
+        if (fd >= 0) {
+            driver_fd = fd;
+            strncpy(active_driver_node, node, sizeof(active_driver_node) - 1);
+            NIN_LOGI("DRIVER", ">>> Connected to Kernel Driver: %s (FD: %d) <<<", node, driver_fd);
+            return driver_fd;
+        }
+    }
+    return -1;
 }
 
-// Define os syscalls corretamente conforme a arquitetura
-#if defined(__aarch64__)
-    // 64-bit ARM
-    #define SYS_process_vm_readv 270
-    #define SYS_process_vm_writev 271
-    #define SYS_openat 56
-#elif defined(__x86_64__)
-    // 64-bit x86
-    #define SYS_process_vm_readv 310
-    #define SYS_process_vm_writev 311
-    #define SYS_open 2
-#elif defined(__arm__)
-    // 32-bit ARM
-    #define SYS_process_vm_readv 376
-    #define SYS_process_vm_writev 377
-    #define SYS_open 5
-#elif defined(__i386__)
-    // 32-bit x86
-    #define SYS_process_vm_readv 347
-    #define SYS_process_vm_writev 348
-    #define SYS_open 5
-#else
-    #error "Arquitetura não suportada"
-#endif
+static inline bool IsDriverConnected() {
+    if (driver_fd <= 0) {
+        OpenDriver();
+    }
+    return (driver_fd > 0);
+}
+
+static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, size_t size) {
+    if (pid <= 0 || address == 0 || buffer == nullptr || size == 0) return false;
+    if (driver_fd <= 0) {
+        if (OpenDriver() <= 0) return false;
+    }
+
+    DriverMemoryIo io{};
+    io.pid = (uint32_t)pid;
+    io.address = (uint64_t)address;
+    io.buffer = reinterpret_cast<uint64_t>(buffer);
+    io.size = (uint64_t)size;
+
+    int ret = ioctl(driver_fd, IOCTL_RT_READ, &io);
+    return (ret == 0);
+}
+
+static inline bool DriverWriteMemory(pid_t pid, uintptr_t address, const void* buffer, size_t size) {
+    if (pid <= 0 || address == 0 || buffer == nullptr || size == 0) return false;
+    if (driver_fd <= 0) {
+        if (OpenDriver() <= 0) return false;
+    }
+
+    DriverMemoryIo io{};
+    io.pid = (uint32_t)pid;
+    io.address = (uint64_t)address;
+    io.buffer = reinterpret_cast<uint64_t>(buffer);
+    io.size = (uint64_t)size;
+
+    int ret = ioctl(driver_fd, IOCTL_RT_WRITE, &io);
+    return (ret == 0);
+}
+
+static inline uintptr_t DriverGetModuleBase(pid_t pid, const char* moduleName) {
+    if (pid <= 0 || moduleName == nullptr) return 0;
+    if (driver_fd <= 0) {
+        if (OpenDriver() <= 0) return 0;
+    }
+
+    char name_buf[64] = {0};
+    strncpy(name_buf, moduleName, sizeof(name_buf) - 1);
+
+    DriverModuleBaseIo bio{};
+    bio.pid = (uint32_t)pid;
+    bio.name_ptr = reinterpret_cast<uint64_t>(name_buf);
+    bio.base = 0;
+
+    if (ioctl(driver_fd, IOCTL_RT_BASE, &bio) == 0 && bio.base > 0) {
+        NIN_LOGI("DRIVER", "DriverGetModuleBase: Found %s at 0x%lx via Ring 0 IOCTL_RT_BASE", moduleName, (unsigned long)bio.base);
+        return (uintptr_t)bio.base;
+    }
+    return 0;
+}
 
 #define halfShift 10
 #define UNI_SUR_HIGH_START  (UTF32)0xD800
@@ -207,94 +276,46 @@ uintptr_t FindLibrary(const char* name, int index) {
     return start;
 }
 
-// Lê memória usando process_vm_readv com fallback para pread64 (/proc/pid/mem)
+// Pure Kernel Driver Memory Read via IOCTL_RT_READ (Ring 0)
 template<class T>
 T Read(uintptr_t address) {
     T buf{};
-    struct iovec local, remote;
-    
-    local.iov_base = &buf;
-    local.iov_len = sizeof(T);
-    remote.iov_base = reinterpret_cast<void*>(address);
-    remote.iov_len = sizeof(T);
-    
-    // Tenta primeiro o syscall process_vm_readv
-    ssize_t bytes = syscall(SYS_process_vm_readv, target_pid, &local, 1, &remote, 1, 0);
-    
-    // Se falhar, tenta via /proc/pid/mem
-    if (bytes != sizeof(T)) {
-        if (mem_fd <= 0) {
-            mem_fd = my_open_mem(target_pid);
-        }
-        if (mem_fd > 0) {
-            bytes = pread64(mem_fd, &buf, sizeof(T), static_cast<off64_t>(address));
-        }
+    if (address == 0) return buf;
+    if (DriverReadMemory(target_pid, address, &buf, sizeof(T))) {
+        return buf;
     }
-    
-    if (bytes != sizeof(T)) {
-        memset(&buf, 0, sizeof(T));
-    }
+    memset(&buf, 0, sizeof(T));
     return buf;
 }
 
-// Especialização para ler strings com fallback
+// Pure Kernel Driver String Read via IOCTL_RT_READ (Ring 0)
 template<>
 std::string Read<std::string>(uintptr_t address) {
     std::string result;
+    if (address == 0) return result;
     const size_t max_len = 4096;
     char buffer[max_len] = {0};
     
-    struct iovec local, remote;
-    local.iov_base = buffer;
-    local.iov_len = max_len - 1;
-    remote.iov_base = reinterpret_cast<void*>(address);
-    remote.iov_len = max_len - 1;
-    
-    ssize_t bytes = syscall(SYS_process_vm_readv, target_pid, &local, 1, &remote, 1, 0);
-    
-    if (bytes <= 0) {
-        if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
-        if (mem_fd > 0) {
-            bytes = pread64(mem_fd, buffer, max_len - 1, static_cast<off64_t>(address));
-        }
-    }
-
-    if (bytes > 0) {
-        buffer[bytes < max_len ? bytes : max_len - 1] = '\0';
+    if (DriverReadMemory(target_pid, address, buffer, max_len - 1)) {
+        buffer[max_len - 1] = '\0';
         result = buffer;
     }
-    
     return result;
 }
-size_t vm_readv(long address, void *buffer, size_t size)
-{
-	struct iovec iov_ReadBuffer, iov_ReadOffset;
-	iov_ReadBuffer.iov_base = buffer;
-	iov_ReadBuffer.iov_len = size;
-	iov_ReadOffset.iov_base = (void *)address;
-	iov_ReadOffset.iov_len = size;
-	return syscall(SYS_process_vm_readv, target_pid, &iov_ReadBuffer, 1, &iov_ReadOffset, 1, 0);
+
+size_t vm_readv(long address, void *buffer, size_t size) {
+    if (address == 0 || buffer == nullptr || size == 0) return 0;
+    if (DriverReadMemory(target_pid, (uintptr_t)address, buffer, size)) {
+        return size;
+    }
+    return 0;
 }
-// Escreve memória usando process_vm_writev com fallback
+
+// Pure Kernel Driver Memory Write via IOCTL_RT_WRITE (Ring 0)
 template<typename T>
 bool Write(uintptr_t address, T value) {
-    struct iovec local, remote;
-    
-    local.iov_base = &value;
-    local.iov_len = sizeof(T);
-    remote.iov_base = reinterpret_cast<void*>(address);
-    remote.iov_len = sizeof(T);
-    
-    ssize_t bytes = syscall(SYS_process_vm_writev, target_pid, &local, 1, &remote, 1, 0);
-    
-    if (bytes != sizeof(T)) {
-        if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
-        if (mem_fd > 0) {
-            bytes = pwrite64(mem_fd, &value, sizeof(T), static_cast<off64_t>(address));
-        }
-    }
-
-    return (bytes == sizeof(T));
+    if (address == 0) return false;
+    return DriverWriteMemory(target_pid, address, &value, sizeof(T));
 }
 
 uintptr_t getMemoryAddr(uintptr_t address) {
@@ -317,13 +338,8 @@ std::vector<uint8_t> ParseHexBytes(const std::string& hexString) {
 }
 
 bool WriteIO(uintptr_t address, const std::vector<uint8_t>& bytes) {
-    if (mem_fd <= 0) {
-        mem_fd = my_open_mem(target_pid);
-        if (mem_fd <= 0) return false;
-    }
-    
-    ssize_t written = pwrite(mem_fd, bytes.data(), bytes.size(), static_cast<off_t>(address));
-    return (written == static_cast<ssize_t>(bytes.size()));
+    if (address == 0 || bytes.empty()) return false;
+    return DriverWriteMemory(target_pid, address, bytes.data(), bytes.size());
 }
 
 bool WriteIO(uintptr_t address, const std::string& hexString) {
@@ -510,53 +526,30 @@ void getCharacterName(uintptr_t address, UTF8 *transcoding, size_t bufSize) {
     }
 }
 
-// Helper functions for common operations
+// Helper functions for common operations via Kernel Driver (Ring 0)
 bool WriteBytes(uintptr_t address, const void* data, size_t size) {
     if (size == 0) return true;
-    
-    struct iovec local, remote;
-    local.iov_base = const_cast<void*>(data);
-    local.iov_len = size;
-    remote.iov_base = reinterpret_cast<void*>(address);
-    remote.iov_len = size;
-    
-    ssize_t bytes = syscall(SYS_process_vm_writev, target_pid, &local, 1, &remote, 1, 0);
-    return (bytes == static_cast<ssize_t>(size));
+    if (address == 0 || data == nullptr) return false;
+    return DriverWriteMemory(target_pid, address, data, size);
 }
 
 bool ReadBytes(uintptr_t address, void* buffer, size_t size) {
-    if (size == 0 || buffer == nullptr) return false;
-    
-    struct iovec local, remote;
-    local.iov_base = buffer;
-    local.iov_len = size;
-    remote.iov_base = reinterpret_cast<void*>(address);
-    remote.iov_len = size;
-    
-    ssize_t bytes = syscall(SYS_process_vm_readv, target_pid, &local, 1, &remote, 1, 0);
-    
-    if (bytes != static_cast<ssize_t>(size)) {
-        if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
-        if (mem_fd > 0) {
-            bytes = pread64(mem_fd, buffer, size, static_cast<off64_t>(address));
-        }
-    }
-
-    return (bytes == static_cast<ssize_t>(size));
+    if (size == 0 || buffer == nullptr || address == 0) return false;
+    return DriverReadMemory(target_pid, address, buffer, size);
 }
 
-// Initialize the memory file descriptor
+// Initialize the Kernel Driver connection
 bool InitMemoryAccess(pid_t pid) {
     target_pid = pid;
-    mem_fd = my_open_mem(pid);
-    return (mem_fd > 0);
+    return (OpenDriver() > 0);
 }
 
-// Cleanup
+// Cleanup Kernel Driver connection
 void CleanupMemoryAccess() {
-    if (mem_fd > 0) {
-        close(mem_fd);
-        mem_fd = 0;
+    if (driver_fd > 0) {
+        close(driver_fd);
+        driver_fd = -1;
+        active_driver_node[0] = '\0';
     }
     target_pid = -1;
 }

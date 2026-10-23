@@ -35,7 +35,6 @@ import android.widget.Toast;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import nin.app.auth.AuthApiController;
-import nin.app.auth.AuthConstants;
 import nin.app.auth.AuthManager;
 import nin.app.menu.IMenuProject;
 import nin.app.menu.MenuRouter;
@@ -329,6 +328,11 @@ public class DashboardActivity extends BaseActivity {
         etKey.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         etKey.setSingleLine(true);
         etKey.setPadding(dp(14), 0, dp(14), 0);
+
+        String activeKey = AuthManager.getActiveLicenseKey(this);
+        if (activeKey != null && !activeKey.trim().isEmpty()) {
+            etKey.setText(activeKey.trim());
+        }
 
         GradientDrawable inputBg = new GradientDrawable();
         inputBg.setColor(AppColors.MAGENTA_CHIP);

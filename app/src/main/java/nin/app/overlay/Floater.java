@@ -55,6 +55,32 @@ public class Floater {
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
     public static volatile Floater activeFloater = null;
 
+    private static final long HEARTBEAT_INTERVAL_MS = 60000;
+    private static final Runnable heartbeatRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (activeFloater == null || !activeFloater.isAttached()) return;
+            final Context ctx = activeFloater.context;
+            if (ctx == null) return;
+
+            nin.app.auth.AuthApiController.heartbeat(ctx, new nin.app.auth.AuthApiController.ApiCallback() {
+                @Override
+                public void onSuccess(String message) {
+                    mainHandler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL_MS);
+                }
+
+                @Override
+                public void onError(String errorMessage) {
+                    AppLogger.log("LICENSE", "License expired on server: " + errorMessage);
+                    stop();
+                    try {
+                        android.widget.Toast.makeText(ctx, "License Expired! Floating menu deactivated: " + errorMessage, android.widget.Toast.LENGTH_LONG).show();
+                    } catch (Exception ignored) {}
+                }
+            });
+        }
+    };
+
     private Context context;
 
     private WindowManager windowManager;
@@ -105,6 +131,16 @@ public class Floater {
 
     // Strict Singleton & Lifecycle Control
     public static synchronized void start(Context ctx) {
+        Context targetCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+
+        // Check active online verified license session
+        String activeKey = nin.app.auth.AuthManager.getActiveLicenseKey(targetCtx);
+        String sessionToken = nin.app.auth.AuthManager.getSessionToken(targetCtx);
+        if (activeKey == null || activeKey.trim().isEmpty() || sessionToken == null || sessionToken.trim().isEmpty()) {
+            android.widget.Toast.makeText(targetCtx, "Active license key required! Please activate key online.", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+
         if (activeFloater != null && activeFloater.isAttached()) {
             activeFloater.closeMenu();
             return;
@@ -112,7 +148,6 @@ public class Floater {
         if (activeFloater != null) {
             activeFloater.destroyOverlay();
         }
-        Context targetCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
         new Floater(targetCtx);
     }
 
@@ -132,6 +167,7 @@ public class Floater {
     }
 
     public synchronized void destroyOverlay() {
+        mainHandler.removeCallbacks(heartbeatRunnable);
         try {
             if (windowManager != null) {
                 if (rootFrame != null) {
@@ -592,6 +628,10 @@ public class Floater {
         }
 
         refreshActivePages();
+
+        // Schedule periodic online heartbeat validation
+        mainHandler.removeCallbacks(heartbeatRunnable);
+        mainHandler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL_MS);
     }
 
     public void selectRailTab(int index) {
@@ -677,7 +717,7 @@ public class Floater {
         diagCol.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView tvStatus = new TextView(context);
-        tvStatus.setText("Log File:\n/sdcard/ninmods.log\n\nIPC Channels:\nUNIX (\\0nin_X9K2q) + TCP (127.0.0.1:49221)\n\nDaemon Binary:\n" + context.getFilesDir() + "/Titoo\n\nTarget Packages:\ncom.dts.freefireth\ncom.dts.freefiremax");
+        tvStatus.setText("Log File:\n/sdcard/ninmods.log\n\nKernel Driver:\n/dev/health_storage_service_alloc\n\nIPC Channels:\nUNIX (\\0nin_X9K2q) + TCP (127.0.0.1:49221)\n\nDaemon Binary:\n" + context.getFilesDir() + "/Titoo\n\nTarget Packages:\ncom.dts.freefireth\ncom.dts.freefiremax");
         tvStatus.setTextColor(0xFFCCCCCC);
         tvStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
         tvStatus.setPadding(0, FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 8));

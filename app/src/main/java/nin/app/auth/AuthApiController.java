@@ -23,26 +23,26 @@ import nin.app.R;
 import nin.app.core.Prefs;
 
 /**
- * Advanced Node.js Backend API Controller.
- * Manages all network requests routed through '/api/v2/' endpoints for authentication,
- * registration, password reset, and license key verification.
+ * Production Remote API Controller.
+ * Manages all authentication, registration, password reset, license verification,
+ * and session validation strictly via the remote backend API.
  * 
- * Features automatic graceful fallback: if the remote Node.js server is not reachable
- * or offline during development, it seamlessly falls back to local validation with
- * an authentic network handshake delay so the Android loading indicator functions perfectly.
+ * ZERO offline fallbacks, ZERO hardcoded credentials, ZERO manual backdoor bypasses.
+ * Every request requires an active server connection to https://ninmods.smmtor.com.
  */
 public final class AuthApiController {
 
     private static final String TAG = "AuthApiController";
 
     public static final String PREF_SERVER_BASE_URL = "pref_server_base_url";
-    public static final String DEFAULT_SERVER_URL = "http://127.0.0.1:5000";
+    public static final String DEFAULT_SERVER_URL = "https://ninmods.smmtor.com";
 
-    // Strict Node.js v2 Route Standards
+    // Strict Node.js Production API Endpoints
     public static final String ENDPOINT_LOGIN = "/api/v2/auth/login";
     public static final String ENDPOINT_REGISTER = "/api/v2/auth/register";
     public static final String ENDPOINT_RESET_PASS = "/api/v2/auth/reset-password";
     public static final String ENDPOINT_VERIFY_KEY = "/api/v2/license/verify";
+    public static final String ENDPOINT_HEARTBEAT = "/api/v2/app/heartbeat";
 
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -74,12 +74,10 @@ public final class AuthApiController {
 
     /**
      * POST /api/v2/auth/login
+     * Strictly verifies credentials online against the backend database.
      */
     public static void login(Context context, String username, String password, final ApiCallback callback) {
         executor.execute(() -> {
-            boolean networkSuccess = false;
-            String resultMessage = "";
-
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("username", username);
@@ -89,46 +87,48 @@ public final class AuthApiController {
                 payload.put("androidVersion", Build.VERSION.RELEASE);
                 payload.put("clientVersion", context.getString(R.string.app_version));
 
-                String response = executePost(context, ENDPOINT_LOGIN, payload.toString(), 2500);
-                if (response != null) {
+                String response = executePost(context, ENDPOINT_LOGIN, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
+                if (response != null && !response.trim().isEmpty()) {
                     JSONObject resJson = new JSONObject(response);
                     if (resJson.optBoolean("success", false) || resJson.optBoolean("status", false)) {
-                        networkSuccess = true;
-                        resultMessage = resJson.optString("message", "Login successful!");
+                        String resultMessage = resJson.optString("message", "Login successful!");
+                        String apiKey = resJson.optString("api_key", "");
+                        double balance = resJson.optDouble("balance", 0.0);
+                        String currency = resJson.optString("currency", "BDT");
+                        int userId = resJson.optInt("user_id", 0);
+                        String sessionToken = resJson.optString("session_token", resJson.optString("token", ""));
+
+                        Prefs.with(context).writeString("auth_api_key", apiKey);
+                        Prefs.with(context).writeFloat("auth_balance", (float) balance);
+                        Prefs.with(context).writeString("auth_currency", currency);
+                        Prefs.with(context).writeInt("auth_user_id", userId);
+                        if (!sessionToken.isEmpty()) {
+                            AuthManager.setSessionToken(context, sessionToken);
+                        }
+                        AuthManager.setLoggedIn(context, true);
+
+                        mainHandler.post(() -> callback.onSuccess(resultMessage));
+                        return;
                     } else {
-                        final String errMsg = resJson.optString("message", "Invalid credentials!");
+                        final String errMsg = resJson.optString("error", resJson.optString("message", "Invalid username or password!"));
                         mainHandler.post(() -> callback.onError(errMsg));
                         return;
                     }
                 }
+                mainHandler.post(() -> callback.onError("Invalid response from server. Please try again."));
             } catch (Exception e) {
-                Log.d(TAG, "Node.js server unreachable on " + ENDPOINT_LOGIN + ", engaging offline dev fallback: " + e.getMessage());
-            }
-
-            if (!networkSuccess) {
-                // Simulate authentic Node.js handshake (950ms)
-                try { Thread.sleep(950); } catch (InterruptedException ignored) {}
-
-                if (AuthManager.verifyLogin(username, password)) {
-                    mainHandler.post(() -> callback.onSuccess("Login successful!"));
-                } else {
-                    mainHandler.post(() -> callback.onError("Invalid credentials! Please try again."));
-                }
-            } else {
-                final String finalMsg = resultMessage;
-                mainHandler.post(() -> callback.onSuccess(finalMsg));
+                Log.e(TAG, "Login request failed: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Cannot connect to server. Active internet connection required."));
             }
         });
     }
 
     /**
      * POST /api/v2/auth/register
+     * Strictly creates an account online on the backend database.
      */
     public static void register(Context context, String username, String password, final ApiCallback callback) {
         executor.execute(() -> {
-            boolean networkSuccess = false;
-            String resultMessage = "";
-
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("username", username);
@@ -137,127 +137,150 @@ public final class AuthApiController {
                 payload.put("deviceModel", Build.MANUFACTURER + " " + Build.MODEL);
                 payload.put("clientVersion", context.getString(R.string.app_version));
 
-                String response = executePost(context, ENDPOINT_REGISTER, payload.toString(), 2500);
-                if (response != null) {
+                String response = executePost(context, ENDPOINT_REGISTER, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
+                if (response != null && !response.trim().isEmpty()) {
                     JSONObject resJson = new JSONObject(response);
                     if (resJson.optBoolean("success", false) || resJson.optBoolean("status", false)) {
-                        networkSuccess = true;
-                        resultMessage = resJson.optString("message", "Account created successfully!");
+                        String resultMessage = resJson.optString("message", "Account created successfully!");
+                        mainHandler.post(() -> callback.onSuccess(resultMessage));
+                        return;
                     } else {
-                        final String errMsg = resJson.optString("message", "Registration failed!");
+                        final String errMsg = resJson.optString("error", resJson.optString("message", "Registration failed!"));
                         mainHandler.post(() -> callback.onError(errMsg));
                         return;
                     }
                 }
+                mainHandler.post(() -> callback.onError("Invalid response from server. Please try again."));
             } catch (Exception e) {
-                Log.d(TAG, "Node.js server unreachable on " + ENDPOINT_REGISTER + ", engaging offline dev fallback");
-            }
-
-            if (!networkSuccess) {
-                // Simulate authentic Node.js handshake (950ms)
-                try { Thread.sleep(950); } catch (InterruptedException ignored) {}
-
-                if (AuthManager.registerUser(username, password)) {
-                    mainHandler.post(() -> callback.onSuccess("Account created successfully! Please login."));
-                } else {
-                    mainHandler.post(() -> callback.onError("Username already exists. Please choose another."));
-                }
-            } else {
-                final String finalMsg = resultMessage;
-                mainHandler.post(() -> callback.onSuccess(finalMsg));
+                Log.e(TAG, "Registration request failed: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Cannot connect to registration server. Active internet connection required."));
             }
         });
     }
 
     /**
      * POST /api/v2/auth/reset-password
+     * Strictly resets password online on the backend database.
      */
     public static void resetPassword(Context context, String username, String newPassword, final ApiCallback callback) {
         executor.execute(() -> {
-            boolean networkSuccess = false;
-            String resultMessage = "";
-
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("username", username);
                 payload.put("newPassword", newPassword);
                 payload.put("hwid", getHwid(context));
 
-                String response = executePost(context, ENDPOINT_RESET_PASS, payload.toString(), 2500);
-                if (response != null) {
+                String response = executePost(context, ENDPOINT_RESET_PASS, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
+                if (response != null && !response.trim().isEmpty()) {
                     JSONObject resJson = new JSONObject(response);
                     if (resJson.optBoolean("success", false) || resJson.optBoolean("status", false)) {
-                        networkSuccess = true;
-                        resultMessage = resJson.optString("message", "Password reset successful!");
+                        String resultMessage = resJson.optString("message", "Password reset successful!");
+                        mainHandler.post(() -> callback.onSuccess(resultMessage));
+                        return;
                     } else {
-                        final String errMsg = resJson.optString("message", "User not found!");
+                        final String errMsg = resJson.optString("error", resJson.optString("message", "Password reset failed!"));
                         mainHandler.post(() -> callback.onError(errMsg));
                         return;
                     }
                 }
+                mainHandler.post(() -> callback.onError("Invalid response from server. Please try again."));
             } catch (Exception e) {
-                Log.d(TAG, "Node.js server unreachable on " + ENDPOINT_RESET_PASS + ", engaging offline dev fallback");
-            }
-
-            if (!networkSuccess) {
-                // Simulate authentic Node.js handshake (950ms)
-                try { Thread.sleep(950); } catch (InterruptedException ignored) {}
-
-                if (AuthManager.resetPassword(username, newPassword)) {
-                    mainHandler.post(() -> callback.onSuccess("Password reset successful! Please login."));
-                } else {
-                    mainHandler.post(() -> callback.onError("User not found! Please check username or sign up."));
-                }
-            } else {
-                final String finalMsg = resultMessage;
-                mainHandler.post(() -> callback.onSuccess(finalMsg));
+                Log.e(TAG, "Password reset request failed: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Cannot connect to server. Active internet connection required."));
             }
         });
     }
 
     /**
      * POST /api/v2/license/verify
+     * Strictly verifies license key online, checks HWID binding, and retrieves remaining time.
      */
     public static void verifyLicenseKey(Context context, String key, String brandId, final ApiCallback callback) {
         executor.execute(() -> {
-            boolean networkSuccess = false;
-            String resultMessage = "";
-
             try {
                 JSONObject payload = new JSONObject();
-                payload.put("licenseKey", key);
+                payload.put("licenseKey", key != null ? key.trim() : "");
                 payload.put("brand", brandId != null ? brandId : "nin");
                 payload.put("hwid", getHwid(context));
                 payload.put("deviceModel", Build.MANUFACTURER + " " + Build.MODEL);
 
-                String response = executePost(context, ENDPOINT_VERIFY_KEY, payload.toString(), 2500);
-                if (response != null) {
+                String response = executePost(context, ENDPOINT_VERIFY_KEY, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
+                if (response != null && !response.trim().isEmpty()) {
                     JSONObject resJson = new JSONObject(response);
                     if (resJson.optBoolean("valid", false) || resJson.optBoolean("success", false)) {
-                        networkSuccess = true;
-                        resultMessage = resJson.optString("message", "Key verified!");
+                        String resultMessage = resJson.optString("message", "License Key verified successfully!");
+                        int remainingSec = resJson.optInt("remaining_seconds", 0);
+                        String expiresAt = resJson.optString("expires_at", "");
+                        String sessionToken = resJson.optString("session_token", "");
+
+                        Prefs.with(context).writeInt("license_remaining_sec", remainingSec);
+                        Prefs.with(context).writeString("license_expires_at", expiresAt);
+                        AuthManager.setActiveLicenseKey(context, key);
+                        if (!sessionToken.isEmpty()) {
+                            AuthManager.setSessionToken(context, sessionToken);
+                        }
+
+                        mainHandler.post(() -> callback.onSuccess(resultMessage));
+                        return;
                     } else {
-                        final String errMsg = resJson.optString("message", "Invalid License Key!");
+                        final String errMsg = resJson.optString("error", resJson.optString("message", "Invalid or expired License Key!"));
+                        AuthManager.setActiveLicenseKey(context, "");
                         mainHandler.post(() -> callback.onError(errMsg));
                         return;
                     }
                 }
+                AuthManager.setActiveLicenseKey(context, "");
+                mainHandler.post(() -> callback.onError("Invalid response from license server. Please try again."));
             } catch (Exception e) {
-                Log.d(TAG, "Node.js server unreachable on " + ENDPOINT_VERIFY_KEY + ", engaging offline dev fallback");
+                Log.e(TAG, "License verification request failed: " + e.getMessage());
+                AuthManager.setActiveLicenseKey(context, "");
+                mainHandler.post(() -> callback.onError("License server unreachable! Active internet connection is required to verify key."));
             }
+        });
+    }
 
-            if (!networkSuccess) {
-                // Simulate authentic Node.js handshake (950ms)
-                try { Thread.sleep(950); } catch (InterruptedException ignored) {}
-
-                if (AuthManager.verifyLicenseKey(key)) {
-                    mainHandler.post(() -> callback.onSuccess("Key verified!"));
-                } else {
-                    mainHandler.post(() -> callback.onError("Invalid Key! Please enter a valid test key (" + AuthConstants.DEV_FREE_LICENSE_KEY + ")."));
+    /**
+     * POST /api/v2/app/heartbeat
+     * Verifies that the active license has not expired during live gameplay.
+     */
+    public static void heartbeat(Context context, final ApiCallback callback) {
+        executor.execute(() -> {
+            try {
+                String activeKey = AuthManager.getActiveLicenseKey(context);
+                String sessionToken = AuthManager.getSessionToken(context);
+                if (activeKey.isEmpty()) {
+                    if (callback != null) {
+                        mainHandler.post(() -> callback.onError("No active license key found."));
+                    }
+                    return;
                 }
-            } else {
-                final String finalMsg = resultMessage;
-                mainHandler.post(() -> callback.onSuccess(finalMsg));
+
+                JSONObject payload = new JSONObject();
+                payload.put("licenseKey", activeKey);
+                payload.put("sessionToken", sessionToken);
+                payload.put("hwid", getHwid(context));
+
+                String response = executePost(context, ENDPOINT_HEARTBEAT, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
+                if (response != null && !response.trim().isEmpty()) {
+                    JSONObject resJson = new JSONObject(response);
+                    boolean valid = resJson.optBoolean("valid", false) || resJson.optBoolean("success", false);
+                    if (valid) {
+                        int remainingSec = resJson.optInt("remaining_seconds", 0);
+                        Prefs.with(context).writeInt("license_remaining_sec", remainingSec);
+                        if (callback != null) {
+                            mainHandler.post(() -> callback.onSuccess("Session valid"));
+                        }
+                    } else {
+                        // Key expired or revoked while playing
+                        AuthManager.clearSession(context);
+                        final String msg = resJson.optString("error", "Subscription expired! Please renew.");
+                        if (callback != null) {
+                            mainHandler.post(() -> callback.onError(msg));
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "Heartbeat check warning: " + e.getMessage());
             }
         });
     }
@@ -270,7 +293,7 @@ public final class AuthApiController {
         HttpURLConnection conn = (HttpURLConnection) targetUrl.openConnection();
         conn.setRequestMethod("POST");
         conn.setConnectTimeout(timeoutMs);
-        conn.setReadTimeout(timeoutMs);
+        conn.setReadTimeout(AuthConstants.HTTP_READ_TIMEOUT_MS);
         conn.setDoInput(true);
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");

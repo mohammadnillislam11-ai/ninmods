@@ -53,6 +53,14 @@ public class CrossMenuFloater {
     private String activeTab = "Sniper";
 
     public static synchronized void start(Context ctx) {
+        Context target = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+        String activeKey = nin.app.auth.AuthManager.getActiveLicenseKey(target);
+        String sessionToken = nin.app.auth.AuthManager.getSessionToken(target);
+        if (activeKey == null || activeKey.trim().isEmpty() || sessionToken == null || sessionToken.trim().isEmpty()) {
+            android.widget.Toast.makeText(target, "Active license key required! Please activate key online.", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+
         if (activeInstance != null && activeInstance.isAttached()) {
             activeInstance.openMenu();
             return;
@@ -60,7 +68,6 @@ public class CrossMenuFloater {
         if (activeInstance != null) {
             activeInstance.destroy();
         }
-        Context target = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
         try {
             Floater.ftKZXivSr(target);
         } catch (Throwable t) {

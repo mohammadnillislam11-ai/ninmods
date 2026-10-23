@@ -83,6 +83,16 @@ public class MenuRouter {
     public static synchronized void launchMenu(Context context, String menuId) {
         if (context == null) return;
 
+        // Verify active online license session before launching floating overlay
+        String activeKey = nin.app.auth.AuthManager.getActiveLicenseKey(context);
+        String sessionToken = nin.app.auth.AuthManager.getSessionToken(context);
+
+        if (activeKey == null || activeKey.trim().isEmpty() || sessionToken == null || sessionToken.trim().isEmpty()) {
+            Log.e(TAG, "Cannot launch floating menu: Active online license key is required!");
+            android.widget.Toast.makeText(context, "Active license key required! Please verify key online in Dashboard.", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+
         // 1. Strict Channel Isolation: Stop any currently running menu overlay first
         stopAllMenus(context);
 

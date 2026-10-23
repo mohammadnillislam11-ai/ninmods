@@ -90,7 +90,7 @@ bool IsValidPlayerObject(uintptr_t player) {
 
 // ========== ELF Magic Header Checker ==========
 bool is_elf_header(uintptr_t addr) {
-    if (addr == 0 || mem_fd <= 0) return false;
+    if (addr == 0 || !IsDriverConnected()) return false;
     unsigned char magic[4] = {0};
     magic[0] = Read<uint8_t>(addr);
     magic[1] = Read<uint8_t>(addr + 1);
@@ -101,7 +101,7 @@ bool is_elf_header(uintptr_t addr) {
 
 // ========== ARM64 Instruction Decoders (Auto-Extract Static Pointers from Game Code) ==========
 uintptr_t DecodeAdrpLdr(uintptr_t pc) {
-    if (pc == 0 || mem_fd <= 0) return 0;
+    if (pc == 0 || !IsDriverConnected()) return 0;
     uint32_t inst1 = Read<uint32_t>(pc);
     uint32_t inst2 = Read<uint32_t>(pc + 4);
 
@@ -135,6 +135,13 @@ static bool IsValidViewMatrix(const D3DMatrix& m) {
 
 // ========== Module Base Address (ROBUST MULTI-ELF DETECTOR) ==========
 uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
+    // 1. First Priority: Direct Kernel Ring 0 Driver Base Address
+    uintptr_t kernelBase = DriverGetModuleBase(pid, moduleName);
+    if (kernelBase > 0) {
+        NIN_LOGI("DAEMON", "GetModuleBase: %s Base = 0x%lx (Ring-0 Kernel Driver Verified)", moduleName, (unsigned long)kernelBase);
+        return kernelBase;
+    }
+
     char mapsPath[64];
     snprintf(mapsPath, sizeof(mapsPath), "/proc/%d/maps", pid);
     FILE* fp = fopen(mapsPath, "r");
@@ -426,7 +433,7 @@ void CreateDataList(Response& SendResponse) {
     if (libAddress == 0) {
         libAddress = GetModuleBase(target_pid, "libil2cpp.so");
         if (libAddress == 0) return;
-        if (mem_fd <= 0) InitMemoryAccess(target_pid);
+        if (!IsDriverConnected()) InitMemoryAccess(target_pid);
     }
 
     static time_t lastLogTime = 0;
@@ -950,18 +957,21 @@ int main(int argc, char*argv[]){
 
                 // Attach / scan target game dynamically if needed (throttled to 1s to prevent kernel mmap_lock starvation)
                 if (request.Mode != Mode::InitMode && request.Mode != Mode::HackMode) {
-                    if (target_pid <= 0 || mem_fd <= 0 || libAddress == 0) {
+                    if (target_pid <= 0 || !IsDriverConnected() || libAddress == 0) {
                         static time_t lastAttachAttempt = 0;
                         time_t nowScan = time(nullptr);
                         if (nowScan - lastAttachAttempt >= 1) {
                             lastAttachAttempt = nowScan;
                             if (target_pid <= 0) target_pid = FindGamePid();
                             if (target_pid > 0) {
-                                if (mem_fd <= 0) mem_fd = my_open_mem(target_pid);
-                                if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
-                                if (libAddress > 0) {
-                                    NIN_LOGI("DAEMON", "Game attached successfully: PID=%d, mem_fd=%d, libil2cpp=0x%lx",
-                                             target_pid, mem_fd, (unsigned long)libAddress);
+                                if (OpenDriver() > 0) {
+                                    if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
+                                    if (libAddress > 0) {
+                                        NIN_LOGI("DAEMON", "Game attached via Kernel Driver: PID=%d, DriverFD=%d (%s), libil2cpp=0x%lx",
+                                                 target_pid, driver_fd, active_driver_node, (unsigned long)libAddress);
+                                    }
+                                } else {
+                                    NIN_LOGE("DAEMON", "Target PID %d found, but Kernel Driver (/dev/health_storage_service_alloc) not ready yet", target_pid);
                                 }
                             }
                         }
