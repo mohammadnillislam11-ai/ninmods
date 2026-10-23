@@ -7,6 +7,8 @@ import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
