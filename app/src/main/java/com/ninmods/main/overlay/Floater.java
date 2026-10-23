@@ -93,6 +93,7 @@ public class Floater {
     private int savedMenuX = -1;
     private int savedMenuY = -1;
     private boolean isLogoDragged = false;
+    private final java.util.Set<Integer> activeEspSwitches = new java.util.HashSet<>();
 
     private void updateScreenDimensions() {
         try {
@@ -185,6 +186,7 @@ public class Floater {
         } catch (Exception ignored) {}
         categoryViews.clear();
         railTabButtons.clear();
+        activeEspSwitches.clear();
         activeFloater = null;
     }
 
@@ -327,7 +329,7 @@ public class Floater {
         windowManagerParams.y = 120;
 
         windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
-        DrawCanvas();
+        // Do not attach full-screen drawView on startup to prevent touch freezing and Android tapjacking alerts
     }
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
@@ -768,6 +770,14 @@ public class Floater {
         }
 
         sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isEspFeatureId(id)) {
+                if (isChecked) {
+                    activeEspSwitches.add(id);
+                } else {
+                    activeEspSwitches.remove(id);
+                }
+                syncEspCanvasState();
+            }
             ChangesID(id, isChecked ? 1 : 0);
         });
         row.addView(sw);
@@ -985,30 +995,58 @@ public class Floater {
         };
     }
 
-    public void DrawCanvas() {
-        if (drawView != null && drawView.isAttachedToWindow()) return;
-        int layoutFlag = getLayoutType();
-        drawView = new GLES3JNIView(context);
-        windowManagerDrawViewParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                layoutFlag,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT
-        );
-        windowManagerDrawViewParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
-        windowManagerDrawViewParams.gravity = Gravity.TOP | Gravity.START;
-        windowManagerDrawViewParams.x = 0;
-        windowManagerDrawViewParams.y = 0;
-        try {
-            windowManager.addView(drawView, windowManagerDrawViewParams);
-        } catch (Exception e) {
-            e.printStackTrace();
+    private static boolean isEspFeatureId(int id) {
+        // ID 1: Master Enable Functions, IDs 11-27: ESP Draw Features
+        return id == 1 || (id >= 11 && id <= 27);
+    }
+
+    private synchronized void syncEspCanvasState() {
+        if (!activeEspSwitches.isEmpty()) {
+            attachDrawCanvas();
+        } else {
+            detachDrawCanvas();
         }
+    }
+
+    public synchronized void attachDrawCanvas() {
+        if (drawView != null && drawView.isAttachedToWindow()) return;
+        try {
+            int layoutFlag = getLayoutType();
+            if (drawView == null) {
+                drawView = new GLES3JNIView(context);
+            }
+            windowManagerDrawViewParams = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    layoutFlag,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                    PixelFormat.TRANSLUCENT
+            );
+            windowManagerDrawViewParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
+            windowManagerDrawViewParams.gravity = Gravity.TOP | Gravity.START;
+            windowManagerDrawViewParams.x = 0;
+            windowManagerDrawViewParams.y = 0;
+            if (windowManager != null && (drawView.getParent() == null || !drawView.isAttachedToWindow())) {
+                windowManager.addView(drawView, windowManagerDrawViewParams);
+                AppLogger.log("FLOATER", "Hardware ESP Canvas dynamically attached for active features");
+            }
+        } catch (Exception e) {
+            AppLogger.logE("FLOATER", "Failed to attach Hardware ESP Canvas", e);
+        }
+    }
+
+    public synchronized void detachDrawCanvas() {
+        try {
+            if (windowManager != null && drawView != null && drawView.isAttachedToWindow()) {
+                windowManager.removeView(drawView);
+                AppLogger.log("FLOATER", "Hardware ESP Canvas detached (0 active ESP features)");
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public void DrawCanvas() {
+        attachDrawCanvas();
     }
 
     // Static bridge methods called directly by Native C++ JNI
