@@ -197,8 +197,6 @@ public class ProfileActivity extends BaseActivity {
                 tvLiveCountdown.setTextColor(0xFFFF5252);
             }
         }
-
-        }
     }
 
     private void buildView() {
