@@ -205,11 +205,6 @@ public class DashboardActivity extends BaseActivity {
                 DriverManager.launchDriverLoader(DashboardActivity.this);
             }
 
-            @Override
-            public void onPricingClick() {
-                drawerLayout.closeDrawer(Gravity.START);
-                startActivity(new Intent(DashboardActivity.this, PricingActivity.class));
-            }
 
             @Override
             public void onProfileClick() {

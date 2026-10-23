@@ -120,8 +120,8 @@ public class LoginActivity extends BaseActivity {
         tvError.setVisibility(View.GONE);
         board.addView(tvError);
 
-        // 4. Username Field
-        etUsername = createInputField("Username", InputType.TYPE_CLASS_TEXT);
+        // 4. Username Field (Supports Username or Email per backend schema)
+        etUsername = createInputField("Username or Email", InputType.TYPE_CLASS_TEXT);
         board.addView(etUsername);
 
         // 5. Password Field
@@ -266,7 +266,7 @@ public class LoginActivity extends BaseActivity {
         final String password = etPassword.getText() != null ? etPassword.getText().toString().trim() : "";
 
         if (username.isEmpty() || password.isEmpty()) {
-            showError("Please enter both username and password.");
+            showError("Please enter your username/email and password.");
             return;
         }
 

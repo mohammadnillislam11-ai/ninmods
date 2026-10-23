@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.Patterns;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -29,8 +30,10 @@ import nin.app.core.BaseActivity;
 public class SignupActivity extends BaseActivity {
 
     private EditText etUsername;
+    private EditText etEmail;
     private EditText etPassword;
     private EditText etConfirmPassword;
+    private EditText etReferral;
     private TextView tvError;
     private Button signupBtn;
     private ProgressBar progressBar;
@@ -67,7 +70,7 @@ public class SignupActivity extends BaseActivity {
         ));
         centerContainer.setOrientation(LinearLayout.VERTICAL);
         centerContainer.setGravity(Gravity.CENTER);
-        centerContainer.setPadding(dp(16), dp(28), dp(16), dp(48));
+        centerContainer.setPadding(dp(16), dp(24), dp(16), dp(40));
 
         // Main Board Column (Seamless on screen - flows naturally inside particle animation)
         LinearLayout board = new LinearLayout(this);
@@ -81,8 +84,8 @@ public class SignupActivity extends BaseActivity {
 
         // 1. Logo
         ImageView logo = new ImageView(this);
-        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(96), dp(96));
-        logoLp.bottomMargin = dp(12);
+        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(84), dp(84));
+        logoLp.bottomMargin = dp(10);
         logo.setLayoutParams(logoLp);
         logo.setImageResource(R.drawable.nin_logo);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -96,14 +99,14 @@ public class SignupActivity extends BaseActivity {
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleLp.bottomMargin = dp(16);
+        titleLp.bottomMargin = dp(12);
         title.setLayoutParams(titleLp);
         board.addView(title);
 
-        // 3. Error Label (Strictly positioned ABOVE Username input field per user explicit instruction)
+        // 3. Error Label (Positioned ABOVE Username input field)
         tvError = new TextView(this);
         LinearLayout.LayoutParams errLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        errLp.bottomMargin = dp(12);
+        errLp.bottomMargin = dp(10);
         tvError.setLayoutParams(errLp);
         tvError.setTextColor(Color.parseColor("#FF5252"));
         tvError.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
@@ -112,28 +115,42 @@ public class SignupActivity extends BaseActivity {
         tvError.setVisibility(View.GONE);
         board.addView(tvError);
 
-        // 4. Username Field
-        etUsername = createInputField("Username", InputType.TYPE_CLASS_TEXT);
+        // 4. Username Field (3-20 chars alphanumeric)
+        etUsername = createInputField("Username (3-20 chars, letters/numbers)", InputType.TYPE_CLASS_TEXT);
         board.addView(etUsername);
 
-        // 5. Password Field
-        etPassword = createInputField("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        // 5. Email Field (Required by Backend Server)
+        etEmail = createInputField("Email Address", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        LinearLayout.LayoutParams emailLp = (LinearLayout.LayoutParams) etEmail.getLayoutParams();
+        emailLp.topMargin = dp(10);
+        etEmail.setLayoutParams(emailLp);
+        board.addView(etEmail);
+
+        // 6. Password Field (Min 6 characters)
+        etPassword = createInputField("Password (Min 6 chars)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) etPassword.getLayoutParams();
-        passLp.topMargin = dp(12);
+        passLp.topMargin = dp(10);
         etPassword.setLayoutParams(passLp);
         board.addView(etPassword);
 
-        // 6. Confirm Password Field
+        // 7. Confirm Password Field
         etConfirmPassword = createInputField("Confirm Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         LinearLayout.LayoutParams confPassLp = (LinearLayout.LayoutParams) etConfirmPassword.getLayoutParams();
-        confPassLp.topMargin = dp(12);
+        confPassLp.topMargin = dp(10);
         etConfirmPassword.setLayoutParams(confPassLp);
         board.addView(etConfirmPassword);
 
-        // 7. Sign Up Button
+        // 8. Referral Code (Optional)
+        etReferral = createInputField("Referral Code (Optional)", InputType.TYPE_CLASS_TEXT);
+        LinearLayout.LayoutParams refLp = (LinearLayout.LayoutParams) etReferral.getLayoutParams();
+        refLp.topMargin = dp(10);
+        etReferral.setLayoutParams(refLp);
+        board.addView(etReferral);
+
+        // 9. Sign Up Button
         signupBtn = new Button(this);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
-        btnLp.topMargin = dp(16);
+        btnLp.topMargin = dp(14);
         signupBtn.setLayoutParams(btnLp);
         signupBtn.setText("SIGN UP");
         signupBtn.setTextColor(AppColors.WHITE);
@@ -149,11 +166,11 @@ public class SignupActivity extends BaseActivity {
         signupBtn.setOnClickListener(v -> performSignup());
         board.addView(signupBtn);
 
-        // 8. Official Android Native Circular Loading Component
+        // 10. Native Loading Indicator
         progressBar = new ProgressBar(this);
         LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(dp(36), dp(36));
         pbLp.gravity = Gravity.CENTER_HORIZONTAL;
-        pbLp.topMargin = dp(16);
+        pbLp.topMargin = dp(14);
         pbLp.bottomMargin = dp(4);
         progressBar.setLayoutParams(pbLp);
         progressBar.setIndeterminate(true);
@@ -163,24 +180,19 @@ public class SignupActivity extends BaseActivity {
         progressBar.setVisibility(View.GONE);
         board.addView(progressBar);
 
-        // 9. Navigation Link (Back to Login)
-        LinearLayout linksRow = new LinearLayout(this);
-        LinearLayout.LayoutParams linksLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        linksLp.topMargin = dp(16);
-        linksRow.setLayoutParams(linksLp);
-        linksRow.setOrientation(LinearLayout.VERTICAL);
-        linksRow.setGravity(Gravity.CENTER);
-
-        TextView backToLoginLink = new TextView(this);
-        backToLoginLink.setText("Already have an account? Login");
-        backToLoginLink.setTextColor(AppColors.MAGENTA_LIGHT);
-        backToLoginLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        backToLoginLink.setGravity(Gravity.CENTER);
-        backToLoginLink.setPadding(0, dp(6), 0, dp(6));
-        backToLoginLink.setOnClickListener(v -> finish());
-        linksRow.addView(backToLoginLink);
-
-        board.addView(linksRow);
+        // 11. Navigation Link (Login)
+        TextView loginLink = new TextView(this);
+        LinearLayout.LayoutParams llLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        llLp.topMargin = dp(14);
+        llLp.gravity = Gravity.CENTER_HORIZONTAL;
+        loginLink.setLayoutParams(llLp);
+        loginLink.setText("Already have an account? Login");
+        loginLink.setTextColor(AppColors.MAGENTA_LIGHT);
+        loginLink.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        loginLink.setGravity(Gravity.CENTER);
+        loginLink.setPadding(0, dp(6), 0, dp(6));
+        loginLink.setOnClickListener(v -> finish());
+        board.addView(loginLink);
 
         centerContainer.addView(board);
         scrollView.addView(centerContainer);
@@ -212,21 +224,28 @@ public class SignupActivity extends BaseActivity {
 
     private void performSignup() {
         final String username = etUsername.getText() != null ? etUsername.getText().toString().trim() : "";
+        final String email = etEmail.getText() != null ? etEmail.getText().toString().trim() : "";
         final String password = etPassword.getText() != null ? etPassword.getText().toString().trim() : "";
         final String confirmPassword = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString().trim() : "";
+        final String refCode = etReferral.getText() != null ? etReferral.getText().toString().trim() : "";
 
-        if (username.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
-            showError("Please fill in all fields.");
+        if (username.isEmpty() || email.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
+            showError("Please fill in username, email, and password fields.");
             return;
         }
 
-        if (username.length() < 3) {
-            showError("Username must be at least 3 characters.");
+        if (username.length() < 3 || username.length() > 20 || !username.matches("^[a-zA-Z0-9_]{3,20}$")) {
+            showError("Username must be 3-20 characters (letters, numbers, underscores only).");
             return;
         }
 
-        if (password.length() < 4) {
-            showError("Password must be at least 4 characters.");
+        if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            showError("Please enter a valid email address.");
+            return;
+        }
+
+        if (password.length() < 6) {
+            showError("Password must be at least 6 characters long.");
             return;
         }
 
@@ -240,25 +259,26 @@ public class SignupActivity extends BaseActivity {
         signupBtn.setVisibility(View.GONE);
         progressBar.setVisibility(View.VISIBLE);
         etUsername.setEnabled(false);
+        etEmail.setEnabled(false);
         etPassword.setEnabled(false);
         etConfirmPassword.setEnabled(false);
+        etReferral.setEnabled(false);
 
-        // Forward registration to Node.js /api/v2/auth/register endpoint
-        AuthApiController.register(this, username, password, new AuthApiController.ApiCallback() {
+        // Forward full registration credentials to Node.js /api/v2/auth/register endpoint
+        AuthApiController.register(this, username, email, password, refCode, new AuthApiController.ApiCallback() {
             @Override
             public void onSuccess(String message) {
                 if (isFinishing()) return;
                 progressBar.setVisibility(View.GONE);
                 signupBtn.setVisibility(View.VISIBLE);
                 etUsername.setEnabled(true);
+                etEmail.setEnabled(true);
                 etPassword.setEnabled(true);
                 etConfirmPassword.setEnabled(true);
-
-                nin.app.core.Prefs.with(SignupActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_USERNAME, username);
-                nin.app.core.Prefs.with(SignupActivity.this).writeString(nin.app.core.ProfileActivity.PREF_ACTIVE_PASSWORD, password);
+                etReferral.setEnabled(true);
 
                 Toast.makeText(SignupActivity.this, message, Toast.LENGTH_LONG).show();
-                finish();
+                finish(); // Return to LoginActivity
             }
 
             @Override
@@ -267,8 +287,10 @@ public class SignupActivity extends BaseActivity {
                 progressBar.setVisibility(View.GONE);
                 signupBtn.setVisibility(View.VISIBLE);
                 etUsername.setEnabled(true);
+                etEmail.setEnabled(true);
                 etPassword.setEnabled(true);
                 etConfirmPassword.setEnabled(true);
+                etReferral.setEnabled(true);
                 showError(errorMessage);
             }
         });

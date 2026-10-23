@@ -6,15 +6,23 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.util.Log;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 
 /**
  * NINMODS Driver Integration Manager
- * Permanently links the Main App (nin.app) with the Driver Loader (com.ninmods.loader).
+ * Permanently links the Main App (com.ninmods.main) with the Driver Loader (com.ninmods.loader).
+ * Provides deep real-time inquiry of Ring 0 Kernel Driver nodes, device IDs, and module statuses.
  */
 public class DriverManager {
+
+    private static final String TAG = "DriverManager";
 
     public static final String MAIN_PACKAGE_NAME = "com.ninmods.main";
     public static final String LOADER_PACKAGE_NAME = "com.ninmods.loader";
@@ -28,6 +36,27 @@ public class DriverManager {
             "/dev/sched_debug",
             "/dev/uevents_records"
     };
+
+    static {
+        try {
+            System.loadLibrary("ninmods");
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to load native library in DriverManager: " + t.getMessage());
+        }
+    }
+
+    public static class DriverInfo {
+        public boolean isActive = false;
+        public String activeNode = "None";
+        public String deviceId = "Unknown";
+        public int major = 0;
+        public int minor = 0;
+        public String permissions = "Inaccessible";
+        public String kernelModule = "Not Detected";
+        public String loaderMode = "NONE";
+        public String statusText = "Driver Inactive";
+        public boolean loaderInstalled = false;
+    }
 
     public interface DriverStateListener {
         void onDriverStateChanged(boolean isLoaded, String mode, String activeNode);
@@ -70,6 +99,104 @@ public class DriverManager {
             }
         }
         return null;
+    }
+
+    /**
+     * Performs a comprehensive, automated real-time inquiry of the Ring 0 Driver.
+     * Evaluates character device nodes, major/minor device IDs, kernel modules,
+     * file permissions, and persisted driver states.
+     */
+    public static DriverInfo inquireDriverInfo(Context context) {
+        DriverInfo info = new DriverInfo();
+        info.loaderInstalled = isLoaderInstalled(context);
+
+        // 1. Try Native JNI Driver Probe first
+        try {
+            String nativeJson = nativeProbeDriverInfo();
+            if (nativeJson != null && !nativeJson.trim().isEmpty()) {
+                JSONObject obj = new JSONObject(nativeJson);
+                info.isActive = obj.optBoolean("is_active", false);
+                info.activeNode = obj.optString("active_node", "None");
+                info.major = obj.optInt("major", 0);
+                info.minor = obj.optInt("minor", 0);
+                info.deviceId = obj.optString("device_id", "Major: " + info.major + ", Minor: " + info.minor);
+                info.permissions = obj.optString("permissions", "rw-rw-rw-");
+                info.statusText = obj.optString("status_text", info.isActive ? "Active (Ring 0)" : "Inactive");
+            }
+        } catch (Throwable t) {
+            Log.d(TAG, "Native driver probe fallback to Java: " + t.getMessage());
+        }
+
+        // 2. Java Level Node Verification (if native didn't find active node)
+        if (!info.isActive) {
+            for (String node : CANDIDATE_DRIVER_NODES) {
+                File f = new File(node);
+                if (f.exists()) {
+                    info.activeNode = node;
+                    boolean canR = f.canRead();
+                    boolean canW = f.canWrite();
+                    info.permissions = (canR ? "r" : "-") + (canW ? "w" : "-");
+                    info.isActive = canR;
+
+                    // Query device ID using android.system.Os.stat if available
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            android.system.StructStat stat = android.system.Os.stat(node);
+                            long rdev = stat.st_rdev;
+                            info.major = (int) ((rdev >> 8) & 0xFFF);
+                            info.minor = (int) ((rdev & 0xFF) | ((rdev >> 12) & 0xFFF00));
+                            info.deviceId = "Major: " + info.major + ", Minor: " + info.minor + " (0x" + Long.toHexString(rdev).toUpperCase() + ")";
+                        }
+                    } catch (Throwable ignored) {
+                        info.deviceId = "Node Present (" + node + ")";
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 3. Inspect /proc/modules for genuine loaded kernel module
+        try (BufferedReader br = new BufferedReader(new FileReader("/proc/modules"))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String[] parts = line.split("\\s+");
+                if (parts.length > 0) {
+                    String modName = parts[0].toLowerCase();
+                    if (modName.contains("5.10") || modName.contains("4.14") || modName.contains("4.19") ||
+                        modName.contains("nh") || modName.contains("mem_tool") || modName.contains("bynb") ||
+                        modName.contains("health_storage") || modName.contains("driver")) {
+                        info.kernelModule = parts[0] + " (Size: " + (parts.length > 1 ? parts[1] + " B" : "Loaded") + ")";
+                        info.isActive = true;
+                        break;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 4. Check persisted state from /data/local/tmp/.nin_driver_state
+        File stateFile = new File("/data/local/tmp/.nin_driver_state");
+        if (stateFile.exists() && stateFile.canRead()) {
+            try (BufferedReader br = new BufferedReader(new FileReader(stateFile))) {
+                String stateJson = br.readLine();
+                if (stateJson != null && !stateJson.trim().isEmpty()) {
+                    JSONObject obj = new JSONObject(stateJson);
+                    info.loaderMode = obj.optString("mode", "NONE");
+                    String status = obj.optString("status", "");
+                    if ("ACTIVE".equalsIgnoreCase(status)) {
+                        info.isActive = true;
+                        info.statusText = "Active (Ring 0 Kernel RT)";
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        if (info.isActive) {
+            info.statusText = "ACTIVE & RESPONDING (Ring 0)";
+        } else {
+            info.statusText = "NOT LOADED / INACTIVE";
+        }
+
+        return info;
     }
 
     /**
@@ -119,4 +246,7 @@ public class DriverManager {
         }
         return receiver;
     }
+
+    // Native JNI driver probing method
+    public static native String nativeProbeDriverInfo();
 }

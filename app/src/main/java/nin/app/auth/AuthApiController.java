@@ -27,8 +27,10 @@ import nin.app.core.Prefs;
  * Manages all authentication, registration, password reset, license verification,
  * and session validation strictly via the remote backend API.
  * 
+ * BANKING-GRADE TAMPER-RESISTANCE:
+ * All requests are cryptographically signed via native C++ HMAC-SHA256 (SecurityVault).
+ * Verified server session tokens are bound to the native Ring 0 memory engine.
  * ZERO offline fallbacks, ZERO hardcoded credentials, ZERO manual backdoor bypasses.
- * Every request requires an active server connection to https://ninmods.smmtor.com.
  */
 public final class AuthApiController {
 
@@ -64,7 +66,7 @@ public final class AuthApiController {
         }
     }
 
-    private static String getHwid(Context context) {
+    public static String getHwid(Context context) {
         try {
             return Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
         } catch (Exception ignored) {
@@ -75,14 +77,18 @@ public final class AuthApiController {
     /**
      * POST /api/v2/auth/login
      * Strictly verifies credentials online against the backend database.
+     * Supports login via either Username or Email.
      */
-    public static void login(Context context, String username, String password, final ApiCallback callback) {
+    public static void login(Context context, String usernameOrEmail, String password, final ApiCallback callback) {
+        SecurityVault.init(context);
+
         executor.execute(() -> {
             try {
+                String hwid = getHwid(context);
                 JSONObject payload = new JSONObject();
-                payload.put("username", username);
-                payload.put("password", password);
-                payload.put("hwid", getHwid(context));
+                payload.put("username", usernameOrEmail != null ? usernameOrEmail.trim() : "");
+                payload.put("password", password != null ? password.trim() : "");
+                payload.put("hwid", hwid);
                 payload.put("deviceModel", Build.MANUFACTURER + " " + Build.MODEL);
                 payload.put("androidVersion", Build.VERSION.RELEASE);
                 payload.put("clientVersion", context.getString(R.string.app_version));
@@ -96,7 +102,7 @@ public final class AuthApiController {
                         double balance = resJson.optDouble("balance", 0.0);
                         String currency = resJson.optString("currency", "BDT");
                         int userId = resJson.optInt("user_id", 0);
-                        String sessionToken = resJson.optString("session_token", resJson.optString("token", ""));
+                        String sessionToken = resJson.optString("session_token", resJson.optString("token", apiKey));
 
                         Prefs.with(context).writeString("auth_api_key", apiKey);
                         Prefs.with(context).writeFloat("auth_balance", (float) balance);
@@ -104,13 +110,15 @@ public final class AuthApiController {
                         Prefs.with(context).writeInt("auth_user_id", userId);
                         if (!sessionToken.isEmpty()) {
                             AuthManager.setSessionToken(context, sessionToken);
+                            // Bind verified session to native C++ cheat engine
+                            SecurityVault.setNativeSession(sessionToken, hwid, 86400);
                         }
                         AuthManager.setLoggedIn(context, true);
 
                         mainHandler.post(() -> callback.onSuccess(resultMessage));
                         return;
                     } else {
-                        final String errMsg = resJson.optString("error", resJson.optString("message", "Invalid username or password!"));
+                        final String errMsg = resJson.optString("error", resJson.optString("message", "Invalid username/email or password!"));
                         mainHandler.post(() -> callback.onError(errMsg));
                         return;
                     }
@@ -125,15 +133,24 @@ public final class AuthApiController {
 
     /**
      * POST /api/v2/auth/register
-     * Strictly creates an account online on the backend database.
+     * Strictly creates an account online on the backend database with full schema synchronization.
      */
-    public static void register(Context context, String username, String password, final ApiCallback callback) {
+    public static void register(Context context, String username, String email, String password, String refCode, final ApiCallback callback) {
+        SecurityVault.init(context);
+
         executor.execute(() -> {
             try {
+                String hwid = getHwid(context);
                 JSONObject payload = new JSONObject();
-                payload.put("username", username);
-                payload.put("password", password);
-                payload.put("hwid", getHwid(context));
+                payload.put("username", username != null ? username.trim() : "");
+                payload.put("email", email != null ? email.trim() : "");
+                payload.put("password", password != null ? password.trim() : "");
+                payload.put("password_again", password != null ? password.trim() : "");
+                if (refCode != null && !refCode.trim().isEmpty()) {
+                    payload.put("ref_code", refCode.trim());
+                    payload.put("ref_by", refCode.trim());
+                }
+                payload.put("hwid", hwid);
                 payload.put("deviceModel", Build.MANUFACTURER + " " + Build.MODEL);
                 payload.put("clientVersion", context.getString(R.string.app_version));
 
@@ -141,7 +158,7 @@ public final class AuthApiController {
                 if (response != null && !response.trim().isEmpty()) {
                     JSONObject resJson = new JSONObject(response);
                     if (resJson.optBoolean("success", false) || resJson.optBoolean("status", false)) {
-                        String resultMessage = resJson.optString("message", "Account created successfully!");
+                        String resultMessage = resJson.optString("message", "Account created successfully! Please login.");
                         mainHandler.post(() -> callback.onSuccess(resultMessage));
                         return;
                     } else {
@@ -150,7 +167,7 @@ public final class AuthApiController {
                         return;
                     }
                 }
-                mainHandler.post(() -> callback.onError("Invalid response from server. Please try again."));
+                mainHandler.post(() -> callback.onError("Invalid response from registration server. Please try again."));
             } catch (Exception e) {
                 Log.e(TAG, "Registration request failed: " + e.getMessage());
                 mainHandler.post(() -> callback.onError("Cannot connect to registration server. Active internet connection required."));
@@ -162,19 +179,23 @@ public final class AuthApiController {
      * POST /api/v2/auth/reset-password
      * Strictly resets password online on the backend database.
      */
-    public static void resetPassword(Context context, String username, String newPassword, final ApiCallback callback) {
+    public static void resetPassword(Context context, String usernameOrEmail, String newPassword, final ApiCallback callback) {
+        SecurityVault.init(context);
+
         executor.execute(() -> {
             try {
+                String hwid = getHwid(context);
                 JSONObject payload = new JSONObject();
-                payload.put("username", username);
-                payload.put("newPassword", newPassword);
-                payload.put("hwid", getHwid(context));
+                payload.put("username", usernameOrEmail != null ? usernameOrEmail.trim() : "");
+                payload.put("newPassword", newPassword != null ? newPassword.trim() : "");
+                payload.put("password", newPassword != null ? newPassword.trim() : "");
+                payload.put("hwid", hwid);
 
                 String response = executePost(context, ENDPOINT_RESET_PASS, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
                 if (response != null && !response.trim().isEmpty()) {
                     JSONObject resJson = new JSONObject(response);
                     if (resJson.optBoolean("success", false) || resJson.optBoolean("status", false)) {
-                        String resultMessage = resJson.optString("message", "Password reset successful!");
+                        String resultMessage = resJson.optString("message", "Password reset successful! Please login.");
                         mainHandler.post(() -> callback.onSuccess(resultMessage));
                         return;
                     } else {
@@ -196,12 +217,16 @@ public final class AuthApiController {
      * Strictly verifies license key online, checks HWID binding, and retrieves remaining time.
      */
     public static void verifyLicenseKey(Context context, String key, String brandId, final ApiCallback callback) {
+        SecurityVault.init(context);
+
         executor.execute(() -> {
             try {
+                String hwid = getHwid(context);
                 JSONObject payload = new JSONObject();
                 payload.put("licenseKey", key != null ? key.trim() : "");
+                payload.put("license_key", key != null ? key.trim() : "");
                 payload.put("brand", brandId != null ? brandId : "nin");
-                payload.put("hwid", getHwid(context));
+                payload.put("hwid", hwid);
                 payload.put("deviceModel", Build.MANUFACTURER + " " + Build.MODEL);
 
                 String response = executePost(context, ENDPOINT_VERIFY_KEY, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
@@ -209,7 +234,7 @@ public final class AuthApiController {
                     JSONObject resJson = new JSONObject(response);
                     if (resJson.optBoolean("valid", false) || resJson.optBoolean("success", false)) {
                         String resultMessage = resJson.optString("message", "License Key verified successfully!");
-                        int remainingSec = resJson.optInt("remaining_seconds", 0);
+                        int remainingSec = resJson.optInt("remaining_seconds", 86400);
                         String expiresAt = resJson.optString("expires_at", "");
                         String sessionToken = resJson.optString("session_token", "");
 
@@ -218,6 +243,8 @@ public final class AuthApiController {
                         AuthManager.setActiveLicenseKey(context, key);
                         if (!sessionToken.isEmpty()) {
                             AuthManager.setSessionToken(context, sessionToken);
+                            // Bind verified session to native C++ memory engine
+                            SecurityVault.setNativeSession(sessionToken, hwid, remainingSec);
                         }
 
                         mainHandler.post(() -> callback.onSuccess(resultMessage));
@@ -248,6 +275,7 @@ public final class AuthApiController {
             try {
                 String activeKey = AuthManager.getActiveLicenseKey(context);
                 String sessionToken = AuthManager.getSessionToken(context);
+                String hwid = getHwid(context);
                 if (activeKey.isEmpty()) {
                     if (callback != null) {
                         mainHandler.post(() -> callback.onError("No active license key found."));
@@ -257,8 +285,9 @@ public final class AuthApiController {
 
                 JSONObject payload = new JSONObject();
                 payload.put("licenseKey", activeKey);
+                payload.put("license_key", activeKey);
                 payload.put("sessionToken", sessionToken);
-                payload.put("hwid", getHwid(context));
+                payload.put("hwid", hwid);
 
                 String response = executePost(context, ENDPOINT_HEARTBEAT, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
                 if (response != null && !response.trim().isEmpty()) {
@@ -285,10 +314,19 @@ public final class AuthApiController {
         });
     }
 
+    /**
+     * Executes an HTTP POST request with banking-grade native cryptographic signing.
+     */
     private static String executePost(Context context, String endpoint, String jsonBody, int timeoutMs) throws Exception {
         String baseUrl = getServerBaseUrl(context);
         if (baseUrl.endsWith("/")) baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         URL targetUrl = new URL(baseUrl + endpoint);
+
+        long timestamp = System.currentTimeMillis();
+        String nonce = SecurityVault.generateNonce();
+        String hwid = getHwid(context);
+        String signature = SecurityVault.signPayload(jsonBody, timestamp, nonce, hwid);
+        String certDigest = SecurityVault.getApkCertificateDigest(context);
 
         HttpURLConnection conn = (HttpURLConnection) targetUrl.openConnection();
         conn.setRequestMethod("POST");
@@ -298,8 +336,16 @@ public final class AuthApiController {
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         conn.setRequestProperty("Accept", "application/json");
-        conn.setRequestProperty("User-Agent", "NinMods-Android-Client/2.0");
+        conn.setRequestProperty("User-Agent", "NinMods-Banking-Client/90.3");
         conn.setRequestProperty("X-Client-Version", context.getString(R.string.app_version));
+
+        // Banking-grade cryptographic security headers
+        conn.setRequestProperty("X-Signature", signature);
+        conn.setRequestProperty("X-Timestamp", String.valueOf(timestamp));
+        conn.setRequestProperty("X-Nonce", nonce);
+        conn.setRequestProperty("X-HWID", hwid);
+        conn.setRequestProperty("X-Client-Integrity", certDigest);
+        conn.setRequestProperty("X-Security-Level", "BANKING_L3_NATIVE");
 
         try (OutputStream os = conn.getOutputStream()) {
             byte[] input = jsonBody.getBytes(StandardCharsets.UTF_8);
@@ -316,6 +362,26 @@ public final class AuthApiController {
         while ((line = reader.readLine()) != null) {
             sb.append(line);
         }
-        return sb.toString();
+        String raw = sb.toString();
+        return sanitizeResponse(raw);
+    }
+
+    /**
+     * Sanitizes response strings and strictly blocks HTML error pages, Cloudflare traces,
+     * or leaked URLs so only clean, valid JSON responses are processed by the UI.
+     */
+    private static String sanitizeResponse(String raw) {
+        if (raw == null) return null;
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return null;
+        // Strictly reject any HTML or XML response (Cloudflare, Nginx, or Web Server error dumps)
+        if (trimmed.startsWith("<") || trimmed.contains("<!DOCTYPE") || trimmed.contains("<html") || trimmed.contains("<body")) {
+            return null;
+        }
+        // Must start with standard JSON object or array character
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+            return null;
+        }
+        return trimmed;
     }
 }

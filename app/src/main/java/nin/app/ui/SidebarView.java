@@ -23,7 +23,6 @@ public class SidebarView {
         void onDashboardClick();
         void onDeviceInfoClick();
         void onDriverLoaderClick();
-        void onPricingClick();
         void onProfileClick();
     }
 
@@ -80,10 +79,6 @@ public class SidebarView {
             if (listener != null) listener.onDashboardClick();
         }));
 
-        // 2. Pricing Plans (Opens PricingActivity)
-        navList.addView(createNavItem(context, "Pricing Plans", v -> {
-            if (listener != null) listener.onPricingClick();
-        }));
 
         // 3. User Profile (Opens ProfileActivity)
         navList.addView(createNavItem(context, "Account Profile", v -> {
