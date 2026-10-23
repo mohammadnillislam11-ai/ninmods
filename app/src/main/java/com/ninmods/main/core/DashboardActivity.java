@@ -222,12 +222,6 @@ public class DashboardActivity extends BaseActivity {
         setContentView(drawerLayout);
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        refreshBody();
-    }
-
     private void confirmLogout() {
         showCustomConfirmDialog(
                 "Log Out",
