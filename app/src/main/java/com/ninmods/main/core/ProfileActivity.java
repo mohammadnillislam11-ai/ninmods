@@ -714,7 +714,7 @@ public class ProfileActivity extends BaseActivity {
         return card;
     }
 
-    private View createStatusChip(String text, int textColor, int bgColor) {
+    private TextView createStatusChip(String text, int textColor, int bgColor) {
         TextView chip = new TextView(this);
         chip.setText(text);
         chip.setTextColor(textColor);
