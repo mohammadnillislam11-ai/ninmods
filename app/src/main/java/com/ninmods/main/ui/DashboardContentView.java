@@ -3,6 +3,7 @@ package com.ninmods.main.ui;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -290,9 +291,15 @@ public class DashboardContentView {
         return card;
     }
 
-    // Dynamic Active VIP License Countdown Card with Live Ticking
+    // Dynamic Active VIP License Live Digital Clock Card (DAYS : HOURS : MINS : SECS)
     public static class ActiveLicenseCountdownCard extends LinearLayout {
-        private final TextView tvCountdown;
+        private final TextView tvBoxDaysVal;
+        private final TextView tvBoxHoursVal;
+        private final TextView tvBoxMinsVal;
+        private final TextView tvBoxSecsVal;
+        private final TextView tvClockStatusText;
+        private final TextView tvPlanName;
+
         private final Handler tickerHandler = new Handler(Looper.getMainLooper());
         private final Runnable tickerRunnable = new Runnable() {
             @Override
@@ -311,81 +318,158 @@ public class DashboardContentView {
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) getLayoutParams();
             lp.bottomMargin = dp(context, 14);
             setLayoutParams(lp);
-            setOrientation(HORIZONTAL);
-            setGravity(Gravity.CENTER_VERTICAL);
-            setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12));
+            setOrientation(VERTICAL);
+            setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 16));
 
             GradientDrawable cardBg = new GradientDrawable();
             cardBg.setColor(AppColors.MAGENTA_CARD);
-            cardBg.setCornerRadius(dp(context, 10));
+            cardBg.setCornerRadius(dp(context, 12));
             cardBg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
             setBackground(cardBg);
 
-            // Icon Box
-            FrameLayout iconBox = new FrameLayout(context);
-            LinearLayout.LayoutParams iconBoxLp = new LinearLayout.LayoutParams(dp(context, 44), dp(context, 44));
-            iconBoxLp.rightMargin = dp(context, 12);
-            iconBox.setLayoutParams(iconBoxLp);
+            // Header Row: Plan Info & Active Pill
+            LinearLayout headerRow = new LinearLayout(context);
+            headerRow.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+            headerRow.setOrientation(HORIZONTAL);
+            headerRow.setGravity(Gravity.CENTER_VERTICAL);
 
-            GradientDrawable iconBg = new GradientDrawable();
-            iconBg.setColor(AppColors.MAGENTA_CHIP);
-            iconBg.setCornerRadius(dp(context, 10));
-            iconBg.setStroke(dp(context, 1), 0xFF00E676);
-            iconBox.setBackground(iconBg);
-
-            ImageView iconView = new ImageView(context);
-            FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(dp(context, 26), dp(context, 26));
-            ivLp.gravity = Gravity.CENTER;
-            iconView.setLayoutParams(ivLp);
-            iconView.setImageResource(R.drawable.ic_launcher);
-            iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            iconBox.addView(iconView);
-            addView(iconBox);
-
-            // Text Info Container
-            LinearLayout textContainer = new LinearLayout(context);
-            LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-            textContainer.setLayoutParams(textLp);
-            textContainer.setOrientation(VERTICAL);
+            LinearLayout titleCol = new LinearLayout(context);
+            LinearLayout.LayoutParams titleColLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+            titleCol.setLayoutParams(titleColLp);
+            titleCol.setOrientation(VERTICAL);
 
             TextView titleTv = new TextView(context);
-            titleTv.setText("SUBSCRIPTION ACTIVE");
-            titleTv.setTextColor(AppColors.WHITE);
-            titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            titleTv.setText("ACTIVE VIP SUBSCRIPTION");
+            titleTv.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+            titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
             titleTv.setTypeface(Typeface.DEFAULT_BOLD);
-            textContainer.addView(titleTv);
+            titleCol.addView(titleTv);
 
-            TextView planTv = new TextView(context);
-            planTv.setText(AuthManager.getActivePlanName(context));
-            planTv.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-            planTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            planTv.setPadding(0, dp(context, 1), 0, dp(context, 2));
-            textContainer.addView(planTv);
+            tvPlanName = new TextView(context);
+            tvPlanName.setText(AuthManager.getActivePlanName(context));
+            tvPlanName.setTextColor(AppColors.WHITE);
+            tvPlanName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            tvPlanName.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            tvPlanName.setPadding(0, dp(context, 2), 0, 0);
+            titleCol.addView(tvPlanName);
 
-            tvCountdown = new TextView(context);
-            tvCountdown.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            tvCountdown.setTextColor(0xFF00E676);
-            tvCountdown.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-            textContainer.addView(tvCountdown);
+            headerRow.addView(titleCol);
 
-            addView(textContainer);
-
-            // Status Pill
+            // Glowing Active Status Pill
             TextView statusPill = new TextView(context);
             statusPill.setText("ACTIVE");
             statusPill.setTextColor(0xFF00E676);
             statusPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
             statusPill.setTypeface(Typeface.DEFAULT_BOLD);
-            statusPill.setPadding(dp(context, 8), dp(context, 4), dp(context, 8), dp(context, 4));
+            statusPill.setPadding(dp(context, 10), dp(context, 4), dp(context, 10), dp(context, 4));
 
             GradientDrawable pillBg = new GradientDrawable();
             pillBg.setColor(0x2200E676);
             pillBg.setCornerRadius(dp(context, 6));
-            pillBg.setStroke(dp(context, 1), 0x6600E676);
+            pillBg.setStroke(dp(context, 1), 0x8800E676);
             statusPill.setBackground(pillBg);
-            addView(statusPill);
+            headerRow.addView(statusPill);
+
+            addView(headerRow);
+
+            // Digital Clock Boxes Row (DAYS : HOURS : MINS : SECS)
+            LinearLayout digitRow = new LinearLayout(context);
+            LinearLayout.LayoutParams drLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            drLp.topMargin = dp(context, 12);
+            drLp.bottomMargin = dp(context, 8);
+            digitRow.setLayoutParams(drLp);
+            digitRow.setOrientation(HORIZONTAL);
+            digitRow.setGravity(Gravity.CENTER_VERTICAL);
+            digitRow.setWeightSum(4.0f);
+
+            tvBoxDaysVal = new TextView(context);
+            tvBoxDaysVal.setText("00");
+            digitRow.addView(createDigitBox(context, tvBoxDaysVal, "DAYS"));
+
+            digitRow.addView(createColon(context));
+
+            tvBoxHoursVal = new TextView(context);
+            tvBoxHoursVal.setText("00");
+            digitRow.addView(createDigitBox(context, tvBoxHoursVal, "HOURS"));
+
+            digitRow.addView(createColon(context));
+
+            tvBoxMinsVal = new TextView(context);
+            tvBoxMinsVal.setText("00");
+            digitRow.addView(createDigitBox(context, tvBoxMinsVal, "MINS"));
+
+            digitRow.addView(createColon(context));
+
+            tvBoxSecsVal = new TextView(context);
+            tvBoxSecsVal.setText("00");
+            digitRow.addView(createDigitBox(context, tvBoxSecsVal, "SECS"));
+
+            addView(digitRow);
+
+            // Real-Time Dynamic Status Text
+            tvClockStatusText = new TextView(context);
+            tvClockStatusText.setText("Ticking down live in real-time...");
+            tvClockStatusText.setTextColor(Color.parseColor("#BB00E676"));
+            tvClockStatusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            tvClockStatusText.setGravity(Gravity.CENTER);
+            tvClockStatusText.setPadding(0, dp(context, 2), 0, 0);
+            addView(tvClockStatusText);
 
             updateTime();
+        }
+
+        private View createDigitBox(Context context, TextView tvValue, String labelText) {
+            LinearLayout box = new LinearLayout(context);
+            LinearLayout.LayoutParams boxLp = new LinearLayout.LayoutParams(0, dp(context, 58), 1.0f);
+            box.setLayoutParams(boxLp);
+            box.setOrientation(VERTICAL);
+            box.setGravity(Gravity.CENTER);
+            box.setPadding(dp(context, 4), dp(context, 4), dp(context, 4), dp(context, 4));
+
+            GradientDrawable bBg = new GradientDrawable();
+            bBg.setColor(Color.parseColor("#1B0B24"));
+            bBg.setCornerRadius(dp(context, 8));
+            bBg.setStroke(dp(context, 1), Color.parseColor("#4A1D4F"));
+            box.setBackground(bBg);
+
+            tvValue.setTextColor(0xFF00E676);
+            tvValue.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
+            tvValue.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            tvValue.setGravity(Gravity.CENTER);
+            box.addView(tvValue);
+
+            TextView lbl = new TextView(context);
+            lbl.setText(labelText);
+            lbl.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+            lbl.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
+            lbl.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            lbl.setGravity(Gravity.CENTER);
+            lbl.setPadding(0, dp(context, 2), 0, 0);
+            box.addView(lbl);
+
+            return box;
+        }
+
+        private View createColon(Context context) {
+            TextView colon = new TextView(context);
+            LinearLayout.LayoutParams colonLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            colonLp.setMargins(dp(context, 2), 0, dp(context, 2), dp(context, 8));
+            colon.setLayoutParams(colonLp);
+            colon.setText(":");
+            colon.setTextColor(0xFF00E676);
+            colon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+            colon.setTypeface(Typeface.DEFAULT_BOLD);
+            colon.setGravity(Gravity.CENTER);
+            return colon;
         }
 
         @Override
@@ -403,7 +487,22 @@ public class DashboardContentView {
 
         private void updateTime() {
             long remaining = AuthManager.getRemainingSeconds(getContext());
-            tvCountdown.setText(AuthManager.formatRemainingTime(remaining));
+            long[] c = AuthManager.getRemainingTimeComponents(remaining);
+
+            if (tvBoxDaysVal != null) tvBoxDaysVal.setText(String.format(java.util.Locale.US, "%02d", c[0]));
+            if (tvBoxHoursVal != null) tvBoxHoursVal.setText(String.format(java.util.Locale.US, "%02d", c[1]));
+            if (tvBoxMinsVal != null) tvBoxMinsVal.setText(String.format(java.util.Locale.US, "%02d", c[2]));
+            if (tvBoxSecsVal != null) tvBoxSecsVal.setText(String.format(java.util.Locale.US, "%02d", c[3]));
+
+            if (tvClockStatusText != null) {
+                if (remaining > 0) {
+                    tvClockStatusText.setText("Ticking down live in real-time (" + c[0] + " days remaining)");
+                    tvClockStatusText.setTextColor(0xFF00E676);
+                } else {
+                    tvClockStatusText.setText("License session expired.");
+                    tvClockStatusText.setTextColor(0xFFFF5252);
+                }
+            }
         }
     }
 

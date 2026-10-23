@@ -475,12 +475,9 @@ public class DashboardActivity extends BaseActivity {
             cbRemember.setButtonTintList(ColorStateList.valueOf(AppColors.MAGENTA_PRIMARY));
         }
 
-        // Restore saved key & remember state scoped strictly to the current logged-in user
-        int currentUserId = Prefs.with(this).readInt("auth_user_id", 0);
-        String userKeyPref = "saved_license_key_user_" + currentUserId;
-        String userRemPref = "remember_license_key_user_" + currentUserId;
-        String savedKey = currentUserId > 0 ? Prefs.with(this).readString(userKeyPref, "") : "";
-        boolean rememberKey = currentUserId > 0 && Prefs.with(this).readBoolean(userRemPref, false);
+        // Restore saved key & remember state scoped strictly to the current logged-in user session
+        String savedKey = AuthManager.getRememberedKey(this);
+        boolean rememberKey = AuthManager.isKeyRemembered(this);
         if (savedKey.isEmpty()) {
             savedKey = AuthManager.getActiveLicenseKey(this);
         }
@@ -557,16 +554,7 @@ public class DashboardActivity extends BaseActivity {
                 public void onSuccess(String message) {
                     if (!dialog.isShowing()) return;
 
-                    int currentUserId = Prefs.with(DashboardActivity.this).readInt("auth_user_id", 0);
-                    String userKeyPref = "saved_license_key_user_" + currentUserId;
-                    String userRemPref = "remember_license_key_user_" + currentUserId;
-                    if (cbRemember.isChecked() && currentUserId > 0) {
-                        Prefs.with(DashboardActivity.this).writeString(userKeyPref, inputKey);
-                        Prefs.with(DashboardActivity.this).writeBoolean(userRemPref, true);
-                    } else if (currentUserId > 0) {
-                        Prefs.with(DashboardActivity.this).writeString(userKeyPref, "");
-                        Prefs.with(DashboardActivity.this).writeBoolean(userRemPref, false);
-                    }
+                    AuthManager.setRememberedKey(DashboardActivity.this, inputKey, cbRemember.isChecked());
 
                     dialog.dismiss();
                     refreshBody();

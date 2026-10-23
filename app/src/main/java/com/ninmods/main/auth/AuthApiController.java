@@ -110,40 +110,42 @@ public final class AuthApiController {
                             if (uObj != null) realRole = uObj.optString("role", "");
                         }
 
-                        Prefs.with(context).writeString("auth_api_key", apiKey);
-                        Prefs.with(context).writeFloat("auth_balance", (float) balance);
-                        Prefs.with(context).writeString("auth_currency", currency);
-                        Prefs.with(context).writeInt("auth_user_id", userId);
-
-                        Prefs.with(context).writeString("active_username", realUsername);
-                        Prefs.with(context).writeString("active_email", realEmail);
-                        Prefs.with(context).writeString("active_phone", realPhone);
-                        Prefs.with(context).writeString("active_role", realRole);
-
                         // Parse active license if returned from database
+                        String activeKey = "";
+                        String durationType = "";
+                        String expAt = "";
+                        int remSec = 0;
                         JSONObject licObj = resJson.optJSONObject("active_license");
                         if (licObj != null) {
-                            String activeKey = licObj.optString("license_key", "");
-                            String durationType = licObj.optString("duration_type", "30_days");
-                            String expAt = licObj.optString("expires_at", "");
-                            int remSec = licObj.optInt("remaining_seconds", 0);
-
-                            if (!activeKey.isEmpty() && remSec > 0) {
-                                AuthManager.setActiveLicenseKey(context, activeKey);
-                                Prefs.with(context).writeString("license_duration_type", durationType);
-                                Prefs.with(context).writeString("license_expires_at", expAt);
-                                Prefs.with(context).writeInt("license_remaining_sec", remSec);
-                                Prefs.with(context).writeLong("license_saved_at_ms", System.currentTimeMillis());
-                                Prefs.with(context).writeLong("license_expires_at_ms", System.currentTimeMillis() + (remSec * 1000L));
-                            }
+                            activeKey = licObj.optString("license_key", "");
+                            durationType = licObj.optString("duration_type", "30_days");
+                            expAt = licObj.optString("expires_at", "");
+                            remSec = licObj.optInt("remaining_seconds", 0);
                         }
 
+                        // Save strictly isolated account session (Zero cross-account data leakage)
+                        AuthManager.saveUserSession(
+                                context,
+                                userId,
+                                realUsername,
+                                realEmail,
+                                realPhone,
+                                realRole,
+                                password,
+                                (float) balance,
+                                currency,
+                                sessionToken,
+                                apiKey,
+                                activeKey,
+                                durationType,
+                                expAt,
+                                remSec
+                        );
+
                         if (!sessionToken.isEmpty()) {
-                            AuthManager.setSessionToken(context, sessionToken);
                             // Bind verified session to native C++ cheat engine
                             SecurityVault.setNativeSession(sessionToken, hwid, 86400);
                         }
-                        AuthManager.setLoggedIn(context, true);
 
                         mainHandler.post(() -> callback.onSuccess(resultMessage));
                         return;
@@ -272,14 +274,8 @@ public final class AuthApiController {
                         int remainingSec = resJson.optInt("remaining_seconds", 86400);
                         String expiresAt = resJson.optString("expires_at", "");
                         String sessionToken = resJson.optString("session_token", "");
-
-                        Prefs.with(context).writeInt("license_remaining_sec", remainingSec);
-                        Prefs.with(context).writeLong("license_saved_at_ms", System.currentTimeMillis());
-                        Prefs.with(context).writeLong("license_expires_at_ms", System.currentTimeMillis() + (remainingSec * 1000L));
-                        Prefs.with(context).writeString("license_expires_at", expiresAt);
                         String durationType = resJson.optString("duration_type", "30_days");
-                        Prefs.with(context).writeString("license_duration_type", durationType);
-                        AuthManager.setActiveLicenseKey(context, key);
+                        AuthManager.updateActiveLicense(context, key, durationType, expiresAt, remainingSec);
                         if (!sessionToken.isEmpty()) {
                             AuthManager.setSessionToken(context, sessionToken);
                             // Bind verified session to native C++ memory engine

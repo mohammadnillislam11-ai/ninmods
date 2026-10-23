@@ -128,15 +128,12 @@ public class ProfileActivity extends BaseActivity {
     }
 
     private void loadUserData() {
-        currentUsername = Prefs.with(this).readString(PREF_ACTIVE_USERNAME, "");
-        if (currentUsername.isEmpty()) {
-            currentUsername = Prefs.with(this).readString("pref_auth_saved_username", "");
-        }
-        currentEmail = Prefs.with(this).readString(PREF_ACTIVE_EMAIL, "");
-        currentPhone = Prefs.with(this).readString(PREF_ACTIVE_PHONE, "");
-        currentRole = Prefs.with(this).readString(PREF_ACTIVE_ROLE, "");
-        currentBalance = Prefs.with(this).readFloat(PREF_AUTH_BALANCE, 0.0f);
-        currentCurrency = Prefs.with(this).readString(PREF_AUTH_CURRENCY, "BDT");
+        currentUsername = AuthManager.getActiveUsername(this);
+        currentEmail = AuthManager.getActiveEmail(this);
+        currentPhone = AuthManager.getActivePhone(this);
+        currentRole = AuthManager.getActiveRole(this);
+        currentBalance = AuthManager.getActiveBalance(this);
+        currentCurrency = AuthManager.getActiveCurrency(this);
     }
 
     private void updateUIValues() {
@@ -167,15 +164,17 @@ public class ProfileActivity extends BaseActivity {
         if (tvHeroRoleBadge != null) {
             tvHeroRoleBadge.setText(currentRole.isEmpty() ? "MEMBER" : currentRole.toUpperCase());
         }
+        boolean hasPlan = AuthManager.hasActiveLicense(this);
         if (tvPlanValue != null) {
-            tvPlanValue.setText(AuthManager.getActivePlanName(this));
+            tvPlanValue.setText(hasPlan ? AuthManager.getActivePlanName(this) : "No Active Plan");
+            tvPlanValue.setTextColor(hasPlan ? 0xFF00E676 : 0xFFFF5252);
         }
         if (tvKeyValue != null) {
             String key = AuthManager.getActiveLicenseKey(this);
             tvKeyValue.setText(key.isEmpty() ? "No License Key Bound" : key);
         }
         if (tvExpiryDateValue != null) {
-            tvExpiryDateValue.setText(AuthManager.getExpiryDate(this));
+            tvExpiryDateValue.setText(hasPlan ? AuthManager.getExpiryDate(this) : "Not Subscribed");
         }
         updateLiveCountdown();
     }
@@ -283,49 +282,6 @@ public class ProfileActivity extends BaseActivity {
         // 7. Change Password Card
         content.addView(createSectionTitle("CHANGE ACCESS PASSWORD"));
         content.addView(createChangePasswordCard());
-
-        // 8. Official Telegram Support / Renewal Button
-        Button supportBtn = new Button(this);
-        LinearLayout.LayoutParams supLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
-        supLp.topMargin = dp(14);
-        supportBtn.setLayoutParams(supLp);
-        supportBtn.setText("OFFICIAL SUPPORT & RENEWAL");
-        supportBtn.setTextColor(AppColors.WHITE);
-        supportBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        supportBtn.setTypeface(Typeface.DEFAULT_BOLD);
-
-        GradientDrawable supBg = new GradientDrawable();
-        supBg.setColor(Color.parseColor("#1B2A4A"));
-        supBg.setCornerRadius(dp(8));
-        supBg.setStroke(dp(1), Color.parseColor("#2E5B9A"));
-        supportBtn.setBackground(supBg);
-        supportBtn.setOnClickListener(v -> {
-            try {
-                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/ninmods_official"));
-                startActivity(browserIntent);
-            } catch (Exception e) {
-                Toast.makeText(this, "Opening support channel...", Toast.LENGTH_SHORT).show();
-            }
-        });
-        content.addView(supportBtn);
-
-        // 9. Log Out Button
-        Button logoutBtn = new Button(this);
-        LinearLayout.LayoutParams loLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
-        loLp.topMargin = dp(10);
-        logoutBtn.setLayoutParams(loLp);
-        logoutBtn.setText("LOG OUT SESSION");
-        logoutBtn.setTextColor(AppColors.WHITE);
-        logoutBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        logoutBtn.setTypeface(Typeface.DEFAULT_BOLD);
-
-        GradientDrawable loBg = new GradientDrawable();
-        loBg.setColor(Color.parseColor("#441010"));
-        loBg.setCornerRadius(dp(8));
-        loBg.setStroke(dp(1), Color.parseColor("#882222"));
-        logoutBtn.setBackground(loBg);
-        logoutBtn.setOnClickListener(v -> confirmLogout());
-        content.addView(logoutBtn);
 
         scroll.addView(content);
         layout.addView(scroll);
@@ -456,6 +412,8 @@ public class ProfileActivity extends BaseActivity {
 
     // Active Membership & Live Digital Clock Countdown Card
     private View createSubscriptionCountdownCard() {
+        boolean hasActive = AuthManager.hasActiveLicense(this);
+
         LinearLayout card = new LinearLayout(this);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(14);
@@ -469,86 +427,75 @@ public class ProfileActivity extends BaseActivity {
         bg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
         card.setBackground(bg);
 
-        // Big Live Countdown Container
-        LinearLayout countdownBox = new LinearLayout(this);
-        countdownBox.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        countdownBox.setOrientation(LinearLayout.VERTICAL);
-        countdownBox.setPadding(dp(14), dp(12), dp(14), dp(12));
+        // Shows digital clock ONLY if active plan is verified (no nested card!)
+        if (hasActive) {
+            TextView label = new TextView(this);
+            label.setText("LIVE DIGITAL CLOCK EXPIRATION");
+            label.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+            label.setTypeface(Typeface.DEFAULT_BOLD);
+            card.addView(label);
 
-        GradientDrawable cBg = new GradientDrawable();
-        cBg.setColor(AppColors.MAGENTA_CHIP);
-        cBg.setCornerRadius(dp(8));
-        cBg.setStroke(dp(1), 0x4400E676);
-        countdownBox.setBackground(cBg);
+            // Digital Clock Boxes Row (DAYS : HOURS : MINS : SECS) - Flat inside card
+            LinearLayout digitRow = new LinearLayout(this);
+            LinearLayout.LayoutParams drLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            drLp.topMargin = dp(8);
+            drLp.bottomMargin = dp(6);
+            digitRow.setLayoutParams(drLp);
+            digitRow.setOrientation(LinearLayout.HORIZONTAL);
+            digitRow.setGravity(Gravity.CENTER_VERTICAL);
+            digitRow.setWeightSum(4.0f);
 
-        TextView label = new TextView(this);
-        label.setText("LIVE DIGITAL CLOCK EXPIRATION");
-        label.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        label.setTypeface(Typeface.DEFAULT_BOLD);
-        countdownBox.addView(label);
+            tvBoxDaysVal = new TextView(this);
+            tvBoxDaysVal.setText("00");
+            digitRow.addView(createClockDigitBox(tvBoxDaysVal, "DAYS"));
 
-        // Digital Clock Boxes Row (DAYS : HOURS : MINS : SECS)
-        LinearLayout digitRow = new LinearLayout(this);
-        LinearLayout.LayoutParams drLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        drLp.topMargin = dp(8);
-        drLp.bottomMargin = dp(6);
-        digitRow.setLayoutParams(drLp);
-        digitRow.setOrientation(LinearLayout.HORIZONTAL);
-        digitRow.setGravity(Gravity.CENTER_VERTICAL);
-        digitRow.setWeightSum(4.0f);
+            digitRow.addView(createClockColon());
 
-        tvBoxDaysVal = new TextView(this);
-        tvBoxDaysVal.setText("00");
-        digitRow.addView(createClockDigitBox(tvBoxDaysVal, "DAYS"));
+            tvBoxHoursVal = new TextView(this);
+            tvBoxHoursVal.setText("00");
+            digitRow.addView(createClockDigitBox(tvBoxHoursVal, "HOURS"));
 
-        digitRow.addView(createClockColon());
+            digitRow.addView(createClockColon());
 
-        tvBoxHoursVal = new TextView(this);
-        tvBoxHoursVal.setText("00");
-        digitRow.addView(createClockDigitBox(tvBoxHoursVal, "HOURS"));
+            tvBoxMinsVal = new TextView(this);
+            tvBoxMinsVal.setText("00");
+            digitRow.addView(createClockDigitBox(tvBoxMinsVal, "MINS"));
 
-        digitRow.addView(createClockColon());
+            digitRow.addView(createClockColon());
 
-        tvBoxMinsVal = new TextView(this);
-        tvBoxMinsVal.setText("00");
-        digitRow.addView(createClockDigitBox(tvBoxMinsVal, "MINS"));
+            tvBoxSecsVal = new TextView(this);
+            tvBoxSecsVal.setText("00");
+            digitRow.addView(createClockDigitBox(tvBoxSecsVal, "SECS"));
 
-        digitRow.addView(createClockColon());
+            card.addView(digitRow);
 
-        tvBoxSecsVal = new TextView(this);
-        tvBoxSecsVal.setText("00");
-        digitRow.addView(createClockDigitBox(tvBoxSecsVal, "SECS"));
+            tvClockStatusText = new TextView(this);
+            tvClockStatusText.setText("Calculating dynamic subscription time...");
+            tvClockStatusText.setTextColor(Color.parseColor("#99FFFFFF"));
+            tvClockStatusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+            tvClockStatusText.setGravity(Gravity.CENTER);
+            card.addView(tvClockStatusText);
 
-        countdownBox.addView(digitRow);
-
-        tvClockStatusText = new TextView(this);
-        tvClockStatusText.setText("Calculating dynamic subscription time...");
-        tvClockStatusText.setTextColor(Color.parseColor("#99FFFFFF"));
-        tvClockStatusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        tvClockStatusText.setGravity(Gravity.CENTER);
-        countdownBox.addView(tvClockStatusText);
-
-        card.addView(countdownBox);
-
-        // Divider
-        View div = new View(this);
-        LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
-        divLp.setMargins(0, dp(14), 0, dp(12));
-        div.setLayoutParams(divLp);
-        div.setBackgroundColor(AppColors.MAGENTA_CARD_BORDER);
-        card.addView(div);
+            // Divider
+            View div = new View(this);
+            LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+            divLp.setMargins(0, dp(14), 0, dp(12));
+            div.setLayoutParams(divLp);
+            div.setBackgroundColor(AppColors.MAGENTA_CARD_BORDER);
+            card.addView(div);
+        }
 
         // Detail Rows
         tvPlanValue = new TextView(this);
-        card.addView(createRow("Subscription Plan", tvPlanValue, AuthManager.getActivePlanName(this), 0xFF00E676));
+        card.addView(createRow("Subscription Plan", tvPlanValue, hasActive ? AuthManager.getActivePlanName(this) : "No Active Plan", hasActive ? 0xFF00E676 : 0xFFFF5252));
 
         tvKeyValue = new TextView(this);
         String activeKey = AuthManager.getActiveLicenseKey(this);
         card.addView(createCopyableRow("License Key", tvKeyValue, activeKey.isEmpty() ? "No License Key" : activeKey, AppColors.WHITE));
 
         tvExpiryDateValue = new TextView(this);
-        card.addView(createRow("Valid Until", tvExpiryDateValue, AuthManager.getExpiryDate(this), AppColors.WHITE));
+        card.addView(createRow("Valid Until", tvExpiryDateValue, hasActive ? AuthManager.getExpiryDate(this) : "Not Subscribed", AppColors.WHITE));
 
         card.addView(createStaticRow("Driver Channel", "Ring 0 Real-Time IOCTL", 0xFF00E676));
         card.addView(createStaticRow("License Seat Policy", "Multi-Device Linked", AppColors.MAGENTA_TEXT_DIM));
@@ -918,20 +865,7 @@ public class ProfileActivity extends BaseActivity {
         });
     }
 
-    private void confirmLogout() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Log Out");
-        builder.setMessage("Are you sure you want to log out of your session?");
-        builder.setPositiveButton("Log Out", (dialog, which) -> {
-            AuthManager.clearSession(ProfileActivity.this);
-            Intent intent = new Intent(ProfileActivity.this, LoginActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            finish();
-        });
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
-    }
+
 
     private void showError(String message) {
         tvError.setText(message);
