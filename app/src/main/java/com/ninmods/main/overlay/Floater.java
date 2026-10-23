@@ -260,7 +260,9 @@ public class Floater {
         }
         activeFloater = this;
         context = globContext.getApplicationContext() != null ? globContext.getApplicationContext() : globContext;
-        ensureDaemonExtracted(context);
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            ensureDaemonExtracted(context);
+        });
         AppLogger.log("FLOATER", "Floater overlay initialized for package: " + context.getPackageName());
         onCreate();
     }
@@ -324,6 +326,7 @@ public class Floater {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
         windowManagerParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
+        windowManagerParams.alpha = 0.80f; // Android 12+ Untrusted Touch Filter threshold <= 0.80 prevents OS touch blocking
         windowManagerParams.gravity = Gravity.TOP | Gravity.LEFT;
         windowManagerParams.x = 40;
         windowManagerParams.y = 120;
@@ -350,6 +353,7 @@ public class Floater {
         rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
+        rootFrame.setFilterTouchesWhenObscured(false);
 
         rootRelative = new RelativeLayout(context);
         rootRelative.setLayoutParams(new LinearLayout.LayoutParams(
@@ -618,13 +622,21 @@ public class Floater {
 
         highlightActiveRailTab(0);
 
-        // Call genuine native C++ Functions immediately to populate all real features
+        // Call genuine native C++ Functions to populate all real features
         try {
             Functions();
-            ftKZXivSr(context);
         } catch (Throwable t) {
             t.printStackTrace();
         }
+
+        // Asynchronously establish socket connection to avoid freezing the Main UI Looper
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                ftKZXivSr(context);
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        });
 
         refreshActivePages();
 
@@ -1020,10 +1032,12 @@ public class Floater {
                     WindowManager.LayoutParams.MATCH_PARENT,
                     layoutFlag,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                     PixelFormat.TRANSLUCENT
             );
             windowManagerDrawViewParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
+            windowManagerDrawViewParams.alpha = 0.80f; // Android 12+ Untrusted Touch Filter compliance
             windowManagerDrawViewParams.gravity = Gravity.TOP | Gravity.START;
             windowManagerDrawViewParams.x = 0;
             windowManagerDrawViewParams.y = 0;
