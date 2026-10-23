@@ -29,12 +29,7 @@ int g_screenWidth, g_screenHeight;
 
 std::map<uintptr_t, Vector3> BasePosMap;
 
-#ifndef IS_VALID_USER_POINTER_64_DEFINED
-#define IS_VALID_USER_POINTER_64_DEFINED
-inline bool IsValidUserPointer64(uintptr_t addr) {
-    return addr >= 0x10000000ULL && addr <= 0x7FFFFFFFFFFFULL;
-}
-#endif
+bool IsValidUserPointer64(uintptr_t addr);
 
 #define maxplayerCount 200
 
@@ -253,10 +248,7 @@ static Quaternion GetTransformRotation(uintptr_t Transform) {
     }
     return rot;
 }
-
-inline Quaternion GetRotationToTheLocation(Vector3 Target, float Height, Vector3 MyEnemy) {
-    return Quaternion::LookRotation((Target + Vector3(0, Height, 0)) - MyEnemy, Vector3(0, 1, 0));
-}
+Quaternion GetRotationToTheLocation(Vector3 Target, float Height, Vector3 MyEnemy);
 
 static D3DMatrix BuildViewMatrix(Vector3 camPos, Quaternion rot, float fovDeg, float aspect) {
     if (rot.X == 0.0f && rot.Y == 0.0f && rot.Z == 0.0f && rot.W == 0.0f) {

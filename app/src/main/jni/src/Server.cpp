@@ -51,7 +51,7 @@ void LogWeaponData(const char* playerName, int weaponId, bool isLocal) {
 }
 
 // ========== Pointer Validation (Strict ARM64 64-bit User Space Pointer) ==========
-inline bool IsValidUserPointer64(uintptr_t ptr) {
+bool IsValidUserPointer64(uintptr_t ptr) {
     // 1. High 16 bits must be strictly 0x0000 (rejects instructions like 0xa902... or packed opcodes)
     if ((ptr >> 48) != 0) return false;
     // 2. Must be in ARM64 Linux user-space memory range (above 4GB and below 128TB)
@@ -262,7 +262,7 @@ void getUTF8(char* dst, uintptr_t addr) {
     memset(raw, 0, sizeof(raw));
     size_t toRead = (size_t)(stringLen * 2);
     if (toRead > sizeof(raw)) toRead = sizeof(raw);
-    DriverReadMemory(addr + Offsets::StringChars, raw, toRead);
+    DriverReadMemory(target_pid, addr + Offsets::StringChars, raw, toRead);
 
     int j = 0;
     for (int i = 0; i < (stringLen * 2) && (i + 1) < (int)toRead; i += 2) {
@@ -342,7 +342,7 @@ void ContinuousAim(uintptr_t oneself) {
                 if (rayStart == Vector3::Zero()) rayStart = Read<Vector3>(aimingInfo + Offsets::AimingStartPosAlt);
                 if (rayStart != Vector3::Zero()) {
                     Vector3 diff = currentBestTargetPos - rayStart;
-                    float dist = diff.Length();
+                    float dist = Vector3::Magnitude(diff);
                     if (dist >= 0.5f && dist <= 500.0f) {
                         Vector3 dir = diff / dist;
                         Write<Vector3>(aimingInfo + Offsets::AimingDirection, dir);

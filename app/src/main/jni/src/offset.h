@@ -50,6 +50,9 @@ namespace Offsets {
     constexpr uintptr_t CurrentAimRotation = 0x1A8CULL; // from ninmods_offsets.h (COW.GamePlay.Player.m_CurrentAimRotation)
     constexpr uintptr_t ActiveUISightingWeapon = 0x600ULL; // from ninmods_offsets.h (COW.GamePlay.Player.ActiveUISightingWeapon)
     constexpr uintptr_t CallSetAimRotationCount = 0x810ULL; // from ninmods_offsets.h (COW.GamePlay.Player.CallSetAimRotationCount)
+    constexpr uintptr_t Player_FiringStateAlt = 0x848;      // Kernel sAim1 firing state
+    constexpr uintptr_t Player_HeadCollider = 0x740;        // Head collider component pointer
+    constexpr uintptr_t Player_AimTargetWrite = 0x80;       // Aim target collider write offset
     
     // Inventory
     // Newer Free Fire: InventoryManager = 0x748, older was 0x6E8
