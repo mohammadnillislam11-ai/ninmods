@@ -38,10 +38,9 @@ public:
                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec, (int)ms.count());
 
         const char* paths[] = {
-            "/sdcard/ninmods.log",
-            "/storage/emulated/0/ninmods.log",
             "/data/data/com.ninmods.main/files/ninmods.log",
-            "/data/user/0/com.ninmods.main/files/ninmods.log"
+            "/storage/emulated/0/Android/data/com.ninmods.main/files/ninmods.log",
+            "/sdcard/Android/data/com.ninmods.main/files/ninmods.log"
         };
 
         for (const char* path : paths) {

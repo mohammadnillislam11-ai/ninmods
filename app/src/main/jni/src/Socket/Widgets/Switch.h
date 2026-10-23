@@ -4,7 +4,7 @@
 class Switch {
 public:
     void create(JNIEnv* env, const char* name, jint ID) {
-        jclass CMenu = env->FindClass("nin/app/overlay/Floater");
+        jclass CMenu = env->FindClass("com/ninmods/main/overlay/Floater");
         if (!CMenu) {
             env->ExceptionClear();
             CMenu = env->FindClass("ninmods/pro/Floater");

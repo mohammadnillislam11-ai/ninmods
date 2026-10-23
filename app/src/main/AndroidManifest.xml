@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest
     xmlns:android="http://schemas.android.com/apk/res/android"
-    package="nin.app">
+    package="com.ninmods.main">
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -30,7 +30,7 @@
         android:theme="@style/AppTheme">
 
         <activity
-            android:name="nin.app.core.MainActivity"
+            android:name="com.ninmods.main.core.MainActivity"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
@@ -40,47 +40,46 @@
         </activity>
 
         <activity
-            android:name="nin.app.core.DashboardActivity"
+            android:name="com.ninmods.main.core.DashboardActivity"
             android:exported="true"
             android:label="@string/app_name" />
 
         <activity
-            android:name="nin.app.core.ModeSelectActivity"
+            android:name="com.ninmods.main.core.ModeSelectActivity"
             android:exported="true"
             android:label="@string/mode_select_title" />
 
         <activity
-            android:name="nin.app.auth.LoginActivity"
+            android:name="com.ninmods.main.auth.LoginActivity"
             android:exported="true"
             android:windowSoftInputMode="stateHidden|adjustPan"
             android:label="@string/app_name" />
 
         <activity
-            android:name="nin.app.auth.SignupActivity"
+            android:name="com.ninmods.main.auth.SignupActivity"
             android:exported="true"
             android:windowSoftInputMode="stateHidden|adjustPan"
             android:label="Sign Up" />
 
         <activity
-            android:name="nin.app.auth.ResetPasswordActivity"
+            android:name="com.ninmods.main.auth.ResetPasswordActivity"
             android:exported="true"
             android:windowSoftInputMode="stateHidden|adjustPan"
             android:label="Reset Password" />
 
         <activity
-            android:name="nin.app.core.DeviceInfoActivity"
+            android:name="com.ninmods.main.core.DeviceInfoActivity"
             android:exported="true"
             android:label="Device Information" />
 
-
         <activity
-            android:name="nin.app.core.ProfileActivity"
+            android:name="com.ninmods.main.core.ProfileActivity"
             android:exported="true"
             android:windowSoftInputMode="stateHidden|adjustPan"
             android:label="Account Profile" />
 
         <service
-            android:name="nin.app.core.RootServices"
+            android:name="com.ninmods.main.core.RootServices"
             android:process=":root"
             android:exported="false" />
 

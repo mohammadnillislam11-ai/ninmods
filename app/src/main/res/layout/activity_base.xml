@@ -6,13 +6,13 @@
     android:fitsSystemWindows="false">
 
     <!-- Bottom Layer: Universal Blurred Particle Network Animation -->
-    <nin.app.ui.ParticleNetworkView
+    <com.ninmods.main.ui.ParticleNetworkView
         android:id="@+id/particleBg"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
     <!-- Middle Layer: Universal Fixed Footer (At bottom, strictly underneath foreground cards in Z-order) -->
-    <nin.app.ui.FooterView
+    <com.ninmods.main.ui.FooterView
         android:id="@+id/universalFooter"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

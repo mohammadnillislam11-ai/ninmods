@@ -14,7 +14,7 @@ def getVersionProp(String name, String defaultVal) {
 android {
     compileSdkVersion 34
 
-    namespace 'nin.app'
+    namespace 'com.ninmods.main'
 
     defaultConfig {
         applicationId "com.ninmods.main"

@@ -113,7 +113,7 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
 
     if (!isConnected()) {
         ImDrawList* draw = ImGui::GetBackgroundDrawList();
-        draw->AddText(ImVec2(24.0f, 40.0f), IM_COL32(255, 180, 0, 230), "NINMODS: CONNECTING DAEMON... (SEE /sdcard/ninmods.log)");
+        draw->AddText(ImVec2(24.0f, 40.0f), IM_COL32(255, 180, 0, 230), "NINMODS: CONNECTING RING 0 DRIVER...");
         return;
     }
 
@@ -1101,27 +1101,27 @@ Java_ninmods_pro_ConfigModeActivity_setHackVersionNative(JNIEnv *env, jclass cla
 
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_overlay_Floater_Functions(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_overlay_Floater_Functions(JNIEnv *env, jclass clazz) {
     Java_power_cheats_Floater_Functions(env, clazz);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_overlay_Floater_ChangesID(JNIEnv *env, jclass clazz, jint id, jint value) {
+Java_com_ninmods_main_overlay_Floater_ChangesID(JNIEnv *env, jclass clazz, jint id, jint value) {
     Java_power_cheats_Floater_ChangesID(env, clazz, id, value);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_overlay_Floater_PxbftKZXivSr(JNIEnv *env, jclass type, jobject espView, jobject canvas, jint width, jint height) {
+Java_com_ninmods_main_overlay_Floater_PxbftKZXivSr(JNIEnv *env, jclass type, jobject espView, jobject canvas, jint width, jint height) {
     Java_power_cheats_Floater_PxbftKZXivSr(env, type, espView, canvas, width, height);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_overlay_Floater_ftKZXivSr(JNIEnv *env, jclass clazz, jobject ctx) {
+Java_com_ninmods_main_overlay_Floater_ftKZXivSr(JNIEnv *env, jclass clazz, jobject ctx) {
     Java_power_cheats_Floater_ftKZXivSr(env, clazz, ctx);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_overlay_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_overlay_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
     Java_power_cheats_Floater_ftKwCvSr(env, clazz);
 }
 
@@ -1129,7 +1129,7 @@ Java_nin_app_overlay_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
 // GLES3 JNI VIEW NATIVE BRIDGE (OpenGL ES 3.0 / ImGui ESP)
 // ========================================================
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz) {
     if (!g_ImGuiInitialized) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -1150,7 +1150,7 @@ Java_nin_app_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_graphics_GLES3JNIView_nativeResize(JNIEnv *env, jclass clazz, jint width, jint height) {
+Java_com_ninmods_main_graphics_GLES3JNIView_nativeResize(JNIEnv *env, jclass clazz, jint width, jint height) {
     g_ScreenWidth = width;
     g_ScreenHeight = height;
     glViewport(0, 0, width, height);
@@ -1161,7 +1161,7 @@ Java_nin_app_graphics_GLES3JNIView_nativeResize(JNIEnv *env, jclass clazz, jint 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_graphics_GLES3JNIView_nativeStep(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_graphics_GLES3JNIView_nativeStep(JNIEnv *env, jclass clazz) {
     if (!g_ImGuiInitialized) return;
 
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1177,7 +1177,7 @@ Java_nin_app_graphics_GLES3JNIView_nativeStep(JNIEnv *env, jclass clazz) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_graphics_GLES3JNIView_nativeShutdown(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_graphics_GLES3JNIView_nativeShutdown(JNIEnv *env, jclass clazz) {
     if (g_ImGuiInitialized) {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui::DestroyContext();
@@ -1189,19 +1189,19 @@ Java_nin_app_graphics_GLES3JNIView_nativeShutdown(JNIEnv *env, jclass clazz) {
 
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_nin_app_core_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_core_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
     return env->NewStringUTF(OBFUSCATE("com.dts.freefireth"));
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_nin_app_core_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_core_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
     return env->NewStringUTF(OBFUSCATE("Titoo"));
 }
 
 
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_core_DashboardActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
+Java_com_ninmods_main_core_DashboardActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
     g_hackVersion = (mode == 2) ? 2 : 1;
     LOGD("Profile mode selected from DashboardActivity (com.ninmods.main): %d", g_hackVersion);
 }
@@ -1209,7 +1209,7 @@ Java_nin_app_core_DashboardActivity_setModeNative(JNIEnv *env, jclass clazz, jin
 
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_core_ModeSelectActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
+Java_com_ninmods_main_core_ModeSelectActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
     g_hackVersion = (mode == 2) ? 2 : 1;
     LOGD("Profile mode selected from ModeSelectActivity (com.ninmods.main): %d", g_hackVersion);
 }
@@ -1287,7 +1287,7 @@ void StartDaemon() {
 // ============================================================================
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_nin_app_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jclass clazz) {
     const char* candidate_nodes[] = {
         "/dev/health_storage_service_alloc",
         "/dev/BYNb",
@@ -1345,7 +1345,7 @@ Java_nin_app_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jclass clazz)
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_nin_app_auth_SecurityVault_nativeSignRequest(JNIEnv *env, jclass clazz, jstring jPayload, jlong timestamp, jstring jNonce, jstring jHwid) {
+Java_com_ninmods_main_auth_SecurityVault_nativeSignRequest(JNIEnv *env, jclass clazz, jstring jPayload, jlong timestamp, jstring jNonce, jstring jHwid) {
     const char* payload = jPayload ? env->GetStringUTFChars(jPayload, nullptr) : "";
     const char* nonce = jNonce ? env->GetStringUTFChars(jNonce, nullptr) : "";
     const char* hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : "";
@@ -1361,7 +1361,7 @@ Java_nin_app_auth_SecurityVault_nativeSignRequest(JNIEnv *env, jclass clazz, jst
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_nin_app_auth_SecurityVault_nativeVerifyIntegrity(JNIEnv *env, jclass clazz, jobject context, jstring certDigest) {
+Java_com_ninmods_main_auth_SecurityVault_nativeVerifyIntegrity(JNIEnv *env, jclass clazz, jobject context, jstring certDigest) {
     // 1. Anti-Debugging Check (/proc/self/status TracerPid)
     FILE* fp = fopen("/proc/self/status", "r");
     if (fp) {
@@ -1398,7 +1398,7 @@ Java_nin_app_auth_SecurityVault_nativeVerifyIntegrity(JNIEnv *env, jclass clazz,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_nin_app_auth_SecurityVault_nativeSetSession(JNIEnv *env, jclass clazz, jstring jToken, jstring jHwid, jlong expirySec) {
+Java_com_ninmods_main_auth_SecurityVault_nativeSetSession(JNIEnv *env, jclass clazz, jstring jToken, jstring jHwid, jlong expirySec) {
     const char* token = jToken ? env->GetStringUTFChars(jToken, nullptr) : nullptr;
     const char* hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : nullptr;
 
@@ -1414,7 +1414,7 @@ Java_nin_app_auth_SecurityVault_nativeSetSession(JNIEnv *env, jclass clazz, jstr
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_nin_app_auth_SecurityVault_nativeIsSessionValid(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_auth_SecurityVault_nativeIsSessionValid(JNIEnv *env, jclass clazz) {
     return g_session_verified ? JNI_TRUE : JNI_FALSE;
 }
 
