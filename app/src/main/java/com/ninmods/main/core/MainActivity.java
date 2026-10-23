@@ -44,6 +44,8 @@ public class MainActivity extends BaseActivity {
 
     private int currentStep = STEP_OVERLAY;
     private boolean isNavigatingAway = false;
+    private boolean hasAutoPromptedOverlay = false;
+    private boolean hasAutoPromptedStorage = false;
     private boolean isAppStarted = false;
 
     private TextView tvStatus;
@@ -79,17 +81,29 @@ public class MainActivity extends BaseActivity {
         super.onResume();
         if (isNavigatingAway) {
             isNavigatingAway = false;
-            // Check if current step was granted upon returning
-            if (currentStep == STEP_OVERLAY) {
-                if (isOverlayGranted()) {
-                    currentStep = STEP_STORAGE;
+            // Delay check by 250ms to allow Android OS AppOps service to commit permission state
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (isFinishing() || isAppStarted) return;
+                if (currentStep == STEP_OVERLAY) {
+                    if (isOverlayGranted()) {
+                        currentStep = STEP_STORAGE;
+                    }
+                } else if (currentStep == STEP_STORAGE) {
+                    if (isStorageGranted()) {
+                        currentStep = STEP_NOTIFICATION;
+                    }
                 }
-            } else if (currentStep == STEP_STORAGE) {
-                if (isStorageGranted()) {
-                    currentStep = STEP_NOTIFICATION;
-                }
+                executeCurrentStep();
+            }, 250);
+        } else {
+            // Check in case user returned without isNavigatingAway trigger or state changed
+            if (currentStep == STEP_OVERLAY && isOverlayGranted()) {
+                currentStep = STEP_STORAGE;
+                executeCurrentStep();
+            } else if (currentStep == STEP_STORAGE && isStorageGranted()) {
+                currentStep = STEP_NOTIFICATION;
+                executeCurrentStep();
             }
-            executeCurrentStep();
         }
     }
 
@@ -196,25 +210,59 @@ public class MainActivity extends BaseActivity {
         btnAction.setVisibility(View.VISIBLE);
         btnAction.setOnClickListener(v -> {
             isNavigatingAway = true;
-            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName()));
-            startActivity(intent);
+            launchOverlaySettings();
         });
 
-        // Auto prompt first time
-        if (!isNavigatingAway) {
+        // Auto prompt only on initial step entrance, never in an onResume loop
+        if (!hasAutoPromptedOverlay) {
+            hasAutoPromptedOverlay = true;
             isNavigatingAway = true;
-            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName()));
-            startActivity(intent);
+            launchOverlaySettings();
         }
     }
 
-    private boolean isOverlayGranted() {
+    private void launchOverlaySettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            return Settings.canDrawOverlays(this);
+            try {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            } catch (Exception e) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
+                    startActivity(intent);
+                } catch (Exception ignored) {}
+            }
         }
-        return true;
+    }
+
+    public static boolean hasOverlayPermission(android.content.Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        try {
+            if (Settings.canDrawOverlays(context)) {
+                return true;
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            android.app.AppOpsManager appOps = (android.app.AppOpsManager) context.getSystemService(android.content.Context.APP_OPS_SERVICE);
+            if (appOps != null) {
+                int mode = appOps.checkOpNoThrow(
+                        "android:system_alert_window",
+                        android.os.Process.myUid(),
+                        context.getPackageName()
+                );
+                return mode == android.app.AppOpsManager.MODE_ALLOWED;
+            }
+        } catch (Throwable ignored) {}
+
+        return false;
+    }
+
+    private boolean isOverlayGranted() {
+        return hasOverlayPermission(this);
     }
 
     // Step 2: Storage Permission (All Files / Super Storage)
@@ -228,10 +276,16 @@ public class MainActivity extends BaseActivity {
         tvStatus.setText("Storage access required for game assets");
         btnAction.setText("GRANT STORAGE ACCESS");
         btnAction.setVisibility(View.VISIBLE);
-        btnAction.setOnClickListener(v -> requestStoragePermission());
+        btnAction.setOnClickListener(v -> {
+            isNavigatingAway = true;
+            requestStoragePermission();
+        });
 
-        // Auto prompt first time
-        requestStoragePermission();
+        // Auto prompt only once on initial entrance
+        if (!hasAutoPromptedStorage) {
+            hasAutoPromptedStorage = true;
+            requestStoragePermission();
+        }
     }
 
     private boolean isStorageGranted() {
