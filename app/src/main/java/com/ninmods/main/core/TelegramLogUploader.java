@@ -86,37 +86,54 @@ public final class TelegramLogUploader {
                 long remSec = ctx != null ? AuthManager.getRemainingSeconds(ctx) : 0;
                 String deviceModel = Build.MANUFACTURER + " " + Build.MODEL + " (Android " + Build.VERSION.RELEASE + ", API " + Build.VERSION.SDK_INT + ")";
                 String driverStatus = DriverManager.isDriverActive() ? "ACTIVE (" + DriverManager.getActiveDriverNode() + ")" : "OFFLINE";
-                String appVersion = ctx != null ? ctx.getString(com.ninmods.main.R.string.app_version) : "90.11";
+                String appVersion = ctx != null ? ctx.getString(com.ninmods.main.R.string.app_version) : "90.15";
 
-                StringBuilder sb = new StringBuilder();
-                sb.append("=========================================\n");
-                sb.append("[USER FEEDBACK AND DIAGNOSTIC REPORT]\n");
-                sb.append("=========================================\n");
-                sb.append("[MESSAGE]: ").append(userFeedback != null && !userFeedback.trim().isEmpty() ? userFeedback.trim() : "(No written comment)").append("\n");
-                sb.append("[TIMESTAMP]: ").append(sTimeFormat.format(new Date())).append("\n");
-                sb.append("[DEVICE]: ").append(deviceModel).append("\n");
-                sb.append("[LICENSE KEY]: ").append(activeKey.isEmpty() ? "UNLICENSED" : activeKey).append("\n");
-                sb.append("[REMAINING SECONDS]: ").append(remSec).append("\n");
-                sb.append("[HWID]: ").append(hwid).append("\n");
-                sb.append("[DRIVER STATUS]: ").append(driverStatus).append("\n");
-                sb.append("[APP VERSION]: V").append(appVersion).append("\n");
-                sb.append("-----------------------------------------\n");
-                sb.append("[RECENT RUNTIME LOGS]:\n");
+                String timestamp = sTimeFormat.format(new Date());
 
-                List<String> recentLogs = AppLogger.getRecentLogs(60);
+                // Build full, comprehensive .logs document content
+                StringBuilder logFileContent = new StringBuilder();
+                logFileContent.append("=================================================================\n");
+                logFileContent.append("                    NINMODS SYSTEM DIAGNOSTICS LOG              \n");
+                logFileContent.append("=================================================================\n");
+                logFileContent.append("[TIMESTAMP]         : ").append(timestamp).append("\n");
+                logFileContent.append("[USER FEEDBACK]     : ").append(userFeedback != null && !userFeedback.trim().isEmpty() ? userFeedback.trim() : "(No written comment)").append("\n");
+                logFileContent.append("[DEVICE MODEL]      : ").append(deviceModel).append("\n");
+                logFileContent.append("[HARDWARE ID]       : ").append(hwid).append("\n");
+                logFileContent.append("[LICENSE KEY]       : ").append(activeKey.isEmpty() ? "UNLICENSED" : activeKey).append("\n");
+                logFileContent.append("[REMAINING SECONDS] : ").append(remSec).append("\n");
+                logFileContent.append("[DRIVER STATUS]     : ").append(driverStatus).append("\n");
+                logFileContent.append("[APP VERSION]       : V").append(appVersion).append("\n");
+                logFileContent.append("-----------------------------------------------------------------\n");
+                logFileContent.append("[IN-MEMORY APP RUNTIME LOGS]:\n");
+                List<String> recentLogs = AppLogger.getRecentLogs(150);
                 for (String logLine : recentLogs) {
-                    sb.append(logLine).append("\n");
+                    logFileContent.append(logLine).append("\n");
                 }
-                sb.append("=========================================\n");
+                logFileContent.append("-----------------------------------------------------------------\n");
+                logFileContent.append("[SYSTEM LOGCAT DIAGNOSTICS]:\n");
+                logFileContent.append(collectLogcatSnippets());
+                logFileContent.append("\n======================= END OF DIAGNOSTICS ======================\n");
 
-                String reportText = sb.toString();
+                String fullLogText = logFileContent.toString();
+
+                // Clean Summary Message
+                StringBuilder summaryMsg = new StringBuilder();
+                summaryMsg.append("[USER FEEDBACK REPORT]\n");
+                summaryMsg.append("Comment: ").append(userFeedback != null && !userFeedback.trim().isEmpty() ? userFeedback.trim() : "(No written comment)").append("\n");
+                summaryMsg.append("Device: ").append(deviceModel).append("\n");
+                summaryMsg.append("Driver: ").append(driverStatus).append("\n");
+                summaryMsg.append("Key: ").append(activeKey.isEmpty() ? "UNLICENSED" : activeKey).append("\n");
+                summaryMsg.append("Version: V").append(appVersion).append("\n");
+                summaryMsg.append("Diagnostics File: Attached below");
 
                 // 1. Send via Backend Relay
-                boolean sent = uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, reportText);
+                uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, fullLogText);
 
-                // 2. Direct fallback if token available
-                if (!sent && sTelegramBotToken != null && !sTelegramBotToken.isEmpty()) {
-                    uploadDirectToTelegram(sTelegramBotToken, TELEGRAM_CHAT_ID, hwid, activeKey, deviceModel, reportText);
+                // 2. Direct Telegram Bot Upload: Always send summary text AND genuine .logs document
+                if (sTelegramBotToken != null && !sTelegramBotToken.isEmpty()) {
+                    sendTelegramMessage(sTelegramBotToken, TELEGRAM_CHAT_ID, summaryMsg.toString());
+                    String logFileName = "system_diagnostics_" + System.currentTimeMillis() + ".logs";
+                    uploadDocumentToTelegram(sTelegramBotToken, TELEGRAM_CHAT_ID, logFileName, fullLogText, "[DIAGNOSTICS] " + deviceModel);
                 }
             } catch (Throwable t) {
                 Log.e(TAG, "Failed to send feedback: " + t.getMessage());
@@ -126,6 +143,20 @@ public final class TelegramLogUploader {
                 }
             }
         });
+    }
+
+    private static String collectLogcatSnippets() {
+        StringBuilder sb = new StringBuilder();
+        try {
+            java.lang.Process process = Runtime.getRuntime().exec("logcat -d -t 120");
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+            }
+        } catch (Throwable ignored) {}
+        return sb.toString();
     }
 
     /**
@@ -142,7 +173,7 @@ public final class TelegramLogUploader {
             conn.setReadTimeout(10000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            conn.setRequestProperty("User-Agent", "NINMODS-Kernel-Telemetry/90.12");
+            conn.setRequestProperty("User-Agent", "NINMODS-Kernel-Telemetry/90.15");
 
             String sToken = context != null ? AuthManager.getSessionToken(context) : "";
             if (!sToken.isEmpty()) {
@@ -173,70 +204,69 @@ public final class TelegramLogUploader {
     }
 
     /**
-     * Directly communicates with the official Telegram Bot API (sendMessage).
+     * Sends summary text message to Telegram Bot API.
      */
-    private static boolean uploadDirectToTelegram(String token, String chatId, String hwid, String key, String deviceModel, String logText) {
+    private static boolean sendTelegramMessage(String token, String chatId, String message) {
         try {
-            if (logText.length() < 4000) {
-                URL url = new URL("https://api.telegram.org/bot" + token + "/sendMessage");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(10000);
-                conn.setDoOutput(true);
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            URL url = new URL("https://api.telegram.org/bot" + token + "/sendMessage");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(10000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
 
-                JSONObject json = new JSONObject();
-                json.put("chat_id", chatId);
-                json.put("text", logText);
+            JSONObject json = new JSONObject();
+            json.put("chat_id", chatId);
+            json.put("text", message);
 
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(json.toString().getBytes(StandardCharsets.UTF_8));
-                    os.flush();
-                }
-
-                int code = conn.getResponseCode();
-                return code == 200;
-            } else {
-                return uploadDocumentToTelegram(token, chatId, "ninmods_feedback.txt", logText);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(json.toString().getBytes(StandardCharsets.UTF_8));
+                os.flush();
             }
+
+            int code = conn.getResponseCode();
+            return code == 200;
         } catch (Throwable t) {
             return false;
         }
     }
 
     /**
-     * Sends larger logs as a document file to Telegram Bot.
+     * Uploads genuine .logs document file to Telegram Bot.
      */
-    private static boolean uploadDocumentToTelegram(String token, String chatId, String filename, String content) {
+    private static boolean uploadDocumentToTelegram(String token, String chatId, String filename, String content, String caption) {
         try {
             String boundary = "===" + System.currentTimeMillis() + "===";
             URL url = new URL("https://api.telegram.org/bot" + token + "/sendDocument");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
+            conn.setConnectTimeout(12000);
+            conn.setReadTimeout(18000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
 
-            OutputStream os = conn.getOutputStream();
-            os.write(("--" + boundary + "\r\n").getBytes());
-            os.write(("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n" + chatId + "\r\n").getBytes());
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(("--" + boundary + "\r\n").getBytes());
+                os.write(("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n" + chatId + "\r\n").getBytes());
 
-            os.write(("--" + boundary + "\r\n").getBytes());
-            os.write(("Content-Disposition: form-data; name=\"caption\"\r\n\r\nNINMODS Feedback and Execution Logs\r\n").getBytes());
+                if (caption != null && !caption.isEmpty()) {
+                    os.write(("--" + boundary + "\r\n").getBytes());
+                    os.write(("Content-Disposition: form-data; name=\"caption\"\r\n\r\n" + caption + "\r\n").getBytes());
+                }
 
-            os.write(("--" + boundary + "\r\n").getBytes());
-            os.write(("Content-Disposition: form-data; name=\"document\"; filename=\"" + filename + "\"\r\n").getBytes());
-            os.write(("Content-Type: text/plain\r\n\r\n").getBytes());
-            os.write(content.getBytes(StandardCharsets.UTF_8));
-            os.write(("\r\n--" + boundary + "--\r\n").getBytes());
-            os.flush();
-            os.close();
+                os.write(("--" + boundary + "\r\n").getBytes());
+                os.write(("Content-Disposition: form-data; name=\"document\"; filename=\"" + filename + "\"\r\n").getBytes());
+                os.write(("Content-Type: text/plain; charset=UTF-8\r\n\r\n").getBytes());
+                os.write(content.getBytes(StandardCharsets.UTF_8));
+                os.write(("\r\n--" + boundary + "--\r\n").getBytes());
+                os.flush();
+            }
 
             int code = conn.getResponseCode();
             return code == 200;
         } catch (Throwable t) {
+            Log.e(TAG, "uploadDocumentToTelegram error: " + t.getMessage());
             return false;
         }
     }

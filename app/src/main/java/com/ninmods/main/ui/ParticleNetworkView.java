@@ -126,6 +126,12 @@ public class ParticleNetworkView extends View {
         }
     }
 
+    public void restoreDefaultBlur() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Api31BlurHelper.applyBlur(this, blurRadiusPx);
+        }
+    }
+
     private static class Api31BlurHelper {
         static void applyBlur(View view, float blurRadiusPx) {
             try {

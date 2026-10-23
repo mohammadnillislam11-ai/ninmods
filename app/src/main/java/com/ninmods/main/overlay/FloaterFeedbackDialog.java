@@ -61,17 +61,20 @@ public final class FloaterFeedbackDialog {
                 );
                 params.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
                 params.gravity = Gravity.CENTER;
-                params.dimAmount = 0.72f;
+                params.dimAmount = 0.45f;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    params.flags |= WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+                    params.setBlurBehindRadius(35);
+                }
 
                 final FrameLayout rootOverlay = new FrameLayout(context);
-                rootOverlay.setBackgroundColor(Color.parseColor("#59000000"));
+                rootOverlay.setBackgroundColor(Color.parseColor("#40000000"));
+                rootOverlay.setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 16));
 
-                // Centered Dialog Card - Matches custom dialog layout and dimensions
+                // Centered Dialog Card - Matches custom dialog layout and full comfortable width
                 final LinearLayout card = new LinearLayout(context);
                 card.setOrientation(LinearLayout.VERTICAL);
-                int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
-                int cardWidth = Math.min(screenWidth - dp(context, 32), dp(context, 320));
-                FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+                FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
                 card.setLayoutParams(cardLp);
                 card.setPadding(dp(context, 20), dp(context, 22), dp(context, 20), dp(context, 18));
 

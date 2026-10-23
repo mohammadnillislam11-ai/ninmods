@@ -154,34 +154,36 @@ public abstract class BaseActivity extends Activity {
                     com.ninmods.main.ui.BlurHelper.applyViewBlur(contentContainer, 25f);
                 }
                 if (particleBg != null) {
-                    com.ninmods.main.ui.BlurHelper.applyViewBlur(particleBg, 25f);
+                    com.ninmods.main.ui.BlurHelper.applyViewBlur(particleBg, 28f);
                 }
                 if (universalFooter != null) {
                     com.ninmods.main.ui.BlurHelper.applyViewBlur(universalFooter, 25f);
                 }
 
-                // 2. Universal Frosted Dark Acrylic Scrim across ALL Android versions (API 21-35)
-                // (Zero CPU draw freezing, 0ms instant transition, 120 FPS smooth)
+                // 2. Translucent Frosted Acrylic Scrim across ALL Android versions (API 21-35)
+                // Retains beautiful glowing pink background without blacking out
                 if (modalBlurOverlay != null) {
                     modalBlurOverlay.setImageDrawable(null);
-                    modalBlurOverlay.setBackgroundColor(android.graphics.Color.parseColor("#B8080014"));
+                    modalBlurOverlay.setBackgroundColor(android.graphics.Color.parseColor("#40080014"));
                     modalBlurOverlay.setVisibility(View.VISIBLE);
                     modalBlurOverlay.setAlpha(0.0f);
                     modalBlurOverlay.animate().alpha(1.0f).setDuration(120).start();
                 }
             } else {
-                // 1. Clear Hardware RenderEffect from all layers
+                // 1. Clear Hardware RenderEffect from foreground UI
                 if (contentContainer != null) {
                     com.ninmods.main.ui.BlurHelper.clearViewBlur(contentContainer);
-                }
-                if (particleBg != null) {
-                    com.ninmods.main.ui.BlurHelper.clearViewBlur(particleBg);
                 }
                 if (universalFooter != null) {
                     com.ninmods.main.ui.BlurHelper.clearViewBlur(universalFooter);
                 }
 
-                // 2. Fade out and clear universal overlay
+                // 2. Restore ParticleNetworkView's built-in glowing ambient blur
+                if (particleBg != null) {
+                    particleBg.restoreDefaultBlur();
+                }
+
+                // 3. Fade out and clear universal overlay
                 if (modalBlurOverlay != null) {
                     modalBlurOverlay.animate().alpha(0.0f).setDuration(120).withEndAction(() -> {
                         modalBlurOverlay.setVisibility(View.GONE);

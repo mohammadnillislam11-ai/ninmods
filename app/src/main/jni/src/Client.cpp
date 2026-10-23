@@ -112,8 +112,6 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
     EnsureClientConnected();
 
     if (!isConnected()) {
-        ImDrawList* draw = ImGui::GetBackgroundDrawList();
-        draw->AddText(ImVec2(24.0f, 40.0f), IM_COL32(255, 180, 0, 230), "NINMODS: CONNECTING RING 0 DRIVER...");
         return;
     }
 

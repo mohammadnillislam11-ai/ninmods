@@ -558,7 +558,7 @@ public class DashboardActivity extends BaseActivity {
             window.setGravity(Gravity.CENTER);
 
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(0.72f);
+            window.setDimAmount(0.45f);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
                 window.getAttributes().setBlurBehindRadius(35);
@@ -696,7 +696,7 @@ public class DashboardActivity extends BaseActivity {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             window.setGravity(Gravity.CENTER);
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(0.72f);
+            window.setDimAmount(0.45f);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
                 window.getAttributes().setBlurBehindRadius(35);
