@@ -31,6 +31,7 @@ public class SignupActivity extends BaseActivity {
 
     private EditText etUsername;
     private EditText etEmail;
+    private EditText etTelephone;
     private EditText etPassword;
     private EditText etConfirmPassword;
     private EditText etReferral;
@@ -126,7 +127,14 @@ public class SignupActivity extends BaseActivity {
         etEmail.setLayoutParams(emailLp);
         board.addView(etEmail);
 
-        // 6. Password Field (Min 6 characters)
+        // 6. Phone / Mobile Number Field (Optional)
+        etTelephone = createInputField("Phone / Mobile Number (Optional)", InputType.TYPE_CLASS_PHONE);
+        LinearLayout.LayoutParams phoneLp = (LinearLayout.LayoutParams) etTelephone.getLayoutParams();
+        phoneLp.topMargin = dp(10);
+        etTelephone.setLayoutParams(phoneLp);
+        board.addView(etTelephone);
+
+        // 7. Password Field (Min 6 characters)
         etPassword = createInputField("Password (Min 6 chars)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) etPassword.getLayoutParams();
         passLp.topMargin = dp(10);
@@ -225,6 +233,7 @@ public class SignupActivity extends BaseActivity {
     private void performSignup() {
         final String username = etUsername.getText() != null ? etUsername.getText().toString().trim() : "";
         final String email = etEmail.getText() != null ? etEmail.getText().toString().trim() : "";
+        final String telephone = etTelephone.getText() != null ? etTelephone.getText().toString().trim() : "";
         final String password = etPassword.getText() != null ? etPassword.getText().toString().trim() : "";
         final String confirmPassword = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString().trim() : "";
         final String refCode = etReferral.getText() != null ? etReferral.getText().toString().trim() : "";
@@ -260,12 +269,13 @@ public class SignupActivity extends BaseActivity {
         progressBar.setVisibility(View.VISIBLE);
         etUsername.setEnabled(false);
         etEmail.setEnabled(false);
+        etTelephone.setEnabled(false);
         etPassword.setEnabled(false);
         etConfirmPassword.setEnabled(false);
         etReferral.setEnabled(false);
 
         // Forward full registration credentials to Node.js /api/v2/auth/register endpoint
-        AuthApiController.register(this, username, email, password, refCode, new AuthApiController.ApiCallback() {
+        AuthApiController.register(this, username, email, password, telephone, refCode, new AuthApiController.ApiCallback() {
             @Override
             public void onSuccess(String message) {
                 if (isFinishing()) return;
@@ -273,9 +283,14 @@ public class SignupActivity extends BaseActivity {
                 signupBtn.setVisibility(View.VISIBLE);
                 etUsername.setEnabled(true);
                 etEmail.setEnabled(true);
+                etTelephone.setEnabled(true);
                 etPassword.setEnabled(true);
                 etConfirmPassword.setEnabled(true);
                 etReferral.setEnabled(true);
+
+                if (!telephone.isEmpty()) {
+                    com.ninmods.main.core.Prefs.with(SignupActivity.this).writeString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_PHONE, telephone);
+                }
 
                 Toast.makeText(SignupActivity.this, message, Toast.LENGTH_LONG).show();
                 finish(); // Return to LoginActivity
@@ -288,6 +303,7 @@ public class SignupActivity extends BaseActivity {
                 signupBtn.setVisibility(View.VISIBLE);
                 etUsername.setEnabled(true);
                 etEmail.setEnabled(true);
+                etTelephone.setEnabled(true);
                 etPassword.setEnabled(true);
                 etConfirmPassword.setEnabled(true);
                 etReferral.setEnabled(true);

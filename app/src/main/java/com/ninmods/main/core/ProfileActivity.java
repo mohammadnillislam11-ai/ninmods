@@ -38,7 +38,11 @@ public class ProfileActivity extends BaseActivity {
 
     public static final String PREF_ACTIVE_USERNAME = "active_username";
     public static final String PREF_ACTIVE_EMAIL = "active_email";
+    public static final String PREF_ACTIVE_PHONE = "active_phone";
     public static final String PREF_ACTIVE_PASSWORD = "active_password";
+    public static final String PREF_ACTIVE_ROLE = "active_role";
+    public static final String PREF_AUTH_BALANCE = "auth_balance";
+    public static final String PREF_AUTH_CURRENCY = "auth_currency";
 
     private EditText etCurrentPassword;
     private EditText etNewPassword;
@@ -48,12 +52,31 @@ public class ProfileActivity extends BaseActivity {
     private ProgressBar progressBar;
 
     private TextView tvLiveCountdown;
+    private TextView tvBoxDaysVal;
+    private TextView tvBoxHoursVal;
+    private TextView tvBoxMinsVal;
+    private TextView tvBoxSecsVal;
+    private TextView tvClockStatusText;
+
     private TextView tvPlanValue;
     private TextView tvKeyValue;
     private TextView tvExpiryDateValue;
 
-    private String currentUsername;
-    private String currentEmail;
+    private String currentUsername = "";
+    private String currentEmail = "";
+    private String currentPhone = "";
+    private String currentRole = "VIP Member";
+    private float currentBalance = 0.0f;
+    private String currentCurrency = "BDT";
+
+    private TextView tvHeroName;
+    private TextView tvHeroMail;
+    private TextView tvHeroPhone;
+    private TextView tvUsernameRowVal;
+    private TextView tvEmailRowVal;
+    private TextView tvPhoneRowVal;
+    private TextView tvBalanceRowVal;
+    private TextView tvRoleRowVal;
 
     private final Handler tickerHandler = new Handler(Looper.getMainLooper());
     private final Runnable tickerRunnable = new Runnable() {
@@ -78,6 +101,22 @@ public class ProfileActivity extends BaseActivity {
         updateUIValues();
         tickerHandler.removeCallbacks(tickerRunnable);
         tickerHandler.post(tickerRunnable);
+
+        // Fetch fresh genuine profile data from backend server
+        AuthApiController.fetchProfile(this, new AuthApiController.ApiCallback() {
+            @Override
+            public void onSuccess(String message) {
+                runOnUiThread(() -> {
+                    loadUserData();
+                    updateUIValues();
+                });
+            }
+
+            @Override
+            public void onError(String errorMessage) {
+                // Keep local values
+            }
+        });
     }
 
     @Override
@@ -88,18 +127,41 @@ public class ProfileActivity extends BaseActivity {
 
     private void loadUserData() {
         currentUsername = Prefs.with(this).readString(PREF_ACTIVE_USERNAME, "");
-        if (currentUsername == null || currentUsername.trim().isEmpty()) {
-            currentUsername = "VIP Operator";
-            Prefs.with(this).writeString(PREF_ACTIVE_USERNAME, currentUsername);
+        if (currentUsername.isEmpty()) {
+            currentUsername = Prefs.with(this).readString("pref_auth_saved_username", "");
         }
-
         currentEmail = Prefs.with(this).readString(PREF_ACTIVE_EMAIL, "");
-        if (currentEmail == null || currentEmail.trim().isEmpty()) {
-            currentEmail = currentUsername.toLowerCase().replaceAll("\\s+", "") + "@ninmods.vip";
-        }
+        currentPhone = Prefs.with(this).readString(PREF_ACTIVE_PHONE, "");
+        currentRole = Prefs.with(this).readString(PREF_ACTIVE_ROLE, "VIP Subscriber");
+        currentBalance = Prefs.with(this).readFloat(PREF_AUTH_BALANCE, 0.0f);
+        currentCurrency = Prefs.with(this).readString(PREF_AUTH_CURRENCY, "BDT");
     }
 
     private void updateUIValues() {
+        if (tvHeroName != null) {
+            tvHeroName.setText(currentUsername.isEmpty() ? "Tactical Operator" : currentUsername);
+        }
+        if (tvHeroMail != null) {
+            tvHeroMail.setText(currentEmail.isEmpty() ? "No Email Linked" : currentEmail);
+        }
+        if (tvHeroPhone != null) {
+            tvHeroPhone.setText(currentPhone.isEmpty() ? "Phone: Not Provided" : "Phone: " + currentPhone);
+        }
+        if (tvUsernameRowVal != null) {
+            tvUsernameRowVal.setText(currentUsername.isEmpty() ? "Not Set" : currentUsername);
+        }
+        if (tvEmailRowVal != null) {
+            tvEmailRowVal.setText(currentEmail.isEmpty() ? "Not Linked" : currentEmail);
+        }
+        if (tvPhoneRowVal != null) {
+            tvPhoneRowVal.setText(currentPhone.isEmpty() ? "Not Provided" : currentPhone);
+        }
+        if (tvBalanceRowVal != null) {
+            tvBalanceRowVal.setText(String.format(java.util.Locale.US, "%.2f %s", currentBalance, currentCurrency));
+        }
+        if (tvRoleRowVal != null) {
+            tvRoleRowVal.setText(currentRole.toUpperCase());
+        }
         if (tvPlanValue != null) {
             tvPlanValue.setText(AuthManager.getActivePlanName(this));
         }
@@ -114,14 +176,32 @@ public class ProfileActivity extends BaseActivity {
     }
 
     private void updateLiveCountdown() {
-        if (tvLiveCountdown == null) return;
         long remaining = AuthManager.getRemainingSeconds(this);
-        if (remaining > 0) {
-            tvLiveCountdown.setText(AuthManager.formatRemainingTime(remaining));
-            tvLiveCountdown.setTextColor(0xFF00E676);
-        } else {
-            tvLiveCountdown.setText("No Active License / Expired");
-            tvLiveCountdown.setTextColor(0xFFFF5252);
+        long[] c = AuthManager.getRemainingTimeComponents(remaining);
+
+        if (tvBoxDaysVal != null) tvBoxDaysVal.setText(String.format(java.util.Locale.US, "%02d", c[0]));
+        if (tvBoxHoursVal != null) tvBoxHoursVal.setText(String.format(java.util.Locale.US, "%02d", c[1]));
+        if (tvBoxMinsVal != null) tvBoxMinsVal.setText(String.format(java.util.Locale.US, "%02d", c[2]));
+        if (tvBoxSecsVal != null) tvBoxSecsVal.setText(String.format(java.util.Locale.US, "%02d", c[3]));
+
+        if (tvLiveCountdown != null) {
+            if (remaining > 0) {
+                tvLiveCountdown.setText(AuthManager.formatRemainingTime(remaining));
+                tvLiveCountdown.setTextColor(0xFF00E676);
+            } else {
+                tvLiveCountdown.setText("No Active License / Expired");
+                tvLiveCountdown.setTextColor(0xFFFF5252);
+            }
+        }
+
+        if (tvClockStatusText != null) {
+            if (remaining > 0) {
+                tvClockStatusText.setText("Ticking down live in real-time (" + c[0] + " days remaining)");
+                tvClockStatusText.setTextColor(0xFF00E676);
+            } else {
+                tvClockStatusText.setText("No active subscription plan or license expired.");
+                tvClockStatusText.setTextColor(0xFFFF5252);
+            }
         }
     }
 
@@ -183,19 +263,23 @@ public class ProfileActivity extends BaseActivity {
         // 3. Hero User Profile Banner Card
         content.addView(createHeroProfileCard());
 
-        // 4. Active Membership & Live Expiration Countdown Card
+        // 4. Genuine User Credentials Card (Username, Gmail, Phone, Balance, Role)
+        content.addView(createSectionTitle("REGISTERED ACCOUNT CREDENTIALS"));
+        content.addView(createAccountCredentialsCard());
+
+        // 5. Active Membership & Live Expiration Countdown Card
         content.addView(createSectionTitle("VIP MEMBERSHIP & EXPIRATION"));
         content.addView(createSubscriptionCountdownCard());
 
-        // 5. Security & System Integrity Card
+        // 6. Security & System Integrity Card
         content.addView(createSectionTitle("SECURITY & HARDWARE INTEGRITY"));
         content.addView(createSecurityDiagnosticsCard());
 
-        // 6. Change Password Card
-        content.addView(createSectionTitle("ACCOUNT CREDENTIALS"));
+        // 7. Change Password Card
+        content.addView(createSectionTitle("CHANGE ACCESS PASSWORD"));
         content.addView(createChangePasswordCard());
 
-        // 7. Official Telegram Support / Renewal Button
+        // 8. Official Telegram Support / Renewal Button
         Button supportBtn = new Button(this);
         LinearLayout.LayoutParams supLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
         supLp.topMargin = dp(14);
@@ -220,7 +304,7 @@ public class ProfileActivity extends BaseActivity {
         });
         content.addView(supportBtn);
 
-        // 8. Log Out Button
+        // 9. Log Out Button
         Button logoutBtn = new Button(this);
         LinearLayout.LayoutParams loLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
         loLp.topMargin = dp(10);
@@ -287,19 +371,26 @@ public class ProfileActivity extends BaseActivity {
         nameCol.setLayoutParams(nameColLp);
         nameCol.setOrientation(LinearLayout.VERTICAL);
 
-        TextView tvName = new TextView(this);
-        tvName.setText(currentUsername);
-        tvName.setTextColor(AppColors.WHITE);
-        tvName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        tvName.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        nameCol.addView(tvName);
+        tvHeroName = new TextView(this);
+        tvHeroName.setText(currentUsername.isEmpty() ? "Tactical Operator" : currentUsername);
+        tvHeroName.setTextColor(AppColors.WHITE);
+        tvHeroName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        tvHeroName.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        nameCol.addView(tvHeroName);
 
-        TextView tvMail = new TextView(this);
-        tvMail.setText(currentEmail);
-        tvMail.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        tvMail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        tvMail.setPadding(0, dp(2), 0, 0);
-        nameCol.addView(tvMail);
+        tvHeroMail = new TextView(this);
+        tvHeroMail.setText(currentEmail.isEmpty() ? "No Email Linked" : currentEmail);
+        tvHeroMail.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        tvHeroMail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvHeroMail.setPadding(0, dp(2), 0, 0);
+        nameCol.addView(tvHeroMail);
+
+        tvHeroPhone = new TextView(this);
+        tvHeroPhone.setText(currentPhone.isEmpty() ? "Phone: Not Provided" : "Phone: " + currentPhone);
+        tvHeroPhone.setTextColor(0xFF00E676);
+        tvHeroPhone.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        tvHeroPhone.setPadding(0, dp(2), 0, 0);
+        nameCol.addView(tvHeroPhone);
 
         avatarRow.addView(nameCol);
         card.addView(avatarRow);
@@ -323,7 +414,41 @@ public class ProfileActivity extends BaseActivity {
         return card;
     }
 
-    // Active Membership & Live Countdown Card
+    // Genuine User Credentials Card (Real Username, Real Gmail, Real Phone Number, Balance)
+    private View createAccountCredentialsCard() {
+        LinearLayout card = new LinearLayout(this);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(14);
+        card.setLayoutParams(lp);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(16), dp(16), dp(14));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(AppColors.MAGENTA_CARD);
+        bg.setCornerRadius(dp(12));
+        bg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
+        card.setBackground(bg);
+
+        tvUsernameRowVal = new TextView(this);
+        card.addView(createRow("Account Username", tvUsernameRowVal, currentUsername.isEmpty() ? "Not Set" : currentUsername, AppColors.WHITE));
+
+        tvEmailRowVal = new TextView(this);
+        card.addView(createRow("Gmail / Email", tvEmailRowVal, currentEmail.isEmpty() ? "Not Linked" : currentEmail, AppColors.WHITE));
+
+        tvPhoneRowVal = new TextView(this);
+        card.addView(createRow("Phone / Mobile", tvPhoneRowVal, currentPhone.isEmpty() ? "Not Provided" : currentPhone, 0xFF00E676));
+
+        tvBalanceRowVal = new TextView(this);
+        String balanceStr = String.format(java.util.Locale.US, "%.2f %s", currentBalance, currentCurrency);
+        card.addView(createRow("Account Balance", tvBalanceRowVal, balanceStr, 0xFF00E676));
+
+        tvRoleRowVal = new TextView(this);
+        card.addView(createRow("Account Role", tvRoleRowVal, currentRole.toUpperCase(), AppColors.MAGENTA_PRIMARY));
+
+        return card;
+    }
+
+    // Active Membership & Live Digital Clock Countdown Card
     private View createSubscriptionCountdownCard() {
         LinearLayout card = new LinearLayout(this);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -351,25 +476,52 @@ public class ProfileActivity extends BaseActivity {
         countdownBox.setBackground(cBg);
 
         TextView label = new TextView(this);
-        label.setText("LIVE TIME REMAINING");
+        label.setText("LIVE DIGITAL CLOCK EXPIRATION");
         label.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
         label.setTypeface(Typeface.DEFAULT_BOLD);
         countdownBox.addView(label);
 
-        tvLiveCountdown = new TextView(this);
-        tvLiveCountdown.setText("Calculating...");
-        tvLiveCountdown.setTextColor(0xFF00E676);
-        tvLiveCountdown.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        tvLiveCountdown.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        tvLiveCountdown.setPadding(0, dp(4), 0, dp(2));
-        countdownBox.addView(tvLiveCountdown);
+        // Digital Clock Boxes Row (DAYS : HOURS : MINS : SECS)
+        LinearLayout digitRow = new LinearLayout(this);
+        LinearLayout.LayoutParams drLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        drLp.topMargin = dp(8);
+        drLp.bottomMargin = dp(6);
+        digitRow.setLayoutParams(drLp);
+        digitRow.setOrientation(LinearLayout.HORIZONTAL);
+        digitRow.setGravity(Gravity.CENTER_VERTICAL);
+        digitRow.setWeightSum(4.0f);
 
-        TextView sub = new TextView(this);
-        sub.setText("Real-time dynamic subscription expiration countdown");
-        sub.setTextColor(Color.parseColor("#99FFFFFF"));
-        sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        countdownBox.addView(sub);
+        tvBoxDaysVal = new TextView(this);
+        tvBoxDaysVal.setText("00");
+        digitRow.addView(createClockDigitBox(tvBoxDaysVal, "DAYS"));
+
+        digitRow.addView(createClockColon());
+
+        tvBoxHoursVal = new TextView(this);
+        tvBoxHoursVal.setText("00");
+        digitRow.addView(createClockDigitBox(tvBoxHoursVal, "HOURS"));
+
+        digitRow.addView(createClockColon());
+
+        tvBoxMinsVal = new TextView(this);
+        tvBoxMinsVal.setText("00");
+        digitRow.addView(createClockDigitBox(tvBoxMinsVal, "MINS"));
+
+        digitRow.addView(createClockColon());
+
+        tvBoxSecsVal = new TextView(this);
+        tvBoxSecsVal.setText("00");
+        digitRow.addView(createClockDigitBox(tvBoxSecsVal, "SECS"));
+
+        countdownBox.addView(digitRow);
+
+        tvClockStatusText = new TextView(this);
+        tvClockStatusText.setText("Calculating dynamic subscription time...");
+        tvClockStatusText.setTextColor(Color.parseColor("#99FFFFFF"));
+        tvClockStatusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        tvClockStatusText.setGravity(Gravity.CENTER);
+        countdownBox.addView(tvClockStatusText);
 
         card.addView(countdownBox);
 
@@ -398,6 +550,50 @@ public class ProfileActivity extends BaseActivity {
         return card;
     }
 
+    private View createClockDigitBox(TextView tvValue, String labelText) {
+        LinearLayout box = new LinearLayout(this);
+        LinearLayout.LayoutParams boxLp = new LinearLayout.LayoutParams(0, dp(58), 1.0f);
+        box.setLayoutParams(boxLp);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(4), dp(4), dp(4), dp(4));
+
+        GradientDrawable bBg = new GradientDrawable();
+        bBg.setColor(Color.parseColor("#1B0B24"));
+        bBg.setCornerRadius(dp(8));
+        bBg.setStroke(dp(1), Color.parseColor("#4A1D4F"));
+        box.setBackground(bBg);
+
+        tvValue.setTextColor(0xFF00E676);
+        tvValue.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
+        tvValue.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        tvValue.setGravity(Gravity.CENTER);
+        box.addView(tvValue);
+
+        TextView lbl = new TextView(this);
+        lbl.setText(labelText);
+        lbl.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        lbl.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
+        lbl.setTypeface(Typeface.DEFAULT_BOLD);
+        lbl.setGravity(Gravity.CENTER);
+        lbl.setPadding(0, dp(1), 0, 0);
+        box.addView(lbl);
+
+        return box;
+    }
+
+    private View createClockColon() {
+        TextView colon = new TextView(this);
+        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(dp(10), dp(58));
+        colon.setLayoutParams(cLp);
+        colon.setText(":");
+        colon.setTextColor(AppColors.WHITE);
+        colon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        colon.setTypeface(Typeface.DEFAULT_BOLD);
+        colon.setGravity(Gravity.CENTER);
+        return colon;
+    }
+
     // Security & Hardware Integrity Card
     private View createSecurityDiagnosticsCard() {
         LinearLayout card = new LinearLayout(this);
@@ -416,7 +612,7 @@ public class ProfileActivity extends BaseActivity {
         card.addView(createStaticRow("Anti-Tamper Core", "Active (AES-256 + SHA-256)", 0xFF00E676));
         card.addView(createStaticRow("Memory Protection", "Hardware Enforced (Kernel)", 0xFF00E676));
         card.addView(createStaticRow("Native Library", "libninmods.so (ARM64-v8a)", AppColors.WHITE));
-        card.addView(createStaticRow("Client Version", getString(R.string.app_name) + " V90.4", AppColors.MAGENTA_PRIMARY));
+        card.addView(createStaticRow("Client Version", getString(R.string.app_name) + " v" + getString(R.string.app_version), AppColors.MAGENTA_PRIMARY));
 
         return card;
     }

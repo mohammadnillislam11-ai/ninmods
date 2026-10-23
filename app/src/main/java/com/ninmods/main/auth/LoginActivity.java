@@ -298,7 +298,9 @@ public class LoginActivity extends BaseActivity {
                     Prefs.with(LoginActivity.this).writeString(PREF_SAVED_PASSWORD, "");
                 }
 
-                Prefs.with(LoginActivity.this).writeString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_USERNAME, username);
+                if (!username.contains("@") || Prefs.with(LoginActivity.this).readString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_USERNAME, "").isEmpty()) {
+                    Prefs.with(LoginActivity.this).writeString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_USERNAME, username);
+                }
                 Prefs.with(LoginActivity.this).writeString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_PASSWORD, password);
 
                 AuthManager.setLoggedIn(LoginActivity.this, true);

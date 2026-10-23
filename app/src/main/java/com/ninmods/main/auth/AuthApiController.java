@@ -45,6 +45,7 @@ public final class AuthApiController {
     public static final String ENDPOINT_RESET_PASS = "/api/v2/auth/reset-password";
     public static final String ENDPOINT_VERIFY_KEY = "/api/v2/license/verify";
     public static final String ENDPOINT_HEARTBEAT = "/api/v2/app/heartbeat";
+    public static final String ENDPOINT_PROFILE = "/api/v2/profile";
 
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -100,10 +101,39 @@ public final class AuthApiController {
                         int userId = resJson.optInt("user_id", 0);
                         String sessionToken = resJson.optString("session_token", resJson.optString("token", apiKey));
 
+                        String realUsername = resJson.optString("username", usernameOrEmail != null ? usernameOrEmail : "");
+                        String realEmail = resJson.optString("email", "");
+                        String realPhone = resJson.optString("telephone", resJson.optString("phone", ""));
+                        String realRole = resJson.optString("role", "VIP Member");
+
                         Prefs.with(context).writeString("auth_api_key", apiKey);
                         Prefs.with(context).writeFloat("auth_balance", (float) balance);
                         Prefs.with(context).writeString("auth_currency", currency);
                         Prefs.with(context).writeInt("auth_user_id", userId);
+
+                        Prefs.with(context).writeString("active_username", realUsername);
+                        Prefs.with(context).writeString("active_email", realEmail);
+                        Prefs.with(context).writeString("active_phone", realPhone);
+                        Prefs.with(context).writeString("active_role", realRole);
+
+                        // Parse active license if returned from database
+                        JSONObject licObj = resJson.optJSONObject("active_license");
+                        if (licObj != null) {
+                            String activeKey = licObj.optString("license_key", "");
+                            String durationType = licObj.optString("duration_type", "30_days");
+                            String expAt = licObj.optString("expires_at", "");
+                            int remSec = licObj.optInt("remaining_seconds", 0);
+
+                            if (!activeKey.isEmpty() && remSec > 0) {
+                                AuthManager.setActiveLicenseKey(context, activeKey);
+                                Prefs.with(context).writeString("license_duration_type", durationType);
+                                Prefs.with(context).writeString("license_expires_at", expAt);
+                                Prefs.with(context).writeInt("license_remaining_sec", remSec);
+                                Prefs.with(context).writeLong("license_saved_at_ms", System.currentTimeMillis());
+                                Prefs.with(context).writeLong("license_expires_at_ms", System.currentTimeMillis() + (remSec * 1000L));
+                            }
+                        }
+
                         if (!sessionToken.isEmpty()) {
                             AuthManager.setSessionToken(context, sessionToken);
                             // Bind verified session to native C++ cheat engine
@@ -132,6 +162,10 @@ public final class AuthApiController {
      * Strictly creates an account online on the backend database with full schema synchronization.
      */
     public static void register(Context context, String username, String email, String password, String refCode, final ApiCallback callback) {
+        register(context, username, email, password, "", refCode, callback);
+    }
+
+    public static void register(Context context, String username, String email, String password, String telephone, String refCode, final ApiCallback callback) {
         SecurityVault.init(context);
 
         executor.execute(() -> {
@@ -142,6 +176,7 @@ public final class AuthApiController {
                 payload.put("email", email != null ? email.trim() : "");
                 payload.put("password", password != null ? password.trim() : "");
                 payload.put("password_again", password != null ? password.trim() : "");
+                payload.put("telephone", telephone != null ? telephone.trim() : "");
                 if (refCode != null && !refCode.trim().isEmpty()) {
                     payload.put("ref_code", refCode.trim());
                     payload.put("ref_by", refCode.trim());
@@ -236,6 +271,7 @@ public final class AuthApiController {
 
                         Prefs.with(context).writeInt("license_remaining_sec", remainingSec);
                         Prefs.with(context).writeLong("license_saved_at_ms", System.currentTimeMillis());
+                        Prefs.with(context).writeLong("license_expires_at_ms", System.currentTimeMillis() + (remainingSec * 1000L));
                         Prefs.with(context).writeString("license_expires_at", expiresAt);
                         String durationType = resJson.optString("duration_type", "30_days");
                         Prefs.with(context).writeString("license_duration_type", durationType);
@@ -295,6 +331,8 @@ public final class AuthApiController {
                     if (valid) {
                         int remainingSec = resJson.optInt("remaining_seconds", 0);
                         Prefs.with(context).writeInt("license_remaining_sec", remainingSec);
+                        Prefs.with(context).writeLong("license_saved_at_ms", System.currentTimeMillis());
+                        Prefs.with(context).writeLong("license_expires_at_ms", System.currentTimeMillis() + (remainingSec * 1000L));
                         if (callback != null) {
                             mainHandler.post(() -> callback.onSuccess("Session valid"));
                         }
@@ -314,6 +352,119 @@ public final class AuthApiController {
     }
 
     /**
+     * GET /api/v2/profile
+     * Synchronizes live user credentials (Username, Email, Phone, Balance, Role, Active License)
+     * directly from the secure server database.
+     */
+    public static void fetchProfile(Context context, final ApiCallback callback) {
+        SecurityVault.init(context);
+        executor.execute(() -> {
+            try {
+                String response = executeGet(context, ENDPOINT_PROFILE, AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
+                if (response != null && !response.trim().isEmpty()) {
+                    JSONObject resJson = new JSONObject(response);
+                    if (resJson.optBoolean("success", false) && resJson.has("profile")) {
+                        JSONObject prof = resJson.getJSONObject("profile");
+                        String username = prof.optString("username", "");
+                        String email = prof.optString("email", "");
+                        String phone = prof.optString("telephone", prof.optString("phone", ""));
+                        String role = prof.optString("role", "VIP Member");
+                        double balance = prof.optDouble("balance", 0.0);
+                        String currency = prof.optString("currency", "BDT");
+
+                        if (!username.isEmpty()) Prefs.with(context).writeString("active_username", username);
+                        if (!email.isEmpty()) Prefs.with(context).writeString("active_email", email);
+                        Prefs.with(context).writeString("active_phone", phone);
+                        Prefs.with(context).writeString("active_role", role);
+                        Prefs.with(context).writeFloat("auth_balance", (float) balance);
+                        Prefs.with(context).writeString("auth_currency", currency);
+
+                        if (prof.has("active_license") && !prof.isNull("active_license")) {
+                            JSONObject licObj = prof.getJSONObject("active_license");
+                            String activeKey = licObj.optString("license_key", "");
+                            String durationType = licObj.optString("duration_type", "30_days");
+                            String expAt = licObj.optString("expires_at", "");
+                            int remSec = licObj.optInt("remaining_seconds", 0);
+
+                            if (!activeKey.isEmpty() && remSec > 0) {
+                                AuthManager.setActiveLicenseKey(context, activeKey);
+                                Prefs.with(context).writeString("license_duration_type", durationType);
+                                Prefs.with(context).writeString("license_expires_at", expAt);
+                                Prefs.with(context).writeInt("license_remaining_sec", remSec);
+                                Prefs.with(context).writeLong("license_saved_at_ms", System.currentTimeMillis());
+                                Prefs.with(context).writeLong("license_expires_at_ms", System.currentTimeMillis() + (remSec * 1000L));
+                            }
+                        }
+
+                        if (callback != null) {
+                            mainHandler.post(() -> callback.onSuccess("Profile updated"));
+                        }
+                        return;
+                    }
+                }
+                if (callback != null) {
+                    mainHandler.post(() -> callback.onError("Failed to fetch profile"));
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "Profile fetch warning: " + e.getMessage());
+                if (callback != null) {
+                    mainHandler.post(() -> callback.onError(e.getMessage()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Executes an HTTP GET request with banking-grade native cryptographic signing and auth tokens.
+     */
+    public static String executeGet(Context context, String endpoint, int timeoutMs) throws Exception {
+        String baseUrl = getServerBaseUrl(context);
+        if (baseUrl.endsWith("/")) baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        URL targetUrl = new URL(baseUrl + endpoint);
+
+        long timestamp = System.currentTimeMillis();
+        String nonce = SecurityVault.generateNonce();
+        String hwid = getHwid(context);
+        String signature = SecurityVault.signPayload("", timestamp, nonce, hwid);
+        String certDigest = SecurityVault.getApkCertificateDigest(context);
+        String apiKey = Prefs.with(context).readString("auth_api_key", "");
+
+        HttpURLConnection conn = (HttpURLConnection) targetUrl.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(timeoutMs);
+        conn.setReadTimeout(AuthConstants.HTTP_READ_TIMEOUT_MS);
+        conn.setDoInput(true);
+        conn.setRequestProperty("User-Agent", "NinMods-Banking-Client/" + context.getString(R.string.app_version));
+        conn.setRequestProperty("X-Client-Version", context.getString(R.string.app_version));
+
+        if (!apiKey.isEmpty()) {
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+            conn.setRequestProperty("api-key", apiKey);
+        }
+
+        // Banking-grade cryptographic security headers
+        conn.setRequestProperty("X-Signature", signature);
+        conn.setRequestProperty("X-Timestamp", String.valueOf(timestamp));
+        conn.setRequestProperty("X-Nonce", nonce);
+        conn.setRequestProperty("X-HWID", hwid);
+        conn.setRequestProperty("X-Client-Integrity", certDigest);
+        conn.setRequestProperty("X-Security-Level", "BANKING_L3_NATIVE");
+
+        int code = conn.getResponseCode();
+        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+        if (is == null) return null;
+
+        BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            sb.append(line);
+        }
+        String raw = sb.toString();
+        return sanitizeResponse(raw);
+    }
+
+    /**
      * Executes an HTTP POST request with banking-grade native cryptographic signing.
      */
     private static String executePost(Context context, String endpoint, String jsonBody, int timeoutMs) throws Exception {
@@ -326,6 +477,7 @@ public final class AuthApiController {
         String hwid = getHwid(context);
         String signature = SecurityVault.signPayload(jsonBody, timestamp, nonce, hwid);
         String certDigest = SecurityVault.getApkCertificateDigest(context);
+        String apiKey = Prefs.with(context).readString("auth_api_key", "");
 
         HttpURLConnection conn = (HttpURLConnection) targetUrl.openConnection();
         conn.setRequestMethod("POST");
@@ -336,6 +488,11 @@ public final class AuthApiController {
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         conn.setRequestProperty("User-Agent", "NinMods-Banking-Client/" + context.getString(R.string.app_version));
         conn.setRequestProperty("X-Client-Version", context.getString(R.string.app_version));
+
+        if (!apiKey.isEmpty()) {
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+            conn.setRequestProperty("api-key", apiKey);
+        }
 
         // Banking-grade cryptographic security headers
         conn.setRequestProperty("X-Signature", signature);

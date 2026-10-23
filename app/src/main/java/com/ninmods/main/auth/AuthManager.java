@@ -62,25 +62,72 @@ public final class AuthManager {
 
     public static long getRemainingSeconds(Context context) {
         if (context == null) return 0;
-        int baseSec = Prefs.with(context).readInt("license_remaining_sec", 0);
-        long savedAt = Prefs.with(context).readLong("license_saved_at_ms", 0);
-        if (baseSec <= 0) return 0;
-        if (savedAt <= 0) return baseSec;
-        long elapsedSec = (System.currentTimeMillis() - savedAt) / 1000L;
-        return Math.max(0, baseSec - elapsedSec);
+        long targetMs = Prefs.with(context).readLong("license_expires_at_ms", 0);
+        if (targetMs <= 0) {
+            String expStr = Prefs.with(context).readString("license_expires_at", "");
+            if (!expStr.isEmpty()) {
+                try {
+                    java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US);
+                    java.util.Date d = sdf.parse(expStr);
+                    if (d != null) {
+                        targetMs = d.getTime();
+                        Prefs.with(context).writeLong("license_expires_at_ms", targetMs);
+                    }
+                } catch (Exception ignored) {
+                    String[] formats = new String[]{
+                        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                        "yyyy-MM-dd'T'HH:mm:ss",
+                        "yyyy-MM-dd HH:mm:ss",
+                        "yyyy-MM-dd"
+                    };
+                    for (String fmt : formats) {
+                        try {
+                            java.text.SimpleDateFormat isoSdf = new java.text.SimpleDateFormat(fmt, java.util.Locale.US);
+                            if (fmt.contains("Z")) isoSdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+                            java.util.Date d = isoSdf.parse(expStr);
+                            if (d != null) {
+                                targetMs = d.getTime();
+                                Prefs.with(context).writeLong("license_expires_at_ms", targetMs);
+                                break;
+                            }
+                        } catch (Exception ignoredFmt) {}
+                    }
+                }
+            }
+        }
+
+        if (targetMs <= 0) {
+            int baseSec = Prefs.with(context).readInt("license_remaining_sec", 0);
+            long savedAt = Prefs.with(context).readLong("license_saved_at_ms", 0);
+            if (baseSec <= 0) return 0;
+            if (savedAt <= 0) {
+                savedAt = System.currentTimeMillis();
+                Prefs.with(context).writeLong("license_saved_at_ms", savedAt);
+            }
+            targetMs = savedAt + (baseSec * 1000L);
+            Prefs.with(context).writeLong("license_expires_at_ms", targetMs);
+        }
+
+        long now = System.currentTimeMillis();
+        return Math.max(0, (targetMs - now) / 1000L);
     }
 
-    public static String formatRemainingTime(long remainingSec) {
-        if (remainingSec <= 0) return "Expired";
+    public static long[] getRemainingTimeComponents(long remainingSec) {
+        if (remainingSec <= 0) {
+            return new long[]{0, 0, 0, 0};
+        }
         long days = remainingSec / 86400;
         long hours = (remainingSec % 86400) / 3600;
         long minutes = (remainingSec % 3600) / 60;
         long seconds = remainingSec % 60;
-        if (days > 0) {
-            return String.format(java.util.Locale.US, "%dd %02dh %02dm %02ds", days, hours, minutes, seconds);
-        } else {
-            return String.format(java.util.Locale.US, "%02dh %02dm %02ds", hours, minutes, seconds);
-        }
+        return new long[]{days, hours, minutes, seconds};
+    }
+
+    public static String formatRemainingTime(long remainingSec) {
+        if (remainingSec <= 0) return "Expired / No Active Plan";
+        long[] c = getRemainingTimeComponents(remainingSec);
+        return String.format(java.util.Locale.US, "%02dd : %02dh : %02dm : %02ds", c[0], c[1], c[2], c[3]);
     }
 
     public static String getActivePlanName(Context context) {
@@ -117,6 +164,7 @@ public final class AuthManager {
             Prefs.with(context).writeString(PREF_KEY_ACTIVE_KEY, "");
             Prefs.with(context).writeInt("license_remaining_sec", 0);
             Prefs.with(context).writeLong("license_saved_at_ms", 0);
+            Prefs.with(context).writeLong("license_expires_at_ms", 0);
             Prefs.with(context).writeString("license_expires_at", "");
             Prefs.with(context).writeString("license_duration_type", "");
         }
