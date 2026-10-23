@@ -124,8 +124,7 @@ namespace Offsets {
     constexpr uintptr_t PlayerRotation = 0x61C;
     constexpr uintptr_t PlayerRotationOld = 0x5BC;
     constexpr uintptr_t Player_ViewRotation = 0x214;       // Scarecrow & Kernel Primary Camera View Angle
-    constexpr uintptr_t CallSetAimRotationCount = 0x79C;   // Scarecrow CallSetAimRotationCount
-    constexpr uintptr_t CallSetAimRotationCountAlt = 0x810ULL; // ninmods_offsets.h
+    constexpr uintptr_t CallSetAimRotationCountAlt = 0x79C; // Scarecrow CallSetAimRotationCount
 
     constexpr uintptr_t WeaponPtr = 0x608;
     constexpr uintptr_t WeaponPtrOld = 0x4C8;

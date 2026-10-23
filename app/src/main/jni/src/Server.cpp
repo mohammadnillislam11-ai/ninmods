@@ -348,10 +348,14 @@ void ContinuousAim(uintptr_t oneself) {
             // Write primary camera view rotation (Scarecrow 0x214)
             Write<Quaternion>(oneself + Offsets::Player_ViewRotation, targetRot);
 
-            // Increment aim rotation counter to register in Unity engine
+            // Increment aim rotation counter to register in Unity engine (0x810 & 0x79C)
             int rotCount = Read<int>(oneself + Offsets::CallSetAimRotationCount);
             if (rotCount >= 0) {
                 Write<int>(oneself + Offsets::CallSetAimRotationCount, rotCount + 1);
+            }
+            int rotCountAlt = Read<int>(oneself + Offsets::CallSetAimRotationCountAlt);
+            if (rotCountAlt >= 0) {
+                Write<int>(oneself + Offsets::CallSetAimRotationCountAlt, rotCountAlt + 1);
             }
         }
 
