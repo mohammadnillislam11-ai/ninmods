@@ -1191,7 +1191,7 @@ Java_nin_app_core_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
 extern "C" JNIEXPORT void JNICALL
 Java_nin_app_core_DashboardActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
     g_hackVersion = (mode == 2) ? 2 : 1;
-    LOGD("Profile mode selected from DashboardActivity (nin.app): %d", g_hackVersion);
+    LOGD("Profile mode selected from DashboardActivity (com.ninmods.main): %d", g_hackVersion);
 }
 
 
@@ -1199,7 +1199,7 @@ Java_nin_app_core_DashboardActivity_setModeNative(JNIEnv *env, jclass clazz, jin
 extern "C" JNIEXPORT void JNICALL
 Java_nin_app_core_ModeSelectActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
     g_hackVersion = (mode == 2) ? 2 : 1;
-    LOGD("Profile mode selected from ModeSelectActivity (nin.app): %d", g_hackVersion);
+    LOGD("Profile mode selected from ModeSelectActivity (com.ninmods.main): %d", g_hackVersion);
 }
 
 
@@ -1226,10 +1226,6 @@ void StartDaemon() {
         "/data/data/com.ninmods.main/files/",
         "/data/user/0/com.ninmods.main/cache/",
         "/data/data/com.ninmods.main/cache/",
-        "/data/user/0/nin.app/files/",
-        "/data/data/nin.app/files/",
-        "/data/user/0/nin.app/cache/",
-        "/data/data/nin.app/cache/",
         "/data/local/tmp/"
     };
     
