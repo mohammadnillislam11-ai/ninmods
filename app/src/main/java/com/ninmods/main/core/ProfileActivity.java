@@ -198,14 +198,6 @@ public class ProfileActivity extends BaseActivity {
             }
         }
 
-        if (tvClockStatusText != null) {
-            if (remaining > 0) {
-                tvClockStatusText.setText("Ticking down live in real-time (" + c[0] + " days remaining)");
-                tvClockStatusText.setTextColor(0xFF00E676);
-            } else {
-                tvClockStatusText.setText("No active subscription plan or license expired.");
-                tvClockStatusText.setTextColor(0xFFFF5252);
-            }
         }
     }
 
@@ -469,13 +461,6 @@ public class ProfileActivity extends BaseActivity {
             digitRow.addView(createClockDigitBox(tvBoxSecsVal, "SECS"));
 
             card.addView(digitRow);
-
-            tvClockStatusText = new TextView(this);
-            tvClockStatusText.setText("Calculating dynamic subscription time...");
-            tvClockStatusText.setTextColor(Color.parseColor("#99FFFFFF"));
-            tvClockStatusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-            tvClockStatusText.setGravity(Gravity.CENTER);
-            card.addView(tvClockStatusText);
 
             // Divider
             View div = new View(this);

@@ -297,8 +297,6 @@ public class DashboardContentView {
         private final TextView tvBoxHoursVal;
         private final TextView tvBoxMinsVal;
         private final TextView tvBoxSecsVal;
-        private final TextView tvClockStatusText;
-        private final TextView tvPlanName;
 
         private final Handler tickerHandler = new Handler(Looper.getMainLooper());
         private final Runnable tickerRunnable = new Runnable() {
@@ -327,7 +325,7 @@ public class DashboardContentView {
             cardBg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
             setBackground(cardBg);
 
-            // Header Row: Plan Info & Active Pill
+            // Header Row: Title & Active Status Pill
             LinearLayout headerRow = new LinearLayout(context);
             headerRow.setLayoutParams(new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -336,27 +334,14 @@ public class DashboardContentView {
             headerRow.setOrientation(HORIZONTAL);
             headerRow.setGravity(Gravity.CENTER_VERTICAL);
 
-            LinearLayout titleCol = new LinearLayout(context);
-            LinearLayout.LayoutParams titleColLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-            titleCol.setLayoutParams(titleColLp);
-            titleCol.setOrientation(VERTICAL);
-
             TextView titleTv = new TextView(context);
+            LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+            titleTv.setLayoutParams(titleLp);
             titleTv.setText("ACTIVE VIP SUBSCRIPTION");
-            titleTv.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-            titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-            titleTv.setTypeface(Typeface.DEFAULT_BOLD);
-            titleCol.addView(titleTv);
-
-            tvPlanName = new TextView(context);
-            tvPlanName.setText(AuthManager.getActivePlanName(context));
-            tvPlanName.setTextColor(AppColors.WHITE);
-            tvPlanName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            tvPlanName.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-            tvPlanName.setPadding(0, dp(context, 2), 0, 0);
-            titleCol.addView(tvPlanName);
-
-            headerRow.addView(titleCol);
+            titleTv.setTextColor(AppColors.WHITE);
+            titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            titleTv.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            headerRow.addView(titleTv);
 
             // Glowing Active Status Pill
             TextView statusPill = new TextView(context);
@@ -382,7 +367,7 @@ public class DashboardContentView {
                     ViewGroup.LayoutParams.WRAP_CONTENT
             );
             drLp.topMargin = dp(context, 12);
-            drLp.bottomMargin = dp(context, 8);
+            drLp.bottomMargin = dp(context, 4);
             digitRow.setLayoutParams(drLp);
             digitRow.setOrientation(HORIZONTAL);
             digitRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -411,15 +396,6 @@ public class DashboardContentView {
             digitRow.addView(createDigitBox(context, tvBoxSecsVal, "SECS"));
 
             addView(digitRow);
-
-            // Real-Time Dynamic Status Text
-            tvClockStatusText = new TextView(context);
-            tvClockStatusText.setText("Ticking down live in real-time...");
-            tvClockStatusText.setTextColor(Color.parseColor("#BB00E676"));
-            tvClockStatusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            tvClockStatusText.setGravity(Gravity.CENTER);
-            tvClockStatusText.setPadding(0, dp(context, 2), 0, 0);
-            addView(tvClockStatusText);
 
             updateTime();
         }
@@ -493,16 +469,6 @@ public class DashboardContentView {
             if (tvBoxHoursVal != null) tvBoxHoursVal.setText(String.format(java.util.Locale.US, "%02d", c[1]));
             if (tvBoxMinsVal != null) tvBoxMinsVal.setText(String.format(java.util.Locale.US, "%02d", c[2]));
             if (tvBoxSecsVal != null) tvBoxSecsVal.setText(String.format(java.util.Locale.US, "%02d", c[3]));
-
-            if (tvClockStatusText != null) {
-                if (remaining > 0) {
-                    tvClockStatusText.setText("Ticking down live in real-time (" + c[0] + " days remaining)");
-                    tvClockStatusText.setTextColor(0xFF00E676);
-                } else {
-                    tvClockStatusText.setText("License session expired.");
-                    tvClockStatusText.setTextColor(0xFFFF5252);
-                }
-            }
         }
     }
 

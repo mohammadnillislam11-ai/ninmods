@@ -8,8 +8,8 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -88,7 +88,7 @@ public class SidebarView {
         profileCardContent.setGravity(Gravity.CENTER_HORIZONTAL);
         profileCardContent.setPadding(dp(context, 16), dp(context, 18), dp(context, 16), dp(context, 18));
 
-        // Circular Avatar Box
+        // Circular Avatar Box (Vector SVG Icon, Zero Emojis)
         FrameLayout avatarCircle = new FrameLayout(context);
         LinearLayout.LayoutParams avLp = new LinearLayout.LayoutParams(dp(context, 66), dp(context, 66));
         avatarCircle.setLayoutParams(avLp);
@@ -99,16 +99,15 @@ public class SidebarView {
         avBg.setStroke(dp(context, 2), AppColors.MAGENTA_PRIMARY);
         avatarCircle.setBackground(avBg);
 
-        TextView avatarIcon = new TextView(context);
+        ImageView avatarIcon = new ImageView(context);
         FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                dp(context, 34),
+                dp(context, 34)
         );
         iconLp.gravity = Gravity.CENTER;
         avatarIcon.setLayoutParams(iconLp);
-        avatarIcon.setText("👤");
-        avatarIcon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
-        avatarIcon.setGravity(Gravity.CENTER);
+        avatarIcon.setImageResource(R.drawable.ic_user_profile);
+        avatarIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         avatarCircle.addView(avatarIcon);
 
         profileCardContent.addView(avatarCircle);
@@ -183,7 +182,7 @@ public class SidebarView {
         roleBadge.setBackground(badgeBg);
         profileCardFrame.addView(roleBadge);
 
-        // Click on profile card also opens profile
+        // Click on profile card opens profile
         profileCardFrame.setClickable(true);
         profileCardFrame.setOnClickListener(v -> {
             if (listener != null) listener.onProfileClick();
@@ -191,7 +190,7 @@ public class SidebarView {
 
         sidebar.addView(profileCardFrame);
 
-        // 3. Navigation Items (Middle list)
+        // 3. Navigation Items (Middle list - Pure SVG Vector Icons, Zero Emojis)
         LinearLayout navList = new LinearLayout(context);
         navList.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -202,28 +201,28 @@ public class SidebarView {
         navList.setPadding(dp(context, 16), dp(context, 4), dp(context, 16), dp(context, 8));
 
         // 1. Dashboard - Highlighted Active Button (Like "New Order" with vibrant gradient button)
-        navList.addView(createActiveNavItem(context, "⊞   Dashboard", v -> {
+        navList.addView(createActiveNavItem(context, R.drawable.ic_nav_dashboard, "Dashboard", v -> {
             if (listener != null) listener.onDashboardClick();
         }));
 
         // 2. User Profile - Flat Item (Like "Orders")
-        navList.addView(createFlatNavItem(context, "👤   Account Profile", v -> {
+        navList.addView(createFlatNavItem(context, R.drawable.ic_nav_profile, "Account Profile", v -> {
             if (listener != null) listener.onProfileClick();
         }));
 
         // 3. Device Information - Flat Item (Like "Services")
-        navList.addView(createFlatNavItem(context, "📱   Device Information", v -> {
+        navList.addView(createFlatNavItem(context, R.drawable.ic_nav_device, "Device Information", v -> {
             if (listener != null) listener.onDeviceInfoClick();
         }));
 
         // 4. Driver Loader Engine - Flat Item (Like "Tickets")
-        navList.addView(createFlatNavItem(context, "⚡   Driver Loader Engine", v -> {
+        navList.addView(createFlatNavItem(context, R.drawable.ic_nav_driver, "Driver Loader Engine", v -> {
             if (listener != null) listener.onDriverLoaderClick();
         }));
 
         sidebar.addView(navList);
 
-        // 4. Bottom Footer - Log Out Session (Pinned to the very bottom, NO background per user request)
+        // 4. Bottom Footer - Log Out (Pinned to the very bottom, NO background per user request)
         LinearLayout footerLayout = new LinearLayout(context);
         footerLayout.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -232,18 +231,33 @@ public class SidebarView {
         footerLayout.setOrientation(LinearLayout.VERTICAL);
         footerLayout.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 20));
 
-        Button logoutBtn = new Button(context);
+        LinearLayout logoutBtn = new LinearLayout(context);
         LinearLayout.LayoutParams loLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(context, 44)
         );
         logoutBtn.setLayoutParams(loLp);
-        logoutBtn.setText("⏻  Log Out Session");
-        logoutBtn.setTextColor(Color.parseColor("#FF5252"));
-        logoutBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        logoutBtn.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        logoutBtn.setOrientation(LinearLayout.HORIZONTAL);
         logoutBtn.setGravity(Gravity.CENTER);
+        logoutBtn.setClickable(true);
+        logoutBtn.setFocusable(true);
         logoutBtn.setBackgroundColor(Color.TRANSPARENT); // বাটনের কোন ব্যাকগ্রাউন্ড থাকবে না
+
+        ImageView loIv = new ImageView(context);
+        LinearLayout.LayoutParams loIvLp = new LinearLayout.LayoutParams(dp(context, 20), dp(context, 20));
+        loIvLp.rightMargin = dp(context, 10);
+        loIv.setLayoutParams(loIvLp);
+        loIv.setImageResource(R.drawable.ic_nav_logout);
+        loIv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logoutBtn.addView(loIv);
+
+        TextView loTv = new TextView(context);
+        loTv.setText("Log Out"); // শুধু লগ আউট নাম হবে
+        loTv.setTextColor(Color.parseColor("#FF5252"));
+        loTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        loTv.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        logoutBtn.addView(loTv);
+
         logoutBtn.setOnClickListener(v -> {
             if (listener != null) listener.onLogoutClick();
         });
@@ -254,50 +268,80 @@ public class SidebarView {
         return sidebar;
     }
 
-    // Active Highlighted Navigation Button (Vibrant Gradient rounded pill/card like "New Order")
-    private static View createActiveNavItem(Context context, String label, View.OnClickListener onClickListener) {
-        Button btn = new Button(context);
+    // Active Highlighted Navigation Button with SVG Vector Icon
+    private static View createActiveNavItem(Context context, int iconResId, String label, View.OnClickListener onClickListener) {
+        LinearLayout row = new LinearLayout(context);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(context, 46)
         );
         lp.setMargins(0, 0, 0, dp(context, 8));
-        btn.setLayoutParams(lp);
-        btn.setText(label);
-        btn.setTextColor(AppColors.WHITE);
-        btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        btn.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        btn.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        btn.setPadding(dp(context, 16), 0, dp(context, 16), 0);
+        row.setLayoutParams(lp);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(context, 16), 0, dp(context, 16), 0);
+        row.setClickable(true);
+        row.setFocusable(true);
 
         GradientDrawable bg = new GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
                 new int[]{AppColors.MAGENTA_BTN_START, AppColors.MAGENTA_BTN_END}
         );
         bg.setCornerRadius(dp(context, 10));
-        btn.setBackground(bg);
-        btn.setOnClickListener(onClickListener);
-        return btn;
+        row.setBackground(bg);
+
+        ImageView iv = new ImageView(context);
+        LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(dp(context, 20), dp(context, 20));
+        ivLp.rightMargin = dp(context, 14);
+        iv.setLayoutParams(ivLp);
+        iv.setImageResource(iconResId);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        row.addView(iv);
+
+        TextView tv = new TextView(context);
+        tv.setText(label);
+        tv.setTextColor(AppColors.WHITE);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tv.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        row.addView(tv);
+
+        row.setOnClickListener(onClickListener);
+        return row;
     }
 
-    // Flat Clean Navigation Row (Transparent background with left icon + clean text like reference screenshot)
-    private static View createFlatNavItem(Context context, String label, View.OnClickListener onClickListener) {
-        Button btn = new Button(context);
+    // Flat Clean Navigation Row with SVG Vector Icon
+    private static View createFlatNavItem(Context context, int iconResId, String label, View.OnClickListener onClickListener) {
+        LinearLayout row = new LinearLayout(context);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(context, 44)
         );
         lp.setMargins(0, 0, 0, dp(context, 4));
-        btn.setLayoutParams(lp);
-        btn.setText(label);
-        btn.setTextColor(AppColors.WHITE);
-        btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        btn.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        btn.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        btn.setPadding(dp(context, 16), 0, dp(context, 16), 0);
-        btn.setBackgroundColor(Color.TRANSPARENT);
-        btn.setOnClickListener(onClickListener);
-        return btn;
+        row.setLayoutParams(lp);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(context, 16), 0, dp(context, 16), 0);
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setBackgroundColor(Color.TRANSPARENT);
+
+        ImageView iv = new ImageView(context);
+        LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(dp(context, 20), dp(context, 20));
+        ivLp.rightMargin = dp(context, 14);
+        iv.setLayoutParams(ivLp);
+        iv.setImageResource(iconResId);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        row.addView(iv);
+
+        TextView tv = new TextView(context);
+        tv.setText(label);
+        tv.setTextColor(AppColors.WHITE);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tv.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        row.addView(tv);
+
+        row.setOnClickListener(onClickListener);
+        return row;
     }
 
     private static int dp(Context context, int value) {
