@@ -29,6 +29,13 @@ int g_screenWidth, g_screenHeight;
 
 std::map<uintptr_t, Vector3> BasePosMap;
 
+#ifndef IS_VALID_USER_POINTER_64_DEFINED
+#define IS_VALID_USER_POINTER_64_DEFINED
+inline bool IsValidUserPointer64(uintptr_t addr) {
+    return addr >= 0x10000000ULL && addr <= 0x7FFFFFFFFFFFULL;
+}
+#endif
+
 #define maxplayerCount 200
 
 enum Mode {

@@ -731,11 +731,11 @@ public:
     // Safe Cross-Page Boundary Read (Prevents page-boundary crash)
     bool readSafe(uintptr_t addr, void *buffer, size_t size) {
         if (addr == 0 || buffer == nullptr || size == 0) return false;
-        const size_t PAGE_SIZE = 4096;
-        size_t page_offset = addr % PAGE_SIZE;
+        constexpr size_t K_PAGE_SIZE = 4096;
+        size_t page_offset = addr % K_PAGE_SIZE;
 
         // If entire read fits on the same 4KB page, read in one single call
-        if (page_offset + size <= PAGE_SIZE) {
+        if (page_offset + size <= K_PAGE_SIZE) {
             return read(addr, buffer, size);
         }
 
@@ -745,7 +745,7 @@ public:
         uintptr_t curr_addr = addr;
 
         while (bytes_left > 0) {
-            size_t chunk_limit = PAGE_SIZE - (curr_addr % PAGE_SIZE);
+            size_t chunk_limit = K_PAGE_SIZE - (curr_addr % K_PAGE_SIZE);
             size_t chunk_size = (bytes_left < chunk_limit) ? bytes_left : chunk_limit;
             if (!read(curr_addr, dst, chunk_size)) {
                 return false;
