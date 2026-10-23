@@ -19,7 +19,7 @@ android {
     defaultConfig {
         applicationId "com.ninmods.main"
         minSdkVersion 21
-        targetSdkVersion 28
+        targetSdkVersion 34
         versionCode getVersionProp("version_code", "81").toInteger()
         versionName getVersionProp("app_version", "81.0")
 
