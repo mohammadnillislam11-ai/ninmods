@@ -510,8 +510,10 @@ public class DashboardActivity extends BaseActivity {
             AuthApiController.verifyLicenseKey(DashboardActivity.this, inputKey, menu.getId(), new AuthApiController.ApiCallback() {
                 @Override
                 public void onSuccess(String message) {
-                    AuthManager.setRememberedKey(DashboardActivity.this, inputKey, cbRemember.isChecked());
+                    AuthManager.setRememberedKey(DashboardActivity.this, inputKey, true);
 
+                    // Maintain continuous screen blur without flickers into the next dialog
+                    dialog.setOnDismissListener(null);
                     dialog.dismiss();
                     DashboardContentView.updateLicenseCard(currentBodyView, DashboardActivity.this);
                     refreshBody();
@@ -543,7 +545,11 @@ public class DashboardActivity extends BaseActivity {
             window.setGravity(Gravity.CENTER);
 
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(0.65f);
+            window.setDimAmount(0.72f);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                window.getAttributes().setBlurBehindRadius(35);
+            }
         }
 
         setScreenBlur(true);
@@ -677,7 +683,11 @@ public class DashboardActivity extends BaseActivity {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             window.setGravity(Gravity.CENTER);
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(0.65f);
+            window.setDimAmount(0.72f);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                window.getAttributes().setBlurBehindRadius(35);
+            }
         }
 
         setScreenBlur(true);

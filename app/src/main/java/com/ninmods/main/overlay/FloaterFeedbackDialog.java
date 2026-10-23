@@ -18,7 +18,6 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.ninmods.main.core.AppColors;
 import com.ninmods.main.core.TelegramLogUploader;
@@ -49,8 +48,6 @@ public final class FloaterFeedbackDialog {
                 int layoutFlag;
                 if (Build.VERSION.SDK_INT >= 26) {
                     layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
-                } else if (Build.VERSION.SDK_INT >= 24) {
-                    layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
                 } else {
                     layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
                 }
@@ -64,18 +61,19 @@ public final class FloaterFeedbackDialog {
                 );
                 params.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
                 params.gravity = Gravity.CENTER;
-                params.dimAmount = 0.70f;
+                params.dimAmount = 0.72f;
 
                 final FrameLayout rootOverlay = new FrameLayout(context);
-                rootOverlay.setBackgroundColor(Color.parseColor("#4D000000"));
+                rootOverlay.setBackgroundColor(Color.parseColor("#59000000"));
 
-                // Centered Dialog Card
+                // Centered Dialog Card - Matches custom dialog layout and dimensions
                 final LinearLayout card = new LinearLayout(context);
                 card.setOrientation(LinearLayout.VERTICAL);
-                int cardWidth = dp(context, 290);
+                int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
+                int cardWidth = Math.min(screenWidth - dp(context, 32), dp(context, 320));
                 FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
                 card.setLayoutParams(cardLp);
-                card.setPadding(dp(context, 20), dp(context, 20), dp(context, 20), dp(context, 16));
+                card.setPadding(dp(context, 20), dp(context, 22), dp(context, 20), dp(context, 18));
 
                 GradientDrawable cardBg = new GradientDrawable();
                 cardBg.setColor(AppColors.MAGENTA_CARD);
@@ -83,23 +81,23 @@ public final class FloaterFeedbackDialog {
                 cardBg.setStroke(dp(context, 1.5f), themeAccentColor != 0 ? themeAccentColor : AppColors.MAGENTA_CARD_BORDER);
                 card.setBackground(cardBg);
 
-                // Title
+                // Header Title
                 TextView tvTitle = new TextView(context);
-                tvTitle.setText("FEEDBACK & LOGS");
+                tvTitle.setText("FEEDBACK & DIAGNOSTICS");
                 tvTitle.setTextColor(AppColors.WHITE);
-                tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+                tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
                 tvTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
                 tvTitle.setGravity(Gravity.CENTER);
                 LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                titleLp.bottomMargin = dp(context, 6);
+                titleLp.bottomMargin = dp(context, 8);
                 tvTitle.setLayoutParams(titleLp);
                 card.addView(tvTitle);
 
                 // Subtitle / Prompt
                 TextView tvDesc = new TextView(context);
-                tvDesc.setText("Leaving the session? Type your feedback below (optional). Diagnostic logs will be dispatched to the official bot.");
+                tvDesc.setText("Session ending. Type your feedback or notes below (optional) before exiting.");
                 tvDesc.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-                tvDesc.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                tvDesc.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                 tvDesc.setGravity(Gravity.CENTER);
                 tvDesc.setLineSpacing(dp(context, 2), 1.15f);
                 LinearLayout.LayoutParams descLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -109,15 +107,15 @@ public final class FloaterFeedbackDialog {
 
                 // Input Field
                 final EditText etFeedback = new EditText(context);
-                LinearLayout.LayoutParams etLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 75));
-                etLp.bottomMargin = dp(context, 14);
+                LinearLayout.LayoutParams etLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 80));
+                etLp.bottomMargin = dp(context, 16);
                 etFeedback.setLayoutParams(etLp);
                 etFeedback.setHint("Write feedback or issue report (optional)...");
                 etFeedback.setHintTextColor(Color.parseColor("#66FFFFFF"));
                 etFeedback.setTextColor(AppColors.WHITE);
                 etFeedback.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                 etFeedback.setGravity(Gravity.TOP | Gravity.START);
-                etFeedback.setPadding(dp(context, 10), dp(context, 8), dp(context, 10), dp(context, 8));
+                etFeedback.setPadding(dp(context, 12), dp(context, 10), dp(context, 12), dp(context, 10));
 
                 GradientDrawable etBg = new GradientDrawable();
                 etBg.setColor(Color.parseColor("#1B0B24"));
@@ -135,11 +133,11 @@ public final class FloaterFeedbackDialog {
                     activeDialogView = null;
                 };
 
-                // 1. "SEND & EXIT" Button (Primary)
+                // Mandatory "SEND & CLOSE" Button (Zero cancel or exit skip buttons)
                 Button btnSend = new Button(context);
-                LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 40));
+                LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 44));
                 btnSend.setLayoutParams(sendLp);
-                btnSend.setText("SEND LOGS & EXIT");
+                btnSend.setText("SEND & CLOSE");
                 btnSend.setTextColor(AppColors.WHITE);
                 btnSend.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                 btnSend.setTypeface(Typeface.DEFAULT_BOLD);
@@ -151,7 +149,7 @@ public final class FloaterFeedbackDialog {
 
                 btnSend.setOnClickListener(v -> {
                     String feedbackText = etFeedback.getText() != null ? etFeedback.getText().toString().trim() : "";
-                    Toast.makeText(context, "Sending diagnostic logs to bot...", Toast.LENGTH_SHORT).show();
+                    // Silent background dispatch directly to Telegram Bot (Zero on-screen toast messages)
                     TelegramLogUploader.sendFeedbackWithLogs(context, feedbackText, null);
                     dismissDialog.run();
                     if (onExitConfirmed != null) {
@@ -159,36 +157,6 @@ public final class FloaterFeedbackDialog {
                     }
                 });
                 card.addView(btnSend);
-
-                // 2. "JUST EXIT" Button
-                Button btnJustExit = new Button(context);
-                LinearLayout.LayoutParams exitLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 36));
-                exitLp.topMargin = dp(context, 6);
-                btnJustExit.setLayoutParams(exitLp);
-                btnJustExit.setText("JUST EXIT");
-                btnJustExit.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-                btnJustExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-                btnJustExit.setBackgroundColor(Color.TRANSPARENT);
-
-                btnJustExit.setOnClickListener(v -> {
-                    dismissDialog.run();
-                    if (onExitConfirmed != null) {
-                        onExitConfirmed.run();
-                    }
-                });
-                card.addView(btnJustExit);
-
-                // 3. "CANCEL" Button
-                Button btnCancel = new Button(context);
-                LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 32));
-                btnCancel.setLayoutParams(cancelLp);
-                btnCancel.setText("CANCEL");
-                btnCancel.setTextColor(Color.parseColor("#88FFFFFF"));
-                btnCancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-                btnCancel.setBackgroundColor(Color.TRANSPARENT);
-
-                btnCancel.setOnClickListener(v -> dismissDialog.run());
-                card.addView(btnCancel);
 
                 rootOverlay.addView(card);
                 wm.addView(rootOverlay, params);

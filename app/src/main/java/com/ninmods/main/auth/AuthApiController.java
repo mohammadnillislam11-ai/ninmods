@@ -266,6 +266,19 @@ public final class AuthApiController {
                 payload.put("hwid", hwid);
                 payload.put("deviceModel", Build.MANUFACTURER + " " + Build.MODEL);
 
+                String username = AuthManager.getActiveUsername(context);
+                int userId = AuthManager.getActiveUserId(context);
+                String sToken = AuthManager.getSessionToken(context);
+                if (!username.isEmpty()) payload.put("username", username);
+                if (userId > 0) {
+                    payload.put("userId", userId);
+                    payload.put("user_id", userId);
+                }
+                if (!sToken.isEmpty()) {
+                    payload.put("session_token", sToken);
+                    payload.put("token", sToken);
+                }
+
                 String response = executePost(context, ENDPOINT_VERIFY_KEY, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
                 if (response != null && !response.trim().isEmpty()) {
                     JSONObject resJson = new JSONObject(response);
@@ -306,6 +319,7 @@ public final class AuthApiController {
                         String sessionToken = resJson.optString("session_token", resJson.optString("token", ""));
                         String durationType = resJson.optString("duration_type", resJson.optString("plan", "30_days"));
                         AuthManager.updateActiveLicense(context, key, durationType, expiresAt, remainingSec);
+                        AuthManager.setRememberedKey(context, key, true);
                         if (sessionToken.isEmpty()) {
                             sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();
                         }

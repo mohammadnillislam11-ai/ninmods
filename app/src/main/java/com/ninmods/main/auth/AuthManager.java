@@ -106,13 +106,27 @@ public final class AuthManager {
             Prefs.with(context).writeLong(scope + "license_saved_at_ms", now);
             Prefs.with(context).writeLong(scope + "license_expires_at_ms", expiresAtMs);
         } else {
-            // New or un-licensed account: clear license for this scope so no leak occurs
-            Prefs.with(context).writeString(scope + "license_key", "");
-            Prefs.with(context).writeString(scope + "license_duration_type", "");
-            Prefs.with(context).writeString(scope + "license_expires_at", "");
-            Prefs.with(context).writeInt(scope + "license_remaining_sec", 0);
-            Prefs.with(context).writeLong(scope + "license_saved_at_ms", 0);
-            Prefs.with(context).writeLong(scope + "license_expires_at_ms", 0);
+            // Preserve existing valid license if already saved on this account
+            String existingKey = Prefs.with(context).readString(scope + "license_key", "");
+            if (existingKey.isEmpty()) {
+                existingKey = Prefs.with(context).readString(scope + "saved_license_key", "");
+            }
+            if (existingKey.isEmpty() && userId > 0) {
+                existingKey = Prefs.with(context).readString("saved_license_key_user_" + userId, "");
+            }
+            long existingRemaining = getRemainingSeconds(context);
+            if (existingKey != null && !existingKey.trim().isEmpty() && existingRemaining > 0) {
+                // Key is already active and valid for this account, keep it intact
+                Prefs.with(context).writeString(scope + "license_key", existingKey.trim());
+            } else {
+                // Truly un-licensed account
+                Prefs.with(context).writeString(scope + "license_key", "");
+                Prefs.with(context).writeString(scope + "license_duration_type", "");
+                Prefs.with(context).writeString(scope + "license_expires_at", "");
+                Prefs.with(context).writeInt(scope + "license_remaining_sec", 0);
+                Prefs.with(context).writeLong(scope + "license_saved_at_ms", 0);
+                Prefs.with(context).writeLong(scope + "license_expires_at_ms", 0);
+            }
         }
 
         // Synchronize active compatibility keys strictly for this active user
@@ -311,7 +325,23 @@ public final class AuthManager {
         String scope = getActiveUserScope(context);
         String key = Prefs.with(context).readString(scope + "license_key", "");
         if (key.isEmpty()) {
+            key = Prefs.with(context).readString(scope + "saved_license_key", "");
+        }
+        if (key.isEmpty()) {
+            int userId = getActiveUserId(context);
+            if (userId > 0) {
+                key = Prefs.with(context).readString("saved_license_key_user_" + userId, "");
+            }
+        }
+        if (key.isEmpty()) {
             key = Prefs.with(context).readString(PREF_KEY_ACTIVE_KEY, "");
+        }
+        if (key.isEmpty()) {
+            key = getRememberedKey(context);
+        }
+        if (!key.isEmpty() && Prefs.with(context).readString(scope + "license_key", "").isEmpty()) {
+            Prefs.with(context).writeString(scope + "license_key", key);
+            Prefs.with(context).writeString(PREF_KEY_ACTIVE_KEY, key);
         }
         return key;
     }

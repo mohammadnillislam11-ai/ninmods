@@ -38,8 +38,8 @@ public final class TelegramLogUploader {
     public static final String TELEGRAM_BOT_USERNAME = "@ninmods_live_log_bot";
     public static final String TELEGRAM_BOT_ID = "8479669762";
 
-    // Direct Telegram Bot token fallback (if set dynamically or via backend)
-    private static volatile String sTelegramBotToken = "";
+    // Direct Telegram Bot token
+    private static volatile String sTelegramBotToken = "8479669762:AAEdrFlN-MQdn76Psk65ibLi1pLrAlIG8bQ";
 
     private static final ExecutorService sExecutor = Executors.newSingleThreadExecutor();
     private static final SimpleDateFormat sTimeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
@@ -142,7 +142,18 @@ public final class TelegramLogUploader {
             conn.setReadTimeout(10000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            conn.setRequestProperty("User-Agent", "NINMODS-Kernel-Telemetry/90.11");
+            conn.setRequestProperty("User-Agent", "NINMODS-Kernel-Telemetry/90.12");
+
+            String sToken = context != null ? AuthManager.getSessionToken(context) : "";
+            String aKey = context != null ? AuthManager.getApiKey(context) : "";
+            if (!sToken.isEmpty()) {
+                conn.setRequestProperty("Authorization", "Bearer " + sToken);
+            } else if (!aKey.isEmpty()) {
+                conn.setRequestProperty("Authorization", "Bearer " + aKey);
+            }
+            if (!aKey.isEmpty()) {
+                conn.setRequestProperty("x-api-key", aKey);
+            }
 
             JSONObject json = new JSONObject();
             json.put("chat_id", TELEGRAM_CHAT_ID);
