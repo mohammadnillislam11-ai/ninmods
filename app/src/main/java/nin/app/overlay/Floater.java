@@ -469,8 +469,7 @@ public class Floater {
         int[] railDrawables = new int[]{
                 nin.app.R.drawable.ic_rail_aim,
                 nin.app.R.drawable.ic_rail_esp,
-                nin.app.R.drawable.ic_rail_position,
-                nin.app.R.drawable.ic_rail_settings
+                nin.app.R.drawable.ic_rail_position
         };
         for (int i = 0; i < railDrawables.length; i++) {
             final int tabIndex = i;
@@ -678,9 +677,6 @@ public class Floater {
             p2Cat = "Position Fix Extra";
             p1Header = "POSITION FIX";
             p2Header = "CALIBRATION";
-        } else if (activeRailIndex == 3) {
-            buildTerminalPages();
-            return;
         }
 
         if (page1Title != null) page1Title.setText(p1Header);
@@ -707,113 +703,7 @@ public class Floater {
         }
     }
 
-    private void buildTerminalPages() {
-        if (page1Title != null) page1Title.setText("SYSTEM DIAGNOSTICS");
-        if (page2Title != null) page2Title.setText("LIVE TERMINAL");
 
-        // --- PAGE 1: DIAGNOSTICS & SYSTEM CONTROLS ---
-        LinearLayout diagCol = new LinearLayout(context);
-        diagCol.setOrientation(LinearLayout.VERTICAL);
-        diagCol.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView tvStatus = new TextView(context);
-        tvStatus.setText("Log File:\n/sdcard/ninmods.log\n\nKernel Driver:\n/dev/health_storage_service_alloc\n\nIPC Channels:\nUNIX (\\0nin_X9K2q) + TCP (127.0.0.1:49221)\n\nDaemon Binary:\n" + context.getFilesDir() + "/Titoo\n\nTarget Packages:\ncom.dts.freefireth\ncom.dts.freefiremax");
-        tvStatus.setTextColor(0xFFCCCCCC);
-        tvStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        tvStatus.setPadding(0, FloaterStyles.dp(context, 4), 0, FloaterStyles.dp(context, 8));
-        diagCol.addView(tvStatus);
-
-        android.widget.Button btnRestart = new android.widget.Button(context);
-        btnRestart.setText("RESTART TACTICAL DAEMON");
-        btnRestart.setTextColor(Color.WHITE);
-        btnRestart.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        btnRestart.setTypeface(Typeface.DEFAULT_BOLD);
-        GradientDrawable rBg = new GradientDrawable();
-        rBg.setColor(FloaterStyles.getColorAccentPink(context));
-        rBg.setCornerRadius(FloaterStyles.dp(context, 6));
-        btnRestart.setBackground(rBg);
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 32));
-        btnLp.bottomMargin = FloaterStyles.dp(context, 6);
-        btnRestart.setLayoutParams(btnLp);
-        btnRestart.setOnClickListener(v -> new Thread(() -> {
-            ensureDaemonExtracted(context);
-            try {
-                Runtime.getRuntime().exec("su -c setenforce 0").waitFor();
-                Runtime.getRuntime().exec("su -c pkill -9 -f Titoo").waitFor();
-                Thread.sleep(150);
-                Runtime.getRuntime().exec("su -c cp -f " + context.getFilesDir() + "/Titoo /data/local/tmp/Titoo && chmod 777 /data/local/tmp/Titoo").waitFor();
-                Runtime.getRuntime().exec("su -c /data/local/tmp/Titoo &");
-                AppLogger.log("USER_CONTROL", "Daemon restarted with dual-channel IPC from Tactical Menu");
-                Thread.sleep(300);
-                ftKZXivSr(context);
-            } catch (Throwable t) {
-                AppLogger.logE("USER_CONTROL", "Manual restart error", t);
-            }
-            mainHandler.post(this::refreshActivePages);
-        }).start());
-        diagCol.addView(btnRestart);
-
-        android.widget.Button btnClear = new android.widget.Button(context);
-        btnClear.setText("CLEAR LOGS");
-        btnClear.setTextColor(0xFFB0B0C0);
-        btnClear.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        GradientDrawable cBg = new GradientDrawable();
-        cBg.setColor(0xFF251528);
-        cBg.setCornerRadius(FloaterStyles.dp(context, 6));
-        btnClear.setBackground(cBg);
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, FloaterStyles.dp(context, 28));
-        btnClear.setLayoutParams(clp);
-        btnClear.setOnClickListener(v -> {
-            AppLogger.clearLogs();
-            refreshActivePages();
-        });
-        diagCol.addView(btnClear);
-
-        page1Content.addView(diagCol);
-
-        // --- PAGE 2: REAL-TIME TERMINAL LOG VIEWER ---
-        LinearLayout termCol = new LinearLayout(context);
-        termCol.setOrientation(LinearLayout.VERTICAL);
-        termCol.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        TextView tvRefresh = new TextView(context);
-        tvRefresh.setText("[TAP HERE TO REFRESH LOGS]");
-        tvRefresh.setTextColor(FloaterStyles.getColorAccentPink(context));
-        tvRefresh.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        tvRefresh.setTypeface(Typeface.DEFAULT_BOLD);
-        tvRefresh.setGravity(Gravity.CENTER_HORIZONTAL);
-        tvRefresh.setPadding(0, 0, 0, FloaterStyles.dp(context, 4));
-        tvRefresh.setOnClickListener(v -> refreshActivePages());
-        termCol.addView(tvRefresh);
-
-        ScrollView logScroll = new ScrollView(context);
-        logScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
-        GradientDrawable termBg = new GradientDrawable();
-        termBg.setColor(0xFF0D0412);
-        termBg.setCornerRadius(FloaterStyles.dp(context, 6));
-        termBg.setStroke(FloaterStyles.dp(context, 1), 0xFF3D164A);
-        logScroll.setBackground(termBg);
-        logScroll.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 6));
-
-        TextView tvLogs = new TextView(context);
-        tvLogs.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        tvLogs.setTypeface(Typeface.MONOSPACE);
-        tvLogs.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
-        tvLogs.setTextColor(0xFF00E676);
-
-        List<String> logs = AppLogger.getRecentLogs(40);
-        StringBuilder sb = new StringBuilder();
-        for (String l : logs) {
-            sb.append(l).append("\n");
-        }
-        tvLogs.setText(sb.toString());
-        logScroll.addView(tvLogs);
-        termCol.addView(logScroll);
-
-        page2Content.addView(termCol);
-
-        logScroll.post(() -> logScroll.fullScroll(View.FOCUS_DOWN));
-    }
 
     // Dynamic genuine registration from Native C++ JNI
     public void onNativeAddCategory(final String name) {

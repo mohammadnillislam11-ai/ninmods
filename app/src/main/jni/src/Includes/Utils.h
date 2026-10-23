@@ -48,6 +48,8 @@ struct DriverModuleBaseIo {
 static inline int OpenDriver() {
     if (driver_fd > 0) return driver_fd;
 
+    NIN_LOGI("DRIVER_A2Z", "=== [DRIVER_INIT] Scanning for Ring 0 Kernel Driver device nodes ===");
+
     const char* candidate_nodes[] = {
         "/dev/health_storage_service_alloc",
         "/dev/BYNb",
@@ -60,10 +62,13 @@ static inline int OpenDriver() {
         if (fd >= 0) {
             driver_fd = fd;
             strncpy(active_driver_node, node, sizeof(active_driver_node) - 1);
-            NIN_LOGI("DRIVER", ">>> Connected to Kernel Driver: %s (FD: %d) <<<", node, driver_fd);
+            NIN_LOGI("DRIVER_A2Z", ">>> [DRIVER_CONNECTED] SUCCESS: Attached to Ring 0 Kernel Driver Node '%s' (FD: %d) <<<", node, driver_fd);
             return driver_fd;
+        } else {
+            NIN_LOGD("DRIVER_A2Z", "[DRIVER_PROBE] Node '%s' unreachable: fd=%d, errno=%d (%s)", node, fd, errno, strerror(errno));
         }
     }
+    NIN_LOGE("DRIVER_A2Z", ">>> [DRIVER_FAIL] All candidate driver nodes failed to open! Ensure com.ninmods.loader has loaded driver. <<<");
     return -1;
 }
 
@@ -87,7 +92,19 @@ static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, 
     io.size = (uint64_t)size;
 
     int ret = ioctl(driver_fd, IOCTL_RT_READ, &io);
-    return (ret == 0);
+    if (ret == 0) {
+        static uint32_t s_read_success_count = 0;
+        if ((++s_read_success_count % 500) == 1) {
+            NIN_LOGI("DRIVER_A2Z", "[IOCTL_READ_OK] Sampled: pid=%d, addr=0x%lx, size=%zu bytes, total_reads=%u", pid, (unsigned long)address, size, s_read_success_count);
+        }
+        return true;
+    } else {
+        static uint32_t s_read_err_count = 0;
+        if ((++s_read_err_count % 100) == 1) {
+            NIN_LOGE("DRIVER_A2Z", "[IOCTL_READ_FAIL] Failed on pid=%d, addr=0x%lx, size=%zu, ret=%d, errno=%d (%s)", pid, (unsigned long)address, size, ret, errno, strerror(errno));
+        }
+        return false;
+    }
 }
 
 static inline bool DriverWriteMemory(pid_t pid, uintptr_t address, const void* buffer, size_t size) {
@@ -103,7 +120,13 @@ static inline bool DriverWriteMemory(pid_t pid, uintptr_t address, const void* b
     io.size = (uint64_t)size;
 
     int ret = ioctl(driver_fd, IOCTL_RT_WRITE, &io);
-    return (ret == 0);
+    if (ret == 0) {
+        NIN_LOGI("DRIVER_A2Z", "[IOCTL_WRITE_OK] Written %zu bytes to pid=%d at addr=0x%lx", size, pid, (unsigned long)address);
+        return true;
+    } else {
+        NIN_LOGE("DRIVER_A2Z", "[IOCTL_WRITE_FAIL] Write failed on pid=%d at addr=0x%lx, size=%zu, ret=%d, errno=%d (%s)", pid, (unsigned long)address, size, ret, errno, strerror(errno));
+        return false;
+    }
 }
 
 static inline uintptr_t DriverGetModuleBase(pid_t pid, const char* moduleName) {
@@ -120,11 +143,14 @@ static inline uintptr_t DriverGetModuleBase(pid_t pid, const char* moduleName) {
     bio.name_ptr = reinterpret_cast<uint64_t>(name_buf);
     bio.base = 0;
 
-    if (ioctl(driver_fd, IOCTL_RT_BASE, &bio) == 0 && bio.base > 0) {
-        NIN_LOGI("DRIVER", "DriverGetModuleBase: Found %s at 0x%lx via Ring 0 IOCTL_RT_BASE", moduleName, (unsigned long)bio.base);
+    int ret = ioctl(driver_fd, IOCTL_RT_BASE, &bio);
+    if (ret == 0 && bio.base > 0) {
+        NIN_LOGI("DRIVER_A2Z", ">>> [IOCTL_BASE_OK] Module '%s' located at 0x%lx for pid=%d via Ring 0 Driver <<<", moduleName, (unsigned long)bio.base, pid);
         return (uintptr_t)bio.base;
+    } else {
+        NIN_LOGE("DRIVER_A2Z", "[IOCTL_BASE_FAIL] Module '%s' query returned base=0x%lx, ret=%d, errno=%d (%s) for pid=%d", moduleName, (unsigned long)bio.base, ret, errno, strerror(errno), pid);
+        return 0;
     }
-    return 0;
 }
 
 #define halfShift 10

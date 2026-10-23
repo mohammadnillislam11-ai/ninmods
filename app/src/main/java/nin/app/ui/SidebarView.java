@@ -22,7 +22,7 @@ public class SidebarView {
     public interface SidebarListener {
         void onDashboardClick();
         void onDeviceInfoClick();
-        void onModeSelectClick();
+        void onDriverLoaderClick();
         void onPricingClick();
         void onProfileClick();
     }
@@ -93,6 +93,11 @@ public class SidebarView {
         // 4. Device Information (Opens DeviceInfoActivity)
         navList.addView(createNavItem(context, "Device Information", v -> {
             if (listener != null) listener.onDeviceInfoClick();
+        }));
+
+        // 5. Ring 0 Driver Loader (Opens com.ninmods.loader)
+        navList.addView(createNavItem(context, "Driver Loader Engine", v -> {
+            if (listener != null) listener.onDriverLoaderClick();
         }));
 
         sidebar.addView(navList);

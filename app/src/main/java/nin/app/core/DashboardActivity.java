@@ -3,6 +3,7 @@ package nin.app.core;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -48,22 +49,14 @@ public class DashboardActivity extends BaseActivity {
         System.loadLibrary("ninmods");
     }
 
-    public static final int MODE_SAFE = 1;
-    public static final int MODE_EXTREME = 2;
-    public static final String PREF_KEY_MODE = "config_mode";
-
     private DrawerLayout drawerLayout;
     private LinearLayout mainContainer;
     private View currentBodyView;
-    private int currentMode = MODE_SAFE;
+    private BroadcastReceiver driverStateReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        currentMode = Prefs.with(this).readInt(PREF_KEY_MODE, MODE_SAFE);
-        setModeNative(currentMode);
-
         buildInterface();
     }
 
@@ -75,6 +68,25 @@ public class DashboardActivity extends BaseActivity {
                 if (mainContainer != null) mainContainer.setRenderEffect(null);
                 if (getFooterView() != null) getFooterView().setRenderEffect(null);
             }
+        }
+        if (driverStateReceiver == null) {
+            driverStateReceiver = DriverManager.registerDriverStateReceiver(this, (isLoaded, mode, activeNode) -> {
+                runOnUiThread(() -> {
+                    Toast.makeText(DashboardActivity.this, "Driver: " + (isLoaded ? "ACTIVE (" + mode + ")" : "OFFLINE"), Toast.LENGTH_SHORT).show();
+                    refreshBody();
+                });
+            });
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (driverStateReceiver != null) {
+            try {
+                unregisterReceiver(driverStateReceiver);
+            } catch (Exception ignored) {}
+            driverStateReceiver = null;
         }
     }
 
@@ -188,9 +200,9 @@ public class DashboardActivity extends BaseActivity {
             }
 
             @Override
-            public void onModeSelectClick() {
+            public void onDriverLoaderClick() {
                 drawerLayout.closeDrawer(Gravity.START);
-                startActivity(new Intent(DashboardActivity.this, ModeSelectActivity.class));
+                DriverManager.launchDriverLoader(DashboardActivity.this);
             }
 
             @Override
@@ -214,18 +226,10 @@ public class DashboardActivity extends BaseActivity {
         if (currentBodyView != null) {
             mainContainer.removeView(currentBodyView);
         }
-        currentBodyView = DashboardContentView.create(this, currentMode, new DashboardContentView.DashboardListener() {
+        currentBodyView = DashboardContentView.create(this, new DashboardContentView.DashboardListener() {
             @Override
             public void onBrandMenuClick(IMenuProject menu) {
                 showKeyVerificationDialog(menu);
-            }
-
-            @Override
-            public void onModeSelected(int mode) {
-                currentMode = mode;
-                Prefs.with(DashboardActivity.this).writeInt(PREF_KEY_MODE, mode);
-                setModeNative(mode);
-                refreshBody();
             }
 
             @Override
@@ -235,23 +239,41 @@ public class DashboardActivity extends BaseActivity {
                     return;
                 }
 
-                // Official Android native AlertDialog Component
-                new AlertDialog.Builder(DashboardActivity.this)
-                        .setTitle("Launch " + gameName)
-                        .setMessage("Do you want to launch " + gameName + "?")
-                        .setPositiveButton("LAUNCH", (dialog, which) -> {
-                            Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
-                            if (launchIntent != null) {
-                                startActivity(launchIntent);
-                            } else {
-                                Toast.makeText(DashboardActivity.this, "Unable to launch " + gameName, Toast.LENGTH_SHORT).show();
-                            }
-                        })
-                        .setNegativeButton("CANCEL", null)
-                        .show();
+                if (!DriverManager.isDriverActive()) {
+                    new AlertDialog.Builder(DashboardActivity.this)
+                            .setTitle("Driver Loader Required")
+                            .setMessage("Ring 0 Kernel Driver is not active. Would you like to open the Driver Loader (" + DriverManager.LOADER_PACKAGE_NAME + ") first?")
+                            .setPositiveButton("OPEN LOADER", (dialog, which) -> {
+                                DriverManager.launchDriverLoader(DashboardActivity.this);
+                            })
+                            .setNeutralButton("LAUNCH ANYWAY", (dialog, which) -> {
+                                launchGame(packageName, gameName);
+                            })
+                            .setNegativeButton("CANCEL", null)
+                            .show();
+                    return;
+                }
+
+                launchGame(packageName, gameName);
             }
         });
         mainContainer.addView(currentBodyView);
+    }
+
+    private void launchGame(final String packageName, final String gameName) {
+        new AlertDialog.Builder(DashboardActivity.this)
+                .setTitle("Launch " + gameName)
+                .setMessage("Do you want to launch " + gameName + "?")
+                .setPositiveButton("LAUNCH", (dialog, which) -> {
+                    Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
+                    if (launchIntent != null) {
+                        startActivity(launchIntent);
+                    } else {
+                        Toast.makeText(DashboardActivity.this, "Unable to launch " + gameName, Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("CANCEL", null)
+                .show();
     }
 
     private void showKeyVerificationDialog(final IMenuProject menu) {
@@ -382,67 +404,6 @@ public class DashboardActivity extends BaseActivity {
 
         card.addView(stageKeyInput);
 
-        // STAGE 2: Engine Selection Stage Container (Appears with smooth native animation on key success)
-        final LinearLayout stageEngineSelect = new LinearLayout(this);
-        stageEngineSelect.setOrientation(LinearLayout.VERTICAL);
-        stageEngineSelect.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        stageEngineSelect.setVisibility(View.GONE);
-
-        // Success Indicator
-        TextView tvSuccess = new TextView(this);
-        tvSuccess.setText("Key Verified Successfully!");
-        tvSuccess.setTextColor(Color.parseColor("#00E676"));
-        tvSuccess.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        tvSuccess.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-        tvSuccess.setGravity(Gravity.CENTER);
-        tvSuccess.setPadding(0, 0, 0, dp(6));
-        stageEngineSelect.addView(tvSuccess);
-
-        // Prompt Subtitle
-        TextView tvPrompt = new TextView(this);
-        tvPrompt.setText("SELECT OPERATIONAL ENGINE");
-        tvPrompt.setTextColor(AppColors.WHITE);
-        tvPrompt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        tvPrompt.setTypeface(Typeface.DEFAULT_BOLD);
-        tvPrompt.setGravity(Gravity.CENTER);
-        tvPrompt.setPadding(0, 0, 0, dp(12));
-        stageEngineSelect.addView(tvPrompt);
-
-        // 1. Safe Engine Option Card
-        View cardSafe = createEngineOptionItem(this, "Safe Engine", "Anti-Detection & Memory Protection", "#00E676", v -> {
-            currentMode = MODE_SAFE;
-            Prefs.with(DashboardActivity.this).writeInt(PREF_KEY_MODE, MODE_SAFE);
-            setModeNative(MODE_SAFE);
-            refreshBody();
-            dialog.dismiss();
-            launchMenuWithOverlayCheck(menu, "Safe Engine");
-        });
-        stageEngineSelect.addView(cardSafe);
-
-        // 2. External Engine Option Card
-        String themeHex = String.format("#%06X", (0xFFFFFF & menu.getThemeColor()));
-        View cardExternal = createEngineOptionItem(this, "External Engine", "Tactical Combat & External Hook", themeHex, v -> {
-            currentMode = MODE_EXTREME;
-            Prefs.with(DashboardActivity.this).writeInt(PREF_KEY_MODE, MODE_EXTREME);
-            setModeNative(MODE_EXTREME);
-            refreshBody();
-            dialog.dismiss();
-            launchMenuWithOverlayCheck(menu, "External Engine");
-        });
-        stageEngineSelect.addView(cardExternal);
-
-        // Cancel in Stage 2
-        Button btnCancelStage2 = new Button(this);
-        btnCancelStage2.setLayoutParams(cancelLp);
-        btnCancelStage2.setText("CANCEL");
-        btnCancelStage2.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        btnCancelStage2.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        btnCancelStage2.setBackgroundColor(Color.TRANSPARENT);
-        btnCancelStage2.setOnClickListener(v -> dialog.dismiss());
-        stageEngineSelect.addView(btnCancelStage2);
-
-        card.addView(stageEngineSelect);
-
         // Key verification execution
         btnVerify.setOnClickListener(v -> {
             String inputKey = etKey.getText() != null ? etKey.getText().toString().trim() : "";
@@ -462,13 +423,9 @@ public class DashboardActivity extends BaseActivity {
                 @Override
                 public void onSuccess(String message) {
                     if (!dialog.isShowing()) return;
-
-                    // Native Android Default Component Transition Animation
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                        android.transition.TransitionManager.beginDelayedTransition(card);
-                    }
-                    stageKeyInput.setVisibility(View.GONE);
-                    stageEngineSelect.setVisibility(View.VISIBLE);
+                    dialog.dismiss();
+                    Toast.makeText(DashboardActivity.this, "Key Verified! Connecting Ring 0 Driver...", Toast.LENGTH_SHORT).show();
+                    launchMenuWithOverlayCheck(menu, "Ring 0 Driver");
                 }
 
                 @Override
@@ -508,67 +465,6 @@ public class DashboardActivity extends BaseActivity {
         dialog.show();
     }
 
-    private View createEngineOptionItem(Context context, String title, String subtitle, String accentHex, View.OnClickListener onClickListener) {
-        LinearLayout row = new LinearLayout(context);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54));
-        lp.bottomMargin = dp(10);
-        row.setLayoutParams(lp);
-        row.setPadding(dp(14), dp(8), dp(14), dp(8));
-
-        int accentColor = Color.parseColor(accentHex);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(AppColors.MAGENTA_CHIP);
-        bg.setCornerRadius(dp(10));
-        bg.setStroke(dp(1), accentColor);
-        row.setBackground(bg);
-
-        // Indicator Dot
-        View dot = new View(context);
-        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(10), dp(10));
-        dotLp.rightMargin = dp(12);
-        dot.setLayoutParams(dotLp);
-        GradientDrawable dotBg = new GradientDrawable();
-        dotBg.setShape(GradientDrawable.OVAL);
-        dotBg.setColor(accentColor);
-        dot.setBackground(dotBg);
-        row.addView(dot);
-
-        // Text Column
-        LinearLayout textCol = new LinearLayout(context);
-        textCol.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        textCol.setLayoutParams(textLp);
-
-        TextView tvTitle = new TextView(context);
-        tvTitle.setText(title);
-        tvTitle.setTextColor(AppColors.WHITE);
-        tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        textCol.addView(tvTitle);
-
-        TextView tvSub = new TextView(context);
-        tvSub.setText(subtitle);
-        tvSub.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        tvSub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        textCol.addView(tvSub);
-
-        row.addView(textCol);
-
-        // Action Indicator
-        TextView tvSelect = new TextView(context);
-        tvSelect.setText("START");
-        tvSelect.setTextColor(accentColor);
-        tvSelect.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        tvSelect.setTypeface(Typeface.DEFAULT_BOLD);
-        tvSelect.setPadding(dp(8), dp(4), dp(4), dp(4));
-        row.addView(tvSelect);
-
-        row.setOnClickListener(onClickListener);
-        return row;
-    }
-
     private void launchMenuWithOverlayCheck(IMenuProject menu, String engineName) {
         if (menu == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
@@ -579,7 +475,22 @@ public class DashboardActivity extends BaseActivity {
             return;
         }
 
-        Toast.makeText(this, menu.getDisplayName(this) + " (" + engineName + ") Launched!", Toast.LENGTH_SHORT).show();
+        if (!DriverManager.isDriverActive()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Kernel Driver Required")
+                    .setMessage("Ring 0 Kernel Driver is currently offline. Open Driver Loader (" + DriverManager.LOADER_PACKAGE_NAME + ") now?")
+                    .setPositiveButton("OPEN LOADER", (d, which) -> {
+                        DriverManager.launchDriverLoader(DashboardActivity.this);
+                    })
+                    .setNeutralButton("LAUNCH ANYWAY", (d, which) -> {
+                        MenuRouter.launchMenu(DashboardActivity.this, menu.getId());
+                    })
+                    .setNegativeButton("CANCEL", null)
+                    .show();
+            return;
+        }
+
+        Toast.makeText(this, menu.getDisplayName(this) + " (Ring 0 Driver) Launched!", Toast.LENGTH_SHORT).show();
         MenuRouter.launchMenu(this, menu.getId());
     }
 

@@ -35,7 +35,7 @@ public class AppLogger {
             File[] targets = new File[]{
                 new File("/sdcard/ninmods.log"),
                 new File(Environment.getExternalStorageDirectory(), "ninmods.log"),
-                new File("/data/data/nin.app/files/ninmods.log")
+                new File("/data/data/com.ninmods.main/files/ninmods.log")
             };
             for (File target : targets) {
                 try {
@@ -57,7 +57,7 @@ public class AppLogger {
         List<String> result = new ArrayList<>();
         File logFile = new File("/sdcard/ninmods.log");
         if (!logFile.exists()) {
-            logFile = new File("/data/data/nin.app/files/ninmods.log");
+            logFile = new File("/data/data/com.ninmods.main/files/ninmods.log");
         }
         if (!logFile.exists()) {
             result.add("No log file found yet (/sdcard/ninmods.log)");

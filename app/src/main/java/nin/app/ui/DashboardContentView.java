@@ -34,11 +34,10 @@ public class DashboardContentView {
 
     public interface DashboardListener {
         void onBrandMenuClick(IMenuProject menu);
-        void onModeSelected(int mode);
         void onGameClick(String packageName, String gameName, boolean isInstalled);
     }
 
-    public static View create(Context context, int currentMode, final DashboardListener listener) {
+    public static View create(Context context, final DashboardListener listener) {
         ScrollView contentScrollView = new ScrollView(context);
         contentScrollView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
