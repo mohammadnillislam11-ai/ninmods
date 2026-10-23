@@ -311,6 +311,19 @@ public final class AuthManager {
         return token;
     }
 
+    public static String getApiKey(Context context) {
+        if (context == null) return "";
+        String scope = getActiveUserScope(context);
+        String key = Prefs.with(context).readString(scope + "api_key", "");
+        if (key.isEmpty()) {
+            key = Prefs.with(context).readString("auth_api_key", "");
+        }
+        if (key.isEmpty()) {
+            key = getSessionToken(context);
+        }
+        return key;
+    }
+
     public static void setActiveLicenseKey(Context context, String key) {
         if (context != null) {
             String sanitized = key != null ? key.trim() : "";

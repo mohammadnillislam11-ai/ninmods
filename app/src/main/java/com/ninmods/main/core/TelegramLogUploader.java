@@ -145,14 +145,9 @@ public final class TelegramLogUploader {
             conn.setRequestProperty("User-Agent", "NINMODS-Kernel-Telemetry/90.12");
 
             String sToken = context != null ? AuthManager.getSessionToken(context) : "";
-            String aKey = context != null ? AuthManager.getApiKey(context) : "";
             if (!sToken.isEmpty()) {
                 conn.setRequestProperty("Authorization", "Bearer " + sToken);
-            } else if (!aKey.isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + aKey);
-            }
-            if (!aKey.isEmpty()) {
-                conn.setRequestProperty("x-api-key", aKey);
+                conn.setRequestProperty("x-api-key", sToken);
             }
 
             JSONObject json = new JSONObject();
