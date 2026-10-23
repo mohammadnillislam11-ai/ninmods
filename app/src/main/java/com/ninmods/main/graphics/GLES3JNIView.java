@@ -22,7 +22,6 @@ public class GLES3JNIView extends GLSurfaceView implements GLSurfaceView.Rendere
     private void initView() {
         setEGLConfigChooser(8, 8, 8, 8, 16, 0);
         getHolder().setFormat(PixelFormat.TRANSLUCENT);
-        setZOrderOnTop(true);
         setEGLContextClientVersion(3);
         setRenderer(this);
     }

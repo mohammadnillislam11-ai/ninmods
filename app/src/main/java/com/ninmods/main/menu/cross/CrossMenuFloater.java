@@ -134,6 +134,7 @@ public class CrossMenuFloater {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT
         );
+        windowParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
         windowParams.gravity = Gravity.TOP | Gravity.LEFT;
         windowParams.x = 40;
         windowParams.y = 160;

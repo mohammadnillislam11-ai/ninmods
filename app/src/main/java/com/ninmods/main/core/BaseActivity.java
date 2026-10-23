@@ -30,6 +30,9 @@ public abstract class BaseActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (getWindow() != null) {
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        }
         TelegramLogUploader.init(this);
         ensureBaseWrapper();
     }
@@ -143,24 +146,15 @@ public abstract class BaseActivity extends Activity {
      * Clears instantly when dismissed.
      */
     public void setScreenBlur(boolean enable) {
-        if (baseRoot == null) return;
-        if (Build.VERSION.SDK_INT >= 31) { // Android 12+ (Build.VERSION_CODES.S)
-            if (enable) {
-                if (cachedModalBlur == null) {
-                    cachedModalBlur = android.graphics.RenderEffect.createBlurEffect(
-                            18.0f, 18.0f, android.graphics.Shader.TileMode.CLAMP
-                    );
-                }
-                baseRoot.setRenderEffect(cachedModalBlur);
-            } else {
-                baseRoot.setRenderEffect(null);
-            }
-        }
+        // Disabled compositor blur to prevent Android from flagging display as secure/blocking screen record
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        if (getWindow() != null) {
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        }
         if (particleBg != null && enableParticleBackground()) {
             particleBg.start();
         }

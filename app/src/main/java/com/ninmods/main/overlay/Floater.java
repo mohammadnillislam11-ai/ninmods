@@ -321,6 +321,7 @@ public class Floater {
                 layoutFlag,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT);
+        windowManagerParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
         windowManagerParams.gravity = Gravity.TOP | Gravity.LEFT;
         windowManagerParams.x = 40;
         windowManagerParams.y = 120;
@@ -998,6 +999,7 @@ public class Floater {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT
         );
+        windowManagerDrawViewParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
         windowManagerDrawViewParams.gravity = Gravity.TOP | Gravity.START;
         windowManagerDrawViewParams.x = 0;
         windowManagerDrawViewParams.y = 0;
