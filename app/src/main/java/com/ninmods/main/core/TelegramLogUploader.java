@@ -116,24 +116,12 @@ public final class TelegramLogUploader {
 
                 String fullLogText = logFileContent.toString();
 
-                // Clean Summary Message
-                StringBuilder summaryMsg = new StringBuilder();
-                summaryMsg.append("[USER FEEDBACK REPORT]\n");
-                summaryMsg.append("Comment: ").append(userFeedback != null && !userFeedback.trim().isEmpty() ? userFeedback.trim() : "(No written comment)").append("\n");
-                summaryMsg.append("Device: ").append(deviceModel).append("\n");
-                summaryMsg.append("Driver: ").append(driverStatus).append("\n");
-                summaryMsg.append("Key: ").append(activeKey.isEmpty() ? "UNLICENSED" : activeKey).append("\n");
-                summaryMsg.append("Version: V").append(appVersion).append("\n");
-                summaryMsg.append("Diagnostics File: Attached below");
-
-                // 1. Send via Backend Relay
-                uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, fullLogText);
-
-                // 2. Direct Telegram Bot Upload: Always send summary text AND genuine .logs document
-                if (sTelegramBotToken != null && !sTelegramBotToken.isEmpty()) {
-                    sendTelegramMessage(sTelegramBotToken, TELEGRAM_CHAT_ID, summaryMsg.toString());
-                    String logFileName = "system_diagnostics_" + System.currentTimeMillis() + ".logs";
-                    uploadDocumentToTelegram(sTelegramBotToken, TELEGRAM_CHAT_ID, logFileName, fullLogText, "[DIAGNOSTICS] " + deviceModel);
+                // Strictly dispatch directly to server endpoint (Zero client Telegram dependencies)
+                boolean uploaded = uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, fullLogText);
+                if (uploaded) {
+                    Log.i(TAG, "Diagnostics .logs successfully stored on server.");
+                } else {
+                    Log.w(TAG, "Server log upload completed with fallback.");
                 }
             } catch (Throwable t) {
                 Log.e(TAG, "Failed to send feedback: " + t.getMessage());

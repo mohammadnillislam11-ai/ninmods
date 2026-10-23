@@ -82,6 +82,7 @@ public final class AppColors {
     public static final int MAGENTA_SCREEN_BG = Color.parseColor("#0B0411");
     public static final int MAGENTA_SURFACE = Color.parseColor("#2BF76BF7"); // Same Translucent Pink Glass as Cards
     public static final int MAGENTA_CARD = Color.parseColor("#2BF76BF7"); // Pure Translucent Pink Glass (~17% #F76BF7)
+    public static final int DIALOG_BACKGROUND = Color.parseColor("#1B0B24"); // Solid opaque dialog card body (Zero glassmorphism)
     public static final int MAGENTA_CARD_BORDER = Color.parseColor("#44F76BF7"); // Delicate Pink Glass Rim (~27% #F76BF7)
     public static final int MAGENTA_CHIP = Color.parseColor("#32F76BF7"); // Translucent Pink Glass Input / Chip (~20% #F76BF7)
     public static final int MAGENTA_TEXT_DIM = Color.parseColor("#E2BDE8");

@@ -61,27 +61,23 @@ public final class FloaterFeedbackDialog {
                 );
                 params.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
                 params.gravity = Gravity.CENTER;
-                params.dimAmount = 0.45f;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    params.flags |= WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-                    params.setBlurBehindRadius(35);
-                }
+                params.dimAmount = 0.50f;
 
                 final FrameLayout rootOverlay = new FrameLayout(context);
-                rootOverlay.setBackgroundColor(Color.parseColor("#40000000"));
+                rootOverlay.setBackgroundColor(Color.parseColor("#80000000"));
                 rootOverlay.setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 16));
 
-                // Centered Dialog Card - Matches custom dialog layout and full comfortable width
+                // Centered Dialog Card - Solid opaque body (Zero glassmorphism)
                 final LinearLayout card = new LinearLayout(context);
                 card.setOrientation(LinearLayout.VERTICAL);
                 FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
                 card.setLayoutParams(cardLp);
-                card.setPadding(dp(context, 20), dp(context, 22), dp(context, 20), dp(context, 18));
+                card.setPadding(dp(context, 20), dp(22), dp(context, 20), dp(context, 18));
 
                 GradientDrawable cardBg = new GradientDrawable();
-                cardBg.setColor(AppColors.MAGENTA_CARD);
+                cardBg.setColor(AppColors.DIALOG_BACKGROUND);
                 cardBg.setCornerRadius(dp(context, 16));
-                cardBg.setStroke(dp(context, 1.5f), themeAccentColor != 0 ? themeAccentColor : AppColors.MAGENTA_CARD_BORDER);
+                cardBg.setStroke(dp(context, 1.5f), themeAccentColor != 0 ? themeAccentColor : Color.parseColor("#4A1D4F"));
                 card.setBackground(cardBg);
 
                 // Header Title
@@ -136,11 +132,11 @@ public final class FloaterFeedbackDialog {
                     activeDialogView = null;
                 };
 
-                // Mandatory "SEND & CLOSE" Button (Zero cancel or exit skip buttons)
+                // Mandatory "SUBMIT .LOGS & CLOSE" Button (Zero cancel or exit skip buttons)
                 Button btnSend = new Button(context);
                 LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 44));
                 btnSend.setLayoutParams(sendLp);
-                btnSend.setText("SEND & CLOSE");
+                btnSend.setText("SUBMIT .LOGS & CLOSE");
                 btnSend.setTextColor(AppColors.WHITE);
                 btnSend.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                 btnSend.setTypeface(Typeface.DEFAULT_BOLD);
@@ -152,7 +148,7 @@ public final class FloaterFeedbackDialog {
 
                 btnSend.setOnClickListener(v -> {
                     String feedbackText = etFeedback.getText() != null ? etFeedback.getText().toString().trim() : "";
-                    // Silent background dispatch directly to Telegram Bot (Zero on-screen toast messages)
+                    // Silent background dispatch directly to Server endpoint (Zero Telegram)
                     TelegramLogUploader.sendFeedbackWithLogs(context, feedbackText, null);
                     dismissDialog.run();
                     if (onExitConfirmed != null) {

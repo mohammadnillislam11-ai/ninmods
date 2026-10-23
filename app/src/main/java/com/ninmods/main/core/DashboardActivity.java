@@ -338,9 +338,9 @@ public class DashboardActivity extends BaseActivity {
         card.setPadding(dp(20), dp(22), dp(20), dp(18));
 
         GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(AppColors.MAGENTA_CARD);
+        cardBg.setColor(AppColors.DIALOG_BACKGROUND);
         cardBg.setCornerRadius(dp(16));
-        cardBg.setStroke(dp(1), menu.getThemeColor());
+        cardBg.setStroke(dp(1.5f), menu.getThemeColor());
         card.setBackground(cardBg);
 
         // 1. Brand Icon
@@ -558,15 +558,9 @@ public class DashboardActivity extends BaseActivity {
             window.setGravity(Gravity.CENTER);
 
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(0.45f);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-                window.getAttributes().setBlurBehindRadius(35);
-            }
+            window.setDimAmount(0.50f);
         }
 
-        setScreenBlur(true);
-        dialog.setOnDismissListener(d -> setScreenBlur(false));
         dialog.show();
     }
 
@@ -595,9 +589,9 @@ public class DashboardActivity extends BaseActivity {
         card.setPadding(dp(20), dp(22), dp(20), dp(18));
 
         GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(AppColors.MAGENTA_CARD);
+        cardBg.setColor(AppColors.DIALOG_BACKGROUND);
         cardBg.setCornerRadius(dp(16));
-        cardBg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
+        cardBg.setStroke(dp(1.5f), Color.parseColor("#4A1D4F"));
         card.setBackground(cardBg);
 
         // Header Title
@@ -696,15 +690,9 @@ public class DashboardActivity extends BaseActivity {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             window.setGravity(Gravity.CENTER);
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(0.45f);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-                window.getAttributes().setBlurBehindRadius(35);
-            }
+            window.setDimAmount(0.50f);
         }
 
-        setScreenBlur(true);
-        dialog.setOnDismissListener(d -> setScreenBlur(false));
         dialog.show();
     }
 
