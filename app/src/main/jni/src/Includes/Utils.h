@@ -14,70 +14,39 @@
 #include <fcntl.h>
 #include <sys/uio.h>
 #include "Logger.h"
+#include "Logger.h"
 #include "NativeCrypto.h"
+#include "driver.h"
 
 pid_t target_pid = -1;
 uintptr_t libAddress, anogs;
 int driver_fd = -1;
 char active_driver_node[128] = {0};
 
-#include <sys/ioctl.h>
-
-#pragma pack(push, 8)
-struct DriverMemoryIo {
-    uint32_t pid;
-    uint32_t _pad;
-    uint64_t address;
-    uint64_t buffer;
-    uint64_t size;
-};
-
-struct DriverModuleBaseIo {
-    uint32_t pid;
-    uint32_t _pad;
-    uint64_t name_ptr;
-    uint64_t base;
-};
-#pragma pack(pop)
-
-#define IOCTL_RT_READ      0x801
-#define IOCTL_RT_WRITE     0x802
-#define IOCTL_RT_BASE      0x803
-#define IOCTL_RT_PING      0x804
-#define IOCTL_CHECK_DRIVER 0x8004A801
-
 static inline int OpenDriver() {
-    if (driver_fd > 0) return driver_fd;
-
-    NIN_LOGI("DRIVER_A2Z", "=== [DRIVER_INIT] Scanning for Ring 0 Kernel Driver device nodes ===");
-
-    const char* candidate_nodes[] = {
-        "/dev/health_storage_service_alloc",
-        "/dev/BYNb",
-        "/dev/sched_debug",
-        "/dev/uevents_records"
-    };
-
-    for (const char* node : candidate_nodes) {
-        int fd = open(node, O_RDWR);
-        if (fd >= 0) {
-            driver_fd = fd;
-            strncpy(active_driver_node, node, sizeof(active_driver_node) - 1);
-            NIN_LOGI("DRIVER_A2Z", ">>> [DRIVER_CONNECTED] SUCCESS: Attached to Ring 0 Kernel Driver Node '%s' (FD: %d) <<<", node, driver_fd);
-            return driver_fd;
-        } else {
-            NIN_LOGD("DRIVER_A2Z", "[DRIVER_PROBE] Node '%s' unreachable: fd=%d, errno=%d (%s)", node, fd, errno, strerror(errno));
-        }
+    if (driver && driver->isConnected()) {
+        driver_fd = driver->getFd();
+        snprintf(active_driver_node, sizeof(active_driver_node), "%s [%s]", driver->getNodeName(), driver->getDriverModeName());
+        return driver_fd;
     }
-    NIN_LOGE("DRIVER_A2Z", ">>> [DRIVER_FAIL] All candidate driver nodes failed to open! Ensure com.ninmods.loader has loaded driver. <<<");
+
+    NIN_LOGI("DRIVER_A2Z", "=== [DRIVER_INIT] Connecting via Unified c_driver Engine ===");
+    if (driver && driver->initDriver()) {
+        driver_fd = driver->getFd();
+        snprintf(active_driver_node, sizeof(active_driver_node), "%s [%s]", driver->getNodeName(), driver->getDriverModeName());
+        NIN_LOGI("DRIVER_A2Z", ">>> [DRIVER_CONNECTED] SUCCESS: Attached via '%s' (FD: %d) <<<", active_driver_node, driver_fd);
+        return driver_fd;
+    }
+
+    NIN_LOGE("DRIVER_A2Z", ">>> [DRIVER_FAIL] All candidate driver modes failed! Ensure Loader is running. <<<");
     return -1;
 }
 
 static inline bool IsDriverConnected() {
-    if (driver_fd <= 0) {
+    if (!driver || !driver->isConnected()) {
         OpenDriver();
     }
-    return (driver_fd > 0);
+    return (driver && driver->isConnected());
 }
 
 static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, size_t size) {
@@ -90,18 +59,13 @@ static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, 
         }
         return false;
     }
-    if (driver_fd <= 0) {
-        if (OpenDriver() <= 0) return false;
+    if (!driver || !driver->isConnected()) {
+        if (OpenDriver() <= 0 && (!driver || !driver->isConnected())) return false;
     }
 
-    DriverMemoryIo io{};
-    io.pid = (uint32_t)pid;
-    io.address = (uint64_t)address;
-    io.buffer = reinterpret_cast<uint64_t>(buffer);
-    io.size = (uint64_t)size;
-
-    int ret = ioctl(driver_fd, IOCTL_RT_READ, &io);
-    if (ret == 0) {
+    driver->initialize(pid);
+    bool ret = driver->read(address, buffer, size);
+    if (ret) {
         static uint32_t s_read_success_count = 0;
         if ((++s_read_success_count % 500) == 1) {
             NIN_LOGI("DRIVER_A2Z", "[IOCTL_READ_OK] Sampled: pid=%d, addr=0x%lx, size=%zu bytes, total_reads=%u", pid, (unsigned long)address, size, s_read_success_count);
@@ -110,7 +74,7 @@ static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, 
     } else {
         static uint32_t s_read_err_count = 0;
         if ((++s_read_err_count % 100) == 1) {
-            NIN_LOGE("DRIVER_A2Z", "[IOCTL_READ_FAIL] Failed on pid=%d, addr=0x%lx, size=%zu, ret=%d, errno=%d (%s)", pid, (unsigned long)address, size, ret, errno, strerror(errno));
+            NIN_LOGE("DRIVER_A2Z", "[IOCTL_READ_FAIL] Failed on pid=%d, addr=0x%lx, size=%zu", pid, (unsigned long)address, size);
         }
         return false;
     }
@@ -126,46 +90,34 @@ static inline bool DriverWriteMemory(pid_t pid, uintptr_t address, const void* b
         }
         return false;
     }
-    if (driver_fd <= 0) {
-        if (OpenDriver() <= 0) return false;
+    if (!driver || !driver->isConnected()) {
+        if (OpenDriver() <= 0 && (!driver || !driver->isConnected())) return false;
     }
 
-    DriverMemoryIo io{};
-    io.pid = (uint32_t)pid;
-    io.address = (uint64_t)address;
-    io.buffer = reinterpret_cast<uint64_t>(buffer);
-    io.size = (uint64_t)size;
-
-    int ret = ioctl(driver_fd, IOCTL_RT_WRITE, &io);
-    if (ret == 0) {
+    driver->initialize(pid);
+    bool ret = driver->write(address, buffer, size);
+    if (ret) {
         NIN_LOGI("DRIVER_A2Z", "[IOCTL_WRITE_OK] Written %zu bytes to pid=%d at addr=0x%lx", size, pid, (unsigned long)address);
         return true;
     } else {
-        NIN_LOGE("DRIVER_A2Z", "[IOCTL_WRITE_FAIL] Write failed on pid=%d at addr=0x%lx, size=%zu, ret=%d, errno=%d (%s)", pid, (unsigned long)address, size, ret, errno, strerror(errno));
+        NIN_LOGE("DRIVER_A2Z", "[IOCTL_WRITE_FAIL] Write failed on pid=%d at addr=0x%lx, size=%zu", pid, (unsigned long)address, size);
         return false;
     }
 }
 
 static inline uintptr_t DriverGetModuleBase(pid_t pid, const char* moduleName) {
     if (pid <= 0 || moduleName == nullptr) return 0;
-    if (driver_fd <= 0) {
-        if (OpenDriver() <= 0) return 0;
+    if (!driver || !driver->isConnected()) {
+        if (OpenDriver() <= 0 && (!driver || !driver->isConnected())) return 0;
     }
 
-    char name_buf[64] = {0};
-    strncpy(name_buf, moduleName, sizeof(name_buf) - 1);
-
-    DriverModuleBaseIo bio{};
-    bio.pid = (uint32_t)pid;
-    bio.name_ptr = reinterpret_cast<uint64_t>(name_buf);
-    bio.base = 0;
-
-    int ret = ioctl(driver_fd, IOCTL_RT_BASE, &bio);
-    if (ret == 0 && bio.base > 0) {
-        NIN_LOGI("DRIVER_A2Z", ">>> [IOCTL_BASE_OK] Module '%s' located at 0x%lx for pid=%d via Ring 0 Driver <<<", moduleName, (unsigned long)bio.base, pid);
-        return (uintptr_t)bio.base;
+    driver->initialize(pid);
+    uintptr_t base = driver->getModuleBase(moduleName);
+    if (base > 0) {
+        NIN_LOGI("DRIVER_A2Z", ">>> [IOCTL_BASE_OK] Module '%s' located at 0x%lx for pid=%d via c_driver <<<", moduleName, (unsigned long)base, pid);
+        return base;
     } else {
-        NIN_LOGE("DRIVER_A2Z", "[IOCTL_BASE_FAIL] Module '%s' query returned base=0x%lx, ret=%d, errno=%d (%s) for pid=%d", moduleName, (unsigned long)bio.base, ret, errno, strerror(errno), pid);
+        NIN_LOGE("DRIVER_A2Z", "[IOCTL_BASE_FAIL] Module '%s' query returned base=0x%lx for pid=%d", moduleName, (unsigned long)base, pid);
         return 0;
     }
 }
@@ -589,11 +541,11 @@ bool InitMemoryAccess(pid_t pid) {
 
 // Cleanup Kernel Driver connection
 void CleanupMemoryAccess() {
-    if (driver_fd > 0) {
-        close(driver_fd);
-        driver_fd = -1;
-        active_driver_node[0] = '\0';
+    if (driver) {
+        driver->closeDriver();
     }
+    driver_fd = -1;
+    active_driver_node[0] = '\0';
     target_pid = -1;
 }
 

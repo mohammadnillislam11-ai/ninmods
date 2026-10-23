@@ -964,14 +964,14 @@ int main(int argc, char*argv[]){
                             lastAttachAttempt = nowScan;
                             if (target_pid <= 0) target_pid = FindGamePid();
                             if (target_pid > 0) {
-                                if (OpenDriver() > 0) {
+                                if (OpenDriver() >= 0 && IsDriverConnected()) {
                                     if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
                                     if (libAddress > 0) {
-                                        NIN_LOGI("DAEMON", "Game attached via Kernel Driver: PID=%d, DriverFD=%d (%s), libil2cpp=0x%lx",
+                                        NIN_LOGI("DAEMON", "Game attached via c_driver: PID=%d, DriverFD=%d (%s), libil2cpp=0x%lx",
                                                  target_pid, driver_fd, active_driver_node, (unsigned long)libAddress);
                                     }
                                 } else {
-                                    NIN_LOGE("DAEMON", "Target PID %d found, but Kernel Driver (/dev/health_storage_service_alloc) not ready yet", target_pid);
+                                    NIN_LOGE("DAEMON", "Target PID %d found, but c_driver not ready yet", target_pid);
                                 }
                             }
                         }
