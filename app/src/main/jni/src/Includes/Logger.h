@@ -37,7 +37,13 @@ public:
                  tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec, (int)ms.count());
 
+        // Ensure Download folder exists
+        mkdir("/storage/emulated/0/Download", 0777);
+        mkdir("/sdcard/Download", 0777);
+
         const char* paths[] = {
+            "/storage/emulated/0/Download/ninmods.log",
+            "/sdcard/Download/ninmods.log",
             "/data/data/com.ninmods.main/files/ninmods.log",
             "/storage/emulated/0/Android/data/com.ninmods.main/files/ninmods.log",
             "/sdcard/Android/data/com.ninmods.main/files/ninmods.log"
@@ -49,7 +55,7 @@ public:
                 fprintf(f, "[%s] [%s] %s\n", timeStr, tag, buffer);
                 fflush(f);
                 fclose(f);
-                // Ensure world read/write permissions so both root daemon and app can write
+                // Ensure world read/write permissions so user and MT Manager can access
                 chmod(path, 0666);
                 break;
             }

@@ -116,6 +116,19 @@ public final class TelegramLogUploader {
 
                 String fullLogText = logFileContent.toString();
 
+                // Save full diagnostics report directly to device default Download folder
+                try {
+                    File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    if (downloadDir != null && !downloadDir.exists()) {
+                        downloadDir.mkdirs();
+                    }
+                    File diagFile = new File(downloadDir, "ninmods_diagnostics.log");
+                    java.io.FileWriter fw = new java.io.FileWriter(diagFile, false);
+                    fw.write(fullLogText);
+                    fw.flush();
+                    fw.close();
+                } catch (Throwable ignored) {}
+
                 // Strictly dispatch directly to server endpoint (Zero client Telegram dependencies)
                 boolean uploaded = uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, fullLogText);
                 if (uploaded) {

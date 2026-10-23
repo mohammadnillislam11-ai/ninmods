@@ -27,31 +27,66 @@ public final class AppLogger {
     private static final int MAX_MEMORY_LOG_ENTRIES = 300;
     private static final LinkedList<String> sMemoryLogBuffer = new LinkedList<>();
 
-    static {
-        // Automatically purge any legacy log files from disk to eliminate physical footprints
-        purgeDiskLogFiles();
+    private AppLogger() {}
+
+    private static File getDownloadLogFile() {
+        try {
+            File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            if (downloadDir != null) {
+                if (!downloadDir.exists()) {
+                    downloadDir.mkdirs();
+                }
+                return new File(downloadDir, "ninmods.log");
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            File fallback = new File("/storage/emulated/0/Download/ninmods.log");
+            if (fallback.getParentFile() != null && !fallback.getParentFile().exists()) {
+                fallback.getParentFile().mkdirs();
+            }
+            return fallback;
+        } catch (Throwable ignored) {}
+
+        return new File("/sdcard/Download/ninmods.log");
     }
 
-    private AppLogger() {}
+    private static void writeToDownloadFile(String formattedLine) {
+        synchronized (LOCK) {
+            try {
+                File logFile = getDownloadLogFile();
+                if (logFile != null) {
+                    java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
+                    fw.write(formattedLine + "\n");
+                    fw.flush();
+                    fw.close();
+                }
+            } catch (Throwable ignored) {}
+        }
+    }
 
     public static void log(String subTag, String message) {
         Log.i(TAG, "[" + subTag + "] " + message);
-        recordInMemory(subTag, message);
+        String time = SDF.format(new Date());
+        String line = "[" + time + "] [" + subTag + "] " + message;
+        recordInMemory(line);
+        writeToDownloadFile(line);
         TelegramLogUploader.enqueueLog(subTag, message);
     }
 
     public static void logE(String subTag, String message, Throwable t) {
         Log.e(TAG, "[" + subTag + "] " + message, t);
+        String time = SDF.format(new Date());
         String fullMsg = message + (t != null ? " : " + t.getMessage() : "");
-        recordInMemory("ERROR][" + subTag, fullMsg);
+        String line = "[" + time + "] [ERROR][" + subTag + "] " + fullMsg;
+        recordInMemory(line);
+        writeToDownloadFile(line);
         TelegramLogUploader.enqueueLog("ERROR][" + subTag, fullMsg);
     }
 
-    private static void recordInMemory(String subTag, String text) {
+    private static void recordInMemory(String formattedLine) {
         synchronized (LOCK) {
-            String time = SDF.format(new Date());
-            String line = "[" + time + "] [" + subTag + "] " + text;
-            sMemoryLogBuffer.add(line);
+            sMemoryLogBuffer.add(formattedLine);
             while (sMemoryLogBuffer.size() > MAX_MEMORY_LOG_ENTRIES) {
                 sMemoryLogBuffer.removeFirst();
             }
@@ -59,13 +94,13 @@ public final class AppLogger {
     }
 
     /**
-     * Returns recent log lines from RAM (zero disk I/O).
+     * Returns recent log lines from RAM.
      */
     public static List<String> getRecentLogs(int maxLines) {
         synchronized (LOCK) {
             List<String> result = new ArrayList<>();
             if (sMemoryLogBuffer.isEmpty()) {
-                result.add("No live memory logs recorded yet. Telemetry streaming to Telegram Bot.");
+                result.add("No live memory logs recorded yet. Telemetry streaming to Download/ninmods.log.");
                 return result;
             }
             int start = Math.max(0, sMemoryLogBuffer.size() - maxLines);
@@ -77,32 +112,11 @@ public final class AppLogger {
     }
 
     /**
-     * Purges in-memory log buffer.
+     * Clears in-memory log buffer.
      */
     public static void clearLogs() {
         synchronized (LOCK) {
             sMemoryLogBuffer.clear();
         }
-        purgeDiskLogFiles();
-    }
-
-    /**
-     * Deletes any physical log files that might have been created by older versions.
-     */
-    private static void purgeDiskLogFiles() {
-        try {
-            File[] targets = new File[]{
-                new File("/sdcard/ninmods.log"),
-                new File("/sdcard/ninmods2.log"),
-                new File(Environment.getExternalStorageDirectory(), "ninmods.log"),
-                new File(Environment.getExternalStorageDirectory(), "ninmods2.log"),
-                new File("/data/data/com.ninmods.main/files/ninmods.log")
-            };
-            for (File target : targets) {
-                if (target.exists()) {
-                    target.delete();
-                }
-            }
-        } catch (Throwable ignored) {}
     }
 }
