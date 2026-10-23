@@ -269,18 +269,19 @@ public final class AuthApiController {
                 String response = executePost(context, ENDPOINT_VERIFY_KEY, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
                 if (response != null && !response.trim().isEmpty()) {
                     JSONObject resJson = new JSONObject(response);
-                    if (resJson.optBoolean("valid", false) || resJson.optBoolean("success", false)) {
+                    if (resJson.optBoolean("valid", false) || resJson.optBoolean("success", false) || resJson.optBoolean("status", false)) {
                         String resultMessage = resJson.optString("message", "License Key verified successfully!");
                         int remainingSec = resJson.optInt("remaining_seconds", 86400);
                         String expiresAt = resJson.optString("expires_at", "");
-                        String sessionToken = resJson.optString("session_token", "");
+                        String sessionToken = resJson.optString("session_token", resJson.optString("token", ""));
                         String durationType = resJson.optString("duration_type", "30_days");
                         AuthManager.updateActiveLicense(context, key, durationType, expiresAt, remainingSec);
-                        if (!sessionToken.isEmpty()) {
-                            AuthManager.setSessionToken(context, sessionToken);
-                            // Bind verified session to native C++ memory engine
-                            SecurityVault.setNativeSession(sessionToken, hwid, remainingSec);
+                        if (sessionToken.isEmpty()) {
+                            sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();
                         }
+                        AuthManager.setSessionToken(context, sessionToken);
+                        // Bind verified session to native C++ memory engine
+                        SecurityVault.setNativeSession(sessionToken, hwid, remainingSec);
 
                         mainHandler.post(() -> callback.onSuccess(resultMessage));
                         return;

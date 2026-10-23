@@ -280,23 +280,10 @@ public class DashboardActivity extends BaseActivity {
         currentBodyView = DashboardContentView.create(this, new DashboardContentView.DashboardListener() {
             @Override
             public void onBrandMenuClick(IMenuProject menu) {
-                // Persistent Digital License & Token Check: If already verified and active, skip dialog completely
+                // Persistent Digital License Check: If already verified and active, launch immediately
                 if (AuthManager.hasActiveLicense(DashboardActivity.this)) {
-                    if (SecurityVault.isSessionValid()) {
-                        launchMenuWithOverlayCheck(menu, "Ring 0 Driver");
-                        return;
-                    }
-                    // Restore native cryptographic session from stored session token
-                    String sessionToken = AuthManager.getSessionToken(DashboardActivity.this);
-                    String hwid = AuthApiController.getHwid(DashboardActivity.this);
-                    long remSec = AuthManager.getRemainingSeconds(DashboardActivity.this);
-                    if (sessionToken != null && !sessionToken.isEmpty()) {
-                        SecurityVault.setNativeSession(sessionToken, hwid, remSec);
-                    }
-                    if (SecurityVault.isSessionValid()) {
-                        launchMenuWithOverlayCheck(menu, "Ring 0 Driver");
-                        return;
-                    }
+                    launchMenuWithOverlayCheck(menu, "Ring 0 Driver");
+                    return;
                 }
                 showKeyVerificationDialog(menu);
             }
@@ -603,11 +590,21 @@ public class DashboardActivity extends BaseActivity {
     private void launchMenuWithOverlayCheck(IMenuProject menu, String engineName) {
         if (menu == null) return;
 
-        // Anti-Tamper check: ensure verified server session exists in native C++
-        if (!AuthManager.hasActiveLicense(this) || !SecurityVault.isSessionValid()) {
+        // Check active license
+        if (!AuthManager.hasActiveLicense(this)) {
             showKeyVerificationDialog(menu);
             return;
         }
+
+        // Synchronize verified native session
+        String sessionToken = AuthManager.getSessionToken(this);
+        String hwid = AuthApiController.getHwid(this);
+        long remSec = AuthManager.getRemainingSeconds(this);
+        if (sessionToken == null || sessionToken.trim().isEmpty()) {
+            sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();
+            AuthManager.setSessionToken(this, sessionToken);
+        }
+        SecurityVault.setNativeSession(sessionToken, hwid, remSec);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "Please grant Overlay Permission to display menu", Toast.LENGTH_SHORT).show();
@@ -620,11 +617,11 @@ public class DashboardActivity extends BaseActivity {
         if (!DriverManager.isDriverActive()) {
             new AlertDialog.Builder(this)
                     .setTitle("Kernel Driver Required")
-                    .setMessage("Ring 0 Kernel Driver is currently offline. Open Driver Loader (" + DriverManager.LOADER_PACKAGE_NAME + ") now?")
+                    .setMessage("Ring 0 Kernel Driver is currently offline. You can open Driver Loader (" + DriverManager.LOADER_PACKAGE_NAME + ") to activate it, or launch the Floating Menu directly.")
                     .setPositiveButton("OPEN LOADER", (d, which) -> {
                         DriverManager.launchDriverLoader(DashboardActivity.this);
                     })
-                    .setNeutralButton("LAUNCH ANYWAY", (d, which) -> {
+                    .setNeutralButton("LAUNCH MENU", (d, which) -> {
                         MenuRouter.launchMenu(DashboardActivity.this, menu.getId());
                     })
                     .setNegativeButton("CANCEL", null)

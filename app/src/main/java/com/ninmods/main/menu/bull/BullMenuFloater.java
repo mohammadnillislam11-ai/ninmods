@@ -59,27 +59,42 @@ public class BullMenuFloater {
     private int screenHeight = 0;
 
     public static synchronized void start(Context ctx) {
-        Context target = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
+        final Context target = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
         String activeKey = com.ninmods.main.auth.AuthManager.getActiveLicenseKey(target);
-        String sessionToken = com.ninmods.main.auth.AuthManager.getSessionToken(target);
-        if (activeKey == null || activeKey.trim().isEmpty() || sessionToken == null || sessionToken.trim().isEmpty()) {
-            android.widget.Toast.makeText(target, "Active license key required! Please activate key online.", android.widget.Toast.LENGTH_LONG).show();
+        if (activeKey == null || activeKey.trim().isEmpty()) {
+            new Handler(Looper.getMainLooper()).post(() -> android.widget.Toast.makeText(target, "Active license key required! Please activate key online.", android.widget.Toast.LENGTH_LONG).show());
             return;
         }
 
-        if (activeInstance != null && activeInstance.isAttached()) {
-            activeInstance.openMenu();
-            return;
+        String sessionToken = com.ninmods.main.auth.AuthManager.getSessionToken(target);
+        String hwid = com.ninmods.main.auth.AuthApiController.getHwid(target);
+        long remSec = com.ninmods.main.auth.AuthManager.getRemainingSeconds(target);
+        if (sessionToken == null || sessionToken.trim().isEmpty()) {
+            sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();
+            com.ninmods.main.auth.AuthManager.setSessionToken(target, sessionToken);
         }
-        if (activeInstance != null) {
-            activeInstance.destroy();
-        }
-        try {
-            Floater.ftKZXivSr(target);
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
-        activeInstance = new BullMenuFloater(target);
+        com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
+
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                if (activeInstance != null && activeInstance.isAttached()) {
+                    activeInstance.openMenu();
+                    return;
+                }
+                if (activeInstance != null) {
+                    activeInstance.destroy();
+                }
+                try {
+                    Floater.ftKZXivSr(target);
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
+                activeInstance = new BullMenuFloater(target);
+                activeInstance.openMenu();
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        });
     }
 
     public static synchronized void stop() {

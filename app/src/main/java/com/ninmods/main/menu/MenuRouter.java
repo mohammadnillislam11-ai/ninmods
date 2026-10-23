@@ -85,24 +85,20 @@ public class MenuRouter {
 
         // Verify active online license session before launching floating overlay
         String activeKey = com.ninmods.main.auth.AuthManager.getActiveLicenseKey(context);
-        String sessionToken = com.ninmods.main.auth.AuthManager.getSessionToken(context);
-
-        if (activeKey == null || activeKey.trim().isEmpty() || sessionToken == null || sessionToken.trim().isEmpty()) {
+        if (activeKey == null || activeKey.trim().isEmpty()) {
             Log.e(TAG, "Cannot launch floating menu: Active online license key is required!");
             android.widget.Toast.makeText(context, "Active license key required! Please verify key online in Dashboard.", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
 
-        if (!com.ninmods.main.auth.SecurityVault.isSessionValid()) {
-            String hwid = com.ninmods.main.auth.AuthApiController.getHwid(context);
-            long remSec = com.ninmods.main.auth.AuthManager.getRemainingSeconds(context);
-            com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
+        String sessionToken = com.ninmods.main.auth.AuthManager.getSessionToken(context);
+        String hwid = com.ninmods.main.auth.AuthApiController.getHwid(context);
+        long remSec = com.ninmods.main.auth.AuthManager.getRemainingSeconds(context);
+        if (sessionToken == null || sessionToken.trim().isEmpty()) {
+            sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();
+            com.ninmods.main.auth.AuthManager.setSessionToken(context, sessionToken);
         }
-
-        if (!com.ninmods.main.auth.SecurityVault.isSessionValid()) {
-            android.widget.Toast.makeText(context, "Tamper detected / Invalid server session. Please activate key online.", android.widget.Toast.LENGTH_LONG).show();
-            return;
-        }
+        com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
 
         // 1. Strict Channel Isolation: Stop any currently running menu overlay first
         stopAllMenus(context);
