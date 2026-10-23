@@ -67,7 +67,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p loader_tmp
-          gh release download --repo mohammadnillislam11-ai/ninmods-kernel-builder --pattern "NINMODS_Driver_Loader.apk" --dir loader_tmp 2>/dev/null && cp loader_tmp/NINMODS_Driver_Loader.apk Loader_V45.apk || curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "Loader_V45.apk" || echo "Loader download fallback"
+          APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
+          if [ -z "$APP_VER" ]; then APP_VER="90.2"; fi
+          gh release download --repo mohammadnillislam11-ai/ninmods-kernel-builder --pattern "*.apk" --dir loader_tmp 2>/dev/null || curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "loader_tmp/NINMODS_Driver_Loader.apk" || echo "Loader download fallback"
+          LOADER_FILE=$(find loader_tmp -type f -name "*.apk" | head -n 1)
+          if [ -n "$LOADER_FILE" ]; then
+            cp -f "$LOADER_FILE" "Loader_V${APP_VER}.apk"
+            cp -f "$LOADER_FILE" "Loader_V45.apk"
+          fi
           ls -la *.apk
 
       - name: Upload APK Artifacts
@@ -83,7 +90,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
-          if [ -z "$APP_VER" ]; then APP_VER="90.1"; fi
+          if [ -z "$APP_VER" ]; then APP_VER="90.2"; fi
           echo "Cleaning up all older releases..."
           for old_tag in $(gh release list --limit 50 --json tagName -q '.[].tagName'); do
             echo "Deleting old release: $old_tag"
@@ -92,7 +99,9 @@ jobs:
 
           RELEASE_TAG="v${APP_VER}-$(date +'%Y%m%d%H%M%S')"
           ASSETS="Main_V${APP_VER}.apk"
-          if [ -f "Loader_V45.apk" ]; then
+          if [ -f "Loader_V${APP_VER}.apk" ]; then
+            ASSETS="Main_V${APP_VER}.apk Loader_V${APP_VER}.apk"
+          elif [ -f "Loader_V45.apk" ]; then
             ASSETS="Main_V${APP_VER}.apk Loader_V45.apk"
           fi
           gh release create "$RELEASE_TAG" \

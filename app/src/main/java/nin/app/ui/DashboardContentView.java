@@ -22,6 +22,7 @@ import java.util.List;
 
 import nin.app.R;
 import nin.app.core.AppColors;
+import nin.app.core.DriverManager;
 import nin.app.menu.IMenuProject;
 import nin.app.menu.MenuRouter;
 
@@ -59,6 +60,10 @@ public class DashboardContentView {
         container.addView(menusHeader);
         container.addView(createBrandMenuGrid(context, listener));
 
+        // 2. Ring 0 Kernel Driver Loader Connection Section
+        TextView driverHeader = createSectionHeader(context, "RING 0 KERNEL DRIVER");
+        container.addView(driverHeader);
+        container.addView(createDriverSection(context));
 
         // 3. Installed Games Section (Auto-detected from device, Zero buttons, dialog on click)
         TextView gamesHeader = createSectionHeader(context, "INSTALLED GAMES");
@@ -276,6 +281,112 @@ public class DashboardContentView {
                 listener.onGameClick(packageName, finalGameTitle, true);
             }
         });
+
+        return card;
+    }
+
+    // Dynamic Ring 0 Driver Connection Card (Directly linked to com.ninmods.loader)
+    private static View createDriverSection(final Context context) {
+        LinearLayout card = new LinearLayout(context);
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        cardLp.setMargins(0, 0, 0, dp(context, 14));
+        card.setLayoutParams(cardLp);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12));
+        card.setClickable(true);
+        card.setFocusable(true);
+
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(AppColors.MAGENTA_CARD);
+        cardBg.setCornerRadius(dp(context, 10));
+        cardBg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
+        card.setBackground(cardBg);
+
+        // Icon Box
+        FrameLayout iconBox = new FrameLayout(context);
+        LinearLayout.LayoutParams iconBoxLp = new LinearLayout.LayoutParams(dp(context, 44), dp(context, 44));
+        iconBoxLp.rightMargin = dp(context, 12);
+        iconBox.setLayoutParams(iconBoxLp);
+
+        GradientDrawable iconBg = new GradientDrawable();
+        iconBg.setColor(AppColors.MAGENTA_CHIP);
+        iconBg.setCornerRadius(dp(context, 10));
+        iconBox.setBackground(iconBg);
+
+        ImageView iconView = new ImageView(context);
+        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(dp(context, 26), dp(context, 26));
+        ivLp.gravity = Gravity.CENTER;
+        iconView.setLayoutParams(ivLp);
+        iconView.setImageResource(R.mipmap.ic_launcher);
+        iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        iconBox.addView(iconView);
+        card.addView(iconBox);
+
+        // Text Info Container
+        LinearLayout textContainer = new LinearLayout(context);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        textContainer.setLayoutParams(textLp);
+        textContainer.setOrientation(LinearLayout.VERTICAL);
+
+        TextView titleTv = new TextView(context);
+        titleTv.setText("Driver Loader Engine");
+        titleTv.setTextColor(AppColors.WHITE);
+        titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        titleTv.setTypeface(Typeface.DEFAULT_BOLD);
+        textContainer.addView(titleTv);
+
+        boolean isDriverActive = DriverManager.isDriverActive();
+        boolean isInstalled = DriverManager.isLoaderInstalled(context);
+        String activeNode = DriverManager.getActiveDriverNode();
+
+        TextView subTv = new TextView(context);
+        subTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        if (isDriverActive) {
+            subTv.setText(activeNode != null ? activeNode : "Ring 0 Active");
+            subTv.setTextColor(0xFF00E676);
+        } else if (isInstalled) {
+            subTv.setText("Tap to launch driver loader");
+            subTv.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        } else {
+            subTv.setText(DriverManager.LOADER_PACKAGE_NAME + " missing");
+            subTv.setTextColor(0xFFFF5252);
+        }
+        textContainer.addView(subTv);
+        card.addView(textContainer);
+
+        // Status Pill
+        TextView statusPill = new TextView(context);
+        statusPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        statusPill.setTypeface(Typeface.DEFAULT_BOLD);
+        statusPill.setPadding(dp(context, 8), dp(context, 4), dp(context, 8), dp(context, 4));
+
+        GradientDrawable pillBg = new GradientDrawable();
+        pillBg.setCornerRadius(dp(context, 6));
+
+        if (isDriverActive) {
+            statusPill.setText("ACTIVE");
+            statusPill.setTextColor(0xFF00E676);
+            pillBg.setColor(0x2200E676);
+            pillBg.setStroke(dp(context, 1), 0x6600E676);
+        } else if (isInstalled) {
+            statusPill.setText("OPEN");
+            statusPill.setTextColor(AppColors.MAGENTA_PRIMARY);
+            pillBg.setColor(AppColors.MAGENTA_CHIP);
+            pillBg.setStroke(dp(context, 1), AppColors.MAGENTA_PRIMARY);
+        } else {
+            statusPill.setText("NOT FOUND");
+            statusPill.setTextColor(0xFFFF5252);
+            pillBg.setColor(0x22FF5252);
+            pillBg.setStroke(dp(context, 1), 0x66FF5252);
+        }
+        statusPill.setBackground(pillBg);
+        card.addView(statusPill);
+
+        card.setOnClickListener(v -> DriverManager.launchDriverLoader(context));
 
         return card;
     }
