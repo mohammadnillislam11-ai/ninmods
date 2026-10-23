@@ -634,7 +634,7 @@ public class DashboardActivity extends BaseActivity {
 
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(dp(1.8f));
-                paint.setColor(isOpen ? AppColors.MAGENTA_PRIMARY : AppColors.MAGENTA_TEXT_MUTED);
+                paint.setColor(isOpen ? AppColors.MAGENTA_PRIMARY : AppColors.MAGENTA_TEXT_DIM);
 
                 // Eye contour
                 Path path = new Path();
