@@ -6,15 +6,15 @@
 // Synchronized directly with ninmods_offsets.h & New_Brutal
 // ========================================================
 namespace Offsets {
-    // Player Component / Bone Offsets (Prioritized for Normal Free Fire & Mayur OB55)
-    constexpr uintptr_t MainCameraTransform = 0x3F0; // from Mayur pAdress.h (MainCam)
-    constexpr uintptr_t MainCameraTransformAlt = 0x3E8ULL; // from ninmods_offsets.h (OFFSET_Player_MainCameraTransform)
-    constexpr uintptr_t MainCamera = 0x3F0; // Corrected from 0x38 (0x38 is m_PlayerAimEvt)
-    constexpr uintptr_t MainCameraAlt = 0x3E8;
+    // Player Component / Bone Offsets (Synchronized with live ninmods_offsets.h)
+    constexpr uintptr_t MainCameraTransform = 0x3E8ULL; // Verified from live dump (OFFSET_Player_MainCameraTransform)
+    constexpr uintptr_t MainCameraTransformAlt = 0x3F0; // Mayur fallback
+    constexpr uintptr_t MainCamera = 0x3E8ULL;
+    constexpr uintptr_t MainCameraAlt = 0x3F0;
     constexpr uintptr_t MainCameraOld = 0x38;
 
-    constexpr uintptr_t Head = 0x3F0; // Eye/Head camera level in OB55 (Mayur MainCam)
-    constexpr uintptr_t HeadFallback = 0x3E8; // ninmods_offsets.h MainCameraTransform
+    constexpr uintptr_t Head = 0x3E8ULL; // Verified from live dump MainCameraTransform
+    constexpr uintptr_t HeadFallback = 0x3F0;
     constexpr uintptr_t HeadOld = 0x6478;
 
     constexpr uintptr_t Spine = 0x6548;
@@ -180,38 +180,38 @@ namespace Offsets {
     // IL2CPP METHOD RVAs (Synchronized directly from ninmods_offsets.h)
     // ========================================================
     namespace RVA {
-        constexpr uintptr_t Player_GetChestPos = 0xe70da7a0ULL;
-        constexpr uintptr_t Player_RootTF = 0xe70daa60ULL;
-        constexpr uintptr_t Player_IsBoneNode = 0xe70dab50ULL;
-        constexpr uintptr_t Player_get_HeadCollider = 0xe70dacb0ULL;
-        constexpr uintptr_t Player_get_RightHandTF = 0xe70dba80ULL;
-        constexpr uintptr_t Player_get_LeftHandTF = 0xe70db9a0ULL;
-        constexpr uintptr_t Player_get_SpineBoneTransform = 0xe70d5938ULL;
-        constexpr uintptr_t Player_get_RootTransform = 0xe70c1910ULL;
-        constexpr uintptr_t Player_get_BoneRootTransform = 0xe70defe8ULL;
-        constexpr uintptr_t Player_get_ShoulderBoneTransform = 0xe70c3180ULL;
-        constexpr uintptr_t Player_get_RightLegBoneTransform = 0xe70df11cULL;
-        constexpr uintptr_t Player_get_HipsBoneTransform = 0xe70df250ULL;
-        constexpr uintptr_t Player_get_BipBoneTransform = 0xe70df384ULL;
-        constexpr uintptr_t Player_get_HeadBoneTransform = 0xe70df4b8ULL;
-        constexpr uintptr_t Player_IsVisible = 0xe70e0108ULL;
-        constexpr uintptr_t Player_get_IsDieing = 0xe70c57c0ULL;
-        constexpr uintptr_t Player_get_IsReallyDead = 0xe70ddb04ULL;
-        constexpr uintptr_t Player_get_MaxJumpHeight = 0xe7196050ULL;
-        constexpr uintptr_t Player_get_CustomGravity = 0xe70d9df0ULL;
-        constexpr uintptr_t Player_get_RisingGravity = 0xe7195e70ULL;
-        constexpr uintptr_t Player_get_FallingGravity = 0xe7195f60ULL;
-        constexpr uintptr_t Player_get_InSwapWeaponCD = 0xe70dc688ULL;
-        constexpr uintptr_t Player_get_IsGod = 0xe70a7468ULL;
-        constexpr uintptr_t GameConfig_get_ResetGuest = 0xe6b9d830ULL;
-        constexpr uintptr_t Camera_get_main = 0xea13fd00ULL;
-        constexpr uintptr_t Camera_WorldToScreenPoint = 0xea13f654ULL;
-        constexpr uintptr_t Camera_get_worldToCameraMatrix = 0xea13f3a8ULL;
-        constexpr uintptr_t Camera_get_projectionMatrix = 0xea13f4e0ULL;
-        constexpr uintptr_t Transform_get_position = 0xea195a68ULL;
-        constexpr uintptr_t Transform_set_position = 0xea195b08ULL;
-        constexpr uintptr_t Transform_get_forward = 0xea196040ULL;
-        constexpr uintptr_t Transform_get_rotation = 0xea195c58ULL;
+        constexpr uintptr_t Player_GetChestPos = 0x1691a7a0ULL;
+        constexpr uintptr_t Player_RootTF = 0x1691aa60ULL;
+        constexpr uintptr_t Player_IsBoneNode = 0x1691ab50ULL;
+        constexpr uintptr_t Player_get_HeadCollider = 0x1691acb0ULL;
+        constexpr uintptr_t Player_get_RightHandTF = 0x1691ba80ULL;
+        constexpr uintptr_t Player_get_LeftHandTF = 0x1691b9a0ULL;
+        constexpr uintptr_t Player_get_SpineBoneTransform = 0x16915938ULL;
+        constexpr uintptr_t Player_get_RootTransform = 0x16901910ULL;
+        constexpr uintptr_t Player_get_BoneRootTransform = 0x1691efe8ULL;
+        constexpr uintptr_t Player_get_ShoulderBoneTransform = 0x16903180ULL;
+        constexpr uintptr_t Player_get_RightLegBoneTransform = 0x1691f11cULL;
+        constexpr uintptr_t Player_get_HipsBoneTransform = 0x1691f250ULL;
+        constexpr uintptr_t Player_get_BipBoneTransform = 0x1691f384ULL;
+        constexpr uintptr_t Player_get_HeadBoneTransform = 0x1691f4b8ULL;
+        constexpr uintptr_t Player_IsVisible = 0x16920108ULL;
+        constexpr uintptr_t Player_get_IsDieing = 0x169057c0ULL;
+        constexpr uintptr_t Player_get_IsReallyDead = 0x1691db04ULL;
+        constexpr uintptr_t Player_get_MaxJumpHeight = 0x169d6050ULL;
+        constexpr uintptr_t Player_get_CustomGravity = 0x16919df0ULL;
+        constexpr uintptr_t Player_get_RisingGravity = 0x169d5e70ULL;
+        constexpr uintptr_t Player_get_FallingGravity = 0x169d5f60ULL;
+        constexpr uintptr_t Player_get_InSwapWeaponCD = 0x1691c688ULL;
+        constexpr uintptr_t Player_get_IsGod = 0x168e7468ULL;
+        constexpr uintptr_t GameConfig_get_ResetGuest = 0x163dd830ULL;
+        constexpr uintptr_t Camera_get_main = 0x1997fd00ULL;
+        constexpr uintptr_t Camera_WorldToScreenPoint = 0x1997f654ULL;
+        constexpr uintptr_t Camera_get_worldToCameraMatrix = 0x1997f3a8ULL;
+        constexpr uintptr_t Camera_get_projectionMatrix = 0x1997f4e0ULL;
+        constexpr uintptr_t Transform_get_position = 0x199d5a68ULL;
+        constexpr uintptr_t Transform_set_position = 0x199d5b08ULL;
+        constexpr uintptr_t Transform_get_forward = 0x199d6040ULL;
+        constexpr uintptr_t Transform_get_rotation = 0x199d5c58ULL;
     }
 
     // ========================================================
