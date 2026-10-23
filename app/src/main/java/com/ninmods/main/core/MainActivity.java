@@ -309,9 +309,25 @@ public class MainActivity extends BaseActivity {
         if (isAppStarted || isFinishing()) return;
         isAppStarted = true;
 
-        tvStatus.setText("Initializing Login...");
         btnAction.setVisibility(View.GONE);
 
+        // Persistent Session Check (like Google account / digital token session)
+        if (com.ninmods.main.auth.AuthManager.isLoggedIn(this)) {
+            tvStatus.setText("Session Restored. Opening Dashboard...");
+            String sessionToken = com.ninmods.main.auth.AuthManager.getSessionToken(this);
+            String hwid = com.ninmods.main.auth.AuthApiController.getHwid(this);
+            long remSec = com.ninmods.main.auth.AuthManager.getRemainingSeconds(this);
+            if (sessionToken != null && !sessionToken.isEmpty()) {
+                com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
+            }
+            Intent intent = new Intent(this, DashboardActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(intent);
+            finish();
+            return;
+        }
+
+        tvStatus.setText("Initializing Login...");
         Intent intent = new Intent(this, com.ninmods.main.auth.LoginActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(intent);

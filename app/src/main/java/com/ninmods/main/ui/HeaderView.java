@@ -1,7 +1,9 @@
 package com.ninmods.main.ui;
 
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -50,25 +52,10 @@ public class HeaderView {
         header.setBackgroundColor(AppColors.MAGENTA_CARD); // Exactly matches card color
 
         // 3-Line Hamburger Menu Button (opens sidebar drawer)
-        ImageView menuBtn = new ImageView(context);
+        HamburgerView menuBtn = new HamburgerView(context);
         menuBtn.setLayoutParams(new LinearLayout.LayoutParams(dp(context, 44), dp(context, 44)));
-        menuBtn.setPadding(dp(context, 11), dp(context, 11), dp(context, 11), dp(context, 11));
-        menuBtn.setScaleType(ImageView.ScaleType.FIT_CENTER);
-
-        android.graphics.drawable.ShapeDrawable hamburgerDrawable = new android.graphics.drawable.ShapeDrawable(new android.graphics.drawable.shapes.Shape() {
-            @Override
-            public void draw(android.graphics.Canvas canvas, android.graphics.Paint paint) {
-                paint.setColor(AppColors.WHITE);
-                paint.setStrokeWidth(dp(context, 2));
-                paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
-                float w = getWidth();
-                float h = getHeight();
-                canvas.drawLine(0, h * 0.25f, w, h * 0.25f, paint);
-                canvas.drawLine(0, h * 0.50f, w, h * 0.50f, paint);
-                canvas.drawLine(0, h * 0.75f, w, h * 0.75f, paint);
-            }
-        });
-        menuBtn.setImageDrawable(hamburgerDrawable);
+        menuBtn.setFocusable(true);
+        menuBtn.setClickable(true);
         menuBtn.setOnClickListener(v -> {
             if (headerListener != null) {
                 headerListener.onMenuClick();
@@ -122,5 +109,47 @@ public class HeaderView {
                 value,
                 context.getResources().getDisplayMetrics()
         );
+    }
+
+    public static class HamburgerView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        public HamburgerView(Context context) {
+            super(context);
+            paint.setColor(AppColors.WHITE);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            int w = getWidth();
+            int h = getHeight();
+            if (w <= 0 || h <= 0) return;
+
+            float stroke = dp(getContext(), 2.4f);
+            paint.setStrokeWidth(stroke);
+
+            float padX = dp(getContext(), 10f);
+            float startX = padX;
+            float endX = w - padX;
+
+            float midY = h / 2.0f;
+            float gap = dp(getContext(), 6.5f);
+
+            // 3 horizontal white lines (crisp, rounded caps)
+            canvas.drawLine(startX, midY - gap, endX, midY - gap, paint);
+            canvas.drawLine(startX, midY, endX, midY, paint);
+            canvas.drawLine(startX, midY + gap, endX, midY + gap, paint);
+        }
+
+        private static float dp(Context ctx, float value) {
+            return TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP,
+                    value,
+                    ctx.getResources().getDisplayMetrics()
+            );
+        }
     }
 }

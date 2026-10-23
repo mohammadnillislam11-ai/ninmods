@@ -93,6 +93,17 @@ public class MenuRouter {
             return;
         }
 
+        if (!com.ninmods.main.auth.SecurityVault.isSessionValid()) {
+            String hwid = com.ninmods.main.auth.AuthApiController.getHwid(context);
+            long remSec = com.ninmods.main.auth.AuthManager.getRemainingSeconds(context);
+            com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
+        }
+
+        if (!com.ninmods.main.auth.SecurityVault.isSessionValid()) {
+            android.widget.Toast.makeText(context, "Tamper detected / Invalid server session. Please activate key online.", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+
         // 1. Strict Channel Isolation: Stop any currently running menu overlay first
         stopAllMenus(context);
 

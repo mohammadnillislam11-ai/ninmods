@@ -55,29 +55,11 @@ public class Floater {
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
     public static volatile Floater activeFloater = null;
 
-    private static final long HEARTBEAT_INTERVAL_MS = 60000;
+    // Periodic inquiry disabled: once floating menu is activated with verified license, it remains active without periodic 1-minute cutoffs
     private static final Runnable heartbeatRunnable = new Runnable() {
         @Override
         public void run() {
-            if (activeFloater == null || !activeFloater.isAttached()) return;
-            final Context ctx = activeFloater.context;
-            if (ctx == null) return;
-
-            com.ninmods.main.auth.AuthApiController.heartbeat(ctx, new com.ninmods.main.auth.AuthApiController.ApiCallback() {
-                @Override
-                public void onSuccess(String message) {
-                    mainHandler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL_MS);
-                }
-
-                @Override
-                public void onError(String errorMessage) {
-                    AppLogger.log("LICENSE", "License expired on server: " + errorMessage);
-                    stop();
-                    try {
-                        android.widget.Toast.makeText(ctx, "License Expired! Floating menu deactivated: " + errorMessage, android.widget.Toast.LENGTH_LONG).show();
-                    } catch (Exception ignored) {}
-                }
-            });
+            // No recurring cutoff inquiry
         }
     };
 
@@ -138,6 +120,17 @@ public class Floater {
         String sessionToken = com.ninmods.main.auth.AuthManager.getSessionToken(targetCtx);
         if (activeKey == null || activeKey.trim().isEmpty() || sessionToken == null || sessionToken.trim().isEmpty()) {
             android.widget.Toast.makeText(targetCtx, "Active license key required! Please activate key online.", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (!com.ninmods.main.auth.SecurityVault.isSessionValid()) {
+            String hwid = com.ninmods.main.auth.AuthApiController.getHwid(targetCtx);
+            long remSec = com.ninmods.main.auth.AuthManager.getRemainingSeconds(targetCtx);
+            com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
+        }
+
+        if (!com.ninmods.main.auth.SecurityVault.isSessionValid()) {
+            android.widget.Toast.makeText(targetCtx, "Tamper detected / Invalid server session. Please activate key online.", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -628,9 +621,8 @@ public class Floater {
 
         refreshActivePages();
 
-        // Schedule periodic online heartbeat validation
+        // Periodic inquiry disabled: once floating menu is running, it remains active without cutoff
         mainHandler.removeCallbacks(heartbeatRunnable);
-        mainHandler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL_MS);
     }
 
     public void selectRailTab(int index) {

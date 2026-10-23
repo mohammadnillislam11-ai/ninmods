@@ -6,6 +6,8 @@ import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -21,6 +23,7 @@ import android.widget.TextView;
 import java.util.List;
 
 import com.ninmods.main.R;
+import com.ninmods.main.auth.AuthManager;
 import com.ninmods.main.core.AppColors;
 import com.ninmods.main.core.DriverManager;
 import com.ninmods.main.menu.IMenuProject;
@@ -59,10 +62,13 @@ public class DashboardContentView {
         container.addView(menusHeader);
         container.addView(createBrandMenuGrid(context, listener));
 
-        // 2. Ring 0 Kernel Driver Loader Connection Section
-        TextView driverHeader = createSectionHeader(context, "RING 0 KERNEL DRIVER");
-        container.addView(driverHeader);
-        container.addView(createDriverSection(context));
+        // 2. Active VIP License Session & Live Countdown Card
+        // Shown ONLY if an active plan is verified per user requirement
+        if (AuthManager.hasActiveLicense(context)) {
+            TextView licenseHeader = createSectionHeader(context, "ACTIVE VIP LICENSE");
+            container.addView(licenseHeader);
+            container.addView(new ActiveLicenseCountdownCard(context));
+        }
 
         // 3. Installed Games Section (Auto-detected from device, Zero buttons, dialog on click)
         TextView gamesHeader = createSectionHeader(context, "INSTALLED GAMES");
@@ -284,110 +290,121 @@ public class DashboardContentView {
         return card;
     }
 
-    // Dynamic Ring 0 Driver Connection Card (Directly linked to com.ninmods.loader)
-    private static View createDriverSection(final Context context) {
-        LinearLayout card = new LinearLayout(context);
-        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        cardLp.setMargins(0, 0, 0, dp(context, 14));
-        card.setLayoutParams(cardLp);
-        card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12));
-        card.setClickable(true);
-        card.setFocusable(true);
+    // Dynamic Active VIP License Countdown Card with Live Ticking
+    public static class ActiveLicenseCountdownCard extends LinearLayout {
+        private final TextView tvCountdown;
+        private final Handler tickerHandler = new Handler(Looper.getMainLooper());
+        private final Runnable tickerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                updateTime();
+                tickerHandler.postDelayed(this, 1000);
+            }
+        };
 
-        GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(AppColors.MAGENTA_CARD);
-        cardBg.setCornerRadius(dp(context, 10));
-        cardBg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
-        card.setBackground(cardBg);
+        public ActiveLicenseCountdownCard(Context context) {
+            super(context);
+            setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) getLayoutParams();
+            lp.bottomMargin = dp(context, 14);
+            setLayoutParams(lp);
+            setOrientation(HORIZONTAL);
+            setGravity(Gravity.CENTER_VERTICAL);
+            setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12));
 
-        // Icon Box
-        FrameLayout iconBox = new FrameLayout(context);
-        LinearLayout.LayoutParams iconBoxLp = new LinearLayout.LayoutParams(dp(context, 44), dp(context, 44));
-        iconBoxLp.rightMargin = dp(context, 12);
-        iconBox.setLayoutParams(iconBoxLp);
+            GradientDrawable cardBg = new GradientDrawable();
+            cardBg.setColor(AppColors.MAGENTA_CARD);
+            cardBg.setCornerRadius(dp(context, 10));
+            cardBg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
+            setBackground(cardBg);
 
-        GradientDrawable iconBg = new GradientDrawable();
-        iconBg.setColor(AppColors.MAGENTA_CHIP);
-        iconBg.setCornerRadius(dp(context, 10));
-        iconBox.setBackground(iconBg);
+            // Icon Box
+            FrameLayout iconBox = new FrameLayout(context);
+            LinearLayout.LayoutParams iconBoxLp = new LinearLayout.LayoutParams(dp(context, 44), dp(context, 44));
+            iconBoxLp.rightMargin = dp(context, 12);
+            iconBox.setLayoutParams(iconBoxLp);
 
-        ImageView iconView = new ImageView(context);
-        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(dp(context, 26), dp(context, 26));
-        ivLp.gravity = Gravity.CENTER;
-        iconView.setLayoutParams(ivLp);
-        iconView.setImageResource(R.drawable.ic_launcher);
-        iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iconBox.addView(iconView);
-        card.addView(iconBox);
+            GradientDrawable iconBg = new GradientDrawable();
+            iconBg.setColor(AppColors.MAGENTA_CHIP);
+            iconBg.setCornerRadius(dp(context, 10));
+            iconBg.setStroke(dp(context, 1), 0xFF00E676);
+            iconBox.setBackground(iconBg);
 
-        // Text Info Container
-        LinearLayout textContainer = new LinearLayout(context);
-        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        textContainer.setLayoutParams(textLp);
-        textContainer.setOrientation(LinearLayout.VERTICAL);
+            ImageView iconView = new ImageView(context);
+            FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(dp(context, 26), dp(context, 26));
+            ivLp.gravity = Gravity.CENTER;
+            iconView.setLayoutParams(ivLp);
+            iconView.setImageResource(R.drawable.ic_launcher);
+            iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            iconBox.addView(iconView);
+            addView(iconBox);
 
-        TextView titleTv = new TextView(context);
-        titleTv.setText("Driver Loader Engine");
-        titleTv.setTextColor(AppColors.WHITE);
-        titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        titleTv.setTypeface(Typeface.DEFAULT_BOLD);
-        textContainer.addView(titleTv);
+            // Text Info Container
+            LinearLayout textContainer = new LinearLayout(context);
+            LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+            textContainer.setLayoutParams(textLp);
+            textContainer.setOrientation(VERTICAL);
 
-        boolean isDriverActive = DriverManager.isDriverActive();
-        boolean isInstalled = DriverManager.isLoaderInstalled(context);
-        String activeNode = DriverManager.getActiveDriverNode();
+            TextView titleTv = new TextView(context);
+            titleTv.setText("VIP MEMBERSHIP ACTIVE");
+            titleTv.setTextColor(AppColors.WHITE);
+            titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            titleTv.setTypeface(Typeface.DEFAULT_BOLD);
+            textContainer.addView(titleTv);
 
-        TextView subTv = new TextView(context);
-        subTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        if (isDriverActive) {
-            subTv.setText(activeNode != null ? activeNode : "Ring 0 Active");
-            subTv.setTextColor(0xFF00E676);
-        } else if (isInstalled) {
-            subTv.setText("Tap to launch driver loader");
-            subTv.setTextColor(AppColors.MAGENTA_TEXT_DIM);
-        } else {
-            subTv.setText(DriverManager.LOADER_PACKAGE_NAME + " missing");
-            subTv.setTextColor(0xFFFF5252);
-        }
-        textContainer.addView(subTv);
-        card.addView(textContainer);
+            TextView planTv = new TextView(context);
+            planTv.setText(AuthManager.getActivePlanName(context));
+            planTv.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+            planTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            planTv.setPadding(0, dp(context, 1), 0, dp(context, 2));
+            textContainer.addView(planTv);
 
-        // Status Pill
-        TextView statusPill = new TextView(context);
-        statusPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        statusPill.setTypeface(Typeface.DEFAULT_BOLD);
-        statusPill.setPadding(dp(context, 8), dp(context, 4), dp(context, 8), dp(context, 4));
+            tvCountdown = new TextView(context);
+            tvCountdown.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            tvCountdown.setTextColor(0xFF00E676);
+            tvCountdown.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            textContainer.addView(tvCountdown);
 
-        GradientDrawable pillBg = new GradientDrawable();
-        pillBg.setCornerRadius(dp(context, 6));
+            addView(textContainer);
 
-        if (isDriverActive) {
+            // Status Pill
+            TextView statusPill = new TextView(context);
             statusPill.setText("ACTIVE");
             statusPill.setTextColor(0xFF00E676);
+            statusPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+            statusPill.setTypeface(Typeface.DEFAULT_BOLD);
+            statusPill.setPadding(dp(context, 8), dp(context, 4), dp(context, 8), dp(context, 4));
+
+            GradientDrawable pillBg = new GradientDrawable();
             pillBg.setColor(0x2200E676);
+            pillBg.setCornerRadius(dp(context, 6));
             pillBg.setStroke(dp(context, 1), 0x6600E676);
-        } else if (isInstalled) {
-            statusPill.setText("OPEN");
-            statusPill.setTextColor(AppColors.MAGENTA_PRIMARY);
-            pillBg.setColor(AppColors.MAGENTA_CHIP);
-            pillBg.setStroke(dp(context, 1), AppColors.MAGENTA_PRIMARY);
-        } else {
-            statusPill.setText("NOT FOUND");
-            statusPill.setTextColor(0xFFFF5252);
-            pillBg.setColor(0x22FF5252);
-            pillBg.setStroke(dp(context, 1), 0x66FF5252);
+            statusPill.setBackground(pillBg);
+            addView(statusPill);
+
+            updateTime();
         }
-        statusPill.setBackground(pillBg);
-        card.addView(statusPill);
 
-        card.setOnClickListener(v -> DriverManager.launchDriverLoader(context));
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            tickerHandler.removeCallbacks(tickerRunnable);
+            tickerHandler.post(tickerRunnable);
+        }
 
-        return card;
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            tickerHandler.removeCallbacks(tickerRunnable);
+        }
+
+        private void updateTime() {
+            long remaining = AuthManager.getRemainingSeconds(getContext());
+            tvCountdown.setText(AuthManager.formatRemainingTime(remaining));
+        }
     }
 
     private static TextView createSectionHeader(Context context, String title) {

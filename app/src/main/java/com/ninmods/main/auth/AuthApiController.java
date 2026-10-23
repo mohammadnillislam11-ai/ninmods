@@ -235,7 +235,10 @@ public final class AuthApiController {
                         String sessionToken = resJson.optString("session_token", "");
 
                         Prefs.with(context).writeInt("license_remaining_sec", remainingSec);
+                        Prefs.with(context).writeLong("license_saved_at_ms", System.currentTimeMillis());
                         Prefs.with(context).writeString("license_expires_at", expiresAt);
+                        String durationType = resJson.optString("duration_type", "30_days");
+                        Prefs.with(context).writeString("license_duration_type", durationType);
                         AuthManager.setActiveLicenseKey(context, key);
                         if (!sessionToken.isEmpty()) {
                             AuthManager.setSessionToken(context, sessionToken);
@@ -331,8 +334,7 @@ public final class AuthApiController {
         conn.setDoInput(true);
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-        conn.setRequestProperty("Accept", "application/json");
-        conn.setRequestProperty("User-Agent", "NinMods-Banking-Client/90.3");
+        conn.setRequestProperty("User-Agent", "NinMods-Banking-Client/" + context.getString(R.string.app_version));
         conn.setRequestProperty("X-Client-Version", context.getString(R.string.app_version));
 
         // Banking-grade cryptographic security headers
