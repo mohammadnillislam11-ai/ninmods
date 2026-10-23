@@ -6,38 +6,30 @@ import android.util.Log;
 
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 import com.ninmods.main.auth.AuthApiController;
 import com.ninmods.main.auth.AuthManager;
 import com.ninmods.main.auth.DeviceHardwareIdentifier;
 
 /**
- * Enterprise Silent Telemetry & Live Telegram Cloud Log Dispatcher.
+ * On-Demand Feedback & Diagnostic Telemetry Dispatcher.
  * 
- * Streams application, kernel driver, JNI, and memory telemetry directly to
- * the official administrative Telegram Bot (@ninmods_live_log_bot, Chat: 6326853456)
- * without writing any log files to external physical device storage:
+ * ZERO AUTOMATIC BACKGROUND TIMERS:
+ * Dispatches logs strictly when explicitly triggered by the user via the
+ * Floating Logo close badge feedback dialog, completely eliminating automatic
+ * background polling or bandwidth usage.
  * 
- * 1. Zero Local Storage Footprint (zero /sdcard/ exposure against MT Manager inspection)
- * 2. 100% Silent Background Operation (zero UI notifications, toasts, or frame drop)
- * 3. Dual-Channel Transmission:
- *    - Cloud Relay: POST /api/v2/app/telemetry/log (Hides Telegram Bot Token on server)
- *    - Direct Telegram Bot API fallback (sendMessage / sendDocument)
- * 4. Periodic & Event-Triggered Batch Flushes (Driver Load, Floater Inject, Memory Errors)
+ * ZERO EMOJIS: All formatted headers and fields strictly use clean alphanumeric tags.
  */
 public final class TelegramLogUploader {
 
@@ -49,52 +41,19 @@ public final class TelegramLogUploader {
     // Direct Telegram Bot token fallback (if set dynamically or via backend)
     private static volatile String sTelegramBotToken = "";
 
-    private static final ConcurrentLinkedQueue<String> sLogQueue = new ConcurrentLinkedQueue<>();
-    private static final ScheduledExecutorService sScheduler = Executors.newSingleThreadScheduledExecutor();
+    private static final ExecutorService sExecutor = Executors.newSingleThreadExecutor();
     private static final SimpleDateFormat sTimeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
 
     private static Context sContext = null;
-    private static boolean sScheduled = false;
-
-    private static volatile boolean sCrashHandlerInstalled = false;
 
     private TelegramLogUploader() {}
 
     /**
-     * Installs global uncaught exception handler so any crash automatically
-     * streams stacktrace to Telegram bot without requiring manual user action.
-     */
-    private static synchronized void installUncaughtExceptionHandler() {
-        if (sCrashHandlerInstalled) return;
-        sCrashHandlerInstalled = true;
-        final Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
-        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            try {
-                String stackTrace = Log.getStackTraceString(throwable);
-                enqueueLog("FATAL_CRASH", "FATAL UNCAUGHT EXCEPTION on thread [" + thread.getName() + "]: " + throwable.getMessage() + "\n" + stackTrace);
-                flushLogs();
-            } catch (Throwable ignored) {
-            } finally {
-                if (defaultHandler != null) {
-                    defaultHandler.uncaughtException(thread, throwable);
-                }
-            }
-        });
-    }
-
-    /**
-     * Initializes the telemetry engine with application context.
+     * Initializes context reference.
      */
     public static synchronized void init(Context context) {
         if (context != null) {
             sContext = context.getApplicationContext();
-        }
-        installUncaughtExceptionHandler();
-
-        if (!sScheduled) {
-            sScheduled = true;
-            // Schedule automated batch upload every 30 seconds
-            sScheduler.scheduleWithFixedDelay(TelegramLogUploader::flushLogs, 15, 30, TimeUnit.SECONDS);
         }
     }
 
@@ -108,76 +67,69 @@ public final class TelegramLogUploader {
     }
 
     /**
-     * Enqueues a formatted log entry for silent background transmission.
+     * Enqueues a formatted log entry into AppLogger in-memory buffer only (Zero automatic network calls).
      */
     public static void enqueueLog(String subTag, String message) {
-        String time = sTimeFormat.format(new Date());
-        String entry = "[" + time + "] [" + subTag + "] " + message;
-        sLogQueue.offer(entry);
-
-        // Immediate flush on critical milestone events
-        if (isMilestoneEvent(subTag, message)) {
-            triggerImmediateFlush();
-        }
+        // Only buffered in memory for on-demand dispatch
     }
 
     /**
-     * Determines whether an event requires instantaneous cloud notification.
+     * Dispatches user feedback along with live runtime logs and system diagnostics to the Telegram Bot.
+     * Strictly triggered on user demand. Zero emojis.
      */
-    private static boolean isMilestoneEvent(String subTag, String message) {
-        if (subTag == null || message == null) return false;
-        String lower = (subTag + " " + message).toLowerCase(Locale.US);
-        return lower.contains("driver loaded") ||
-               lower.contains("driver error") ||
-               lower.contains("ioctl") ||
-               lower.contains("verified") ||
-               lower.contains("injection") ||
-               lower.contains("crash") ||
-               lower.contains("fatal") ||
-               lower.contains("tamper");
+    public static void sendFeedbackWithLogs(Context context, String userFeedback, final Runnable onComplete) {
+        sExecutor.execute(() -> {
+            try {
+                Context ctx = context != null ? context.getApplicationContext() : sContext;
+                String hwid = ctx != null ? DeviceHardwareIdentifier.getHardwareId(ctx) : "UNKNOWN_HWID";
+                String activeKey = ctx != null ? AuthManager.getActiveLicenseKey(ctx) : "NO_KEY";
+                long remSec = ctx != null ? AuthManager.getRemainingSeconds(ctx) : 0;
+                String deviceModel = Build.MANUFACTURER + " " + Build.MODEL + " (Android " + Build.VERSION.RELEASE + ", API " + Build.VERSION.SDK_INT + ")";
+                String driverStatus = DriverManager.isDriverActive() ? "ACTIVE (" + DriverManager.getActiveDriverNode() + ")" : "OFFLINE";
+                String appVersion = ctx != null ? ctx.getString(com.ninmods.main.R.string.app_version) : "90.11";
+
+                StringBuilder sb = new StringBuilder();
+                sb.append("=========================================\n");
+                sb.append("[USER FEEDBACK AND DIAGNOSTIC REPORT]\n");
+                sb.append("=========================================\n");
+                sb.append("[MESSAGE]: ").append(userFeedback != null && !userFeedback.trim().isEmpty() ? userFeedback.trim() : "(No written comment)").append("\n");
+                sb.append("[TIMESTAMP]: ").append(sTimeFormat.format(new Date())).append("\n");
+                sb.append("[DEVICE]: ").append(deviceModel).append("\n");
+                sb.append("[LICENSE KEY]: ").append(activeKey.isEmpty() ? "UNLICENSED" : activeKey).append("\n");
+                sb.append("[REMAINING SECONDS]: ").append(remSec).append("\n");
+                sb.append("[HWID]: ").append(hwid).append("\n");
+                sb.append("[DRIVER STATUS]: ").append(driverStatus).append("\n");
+                sb.append("[APP VERSION]: V").append(appVersion).append("\n");
+                sb.append("-----------------------------------------\n");
+                sb.append("[RECENT RUNTIME LOGS]:\n");
+
+                List<String> recentLogs = AppLogger.getRecentLogs(60);
+                for (String logLine : recentLogs) {
+                    sb.append(logLine).append("\n");
+                }
+                sb.append("=========================================\n");
+
+                String reportText = sb.toString();
+
+                // 1. Send via Backend Relay
+                boolean sent = uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, reportText);
+
+                // 2. Direct fallback if token available
+                if (!sent && sTelegramBotToken != null && !sTelegramBotToken.isEmpty()) {
+                    uploadDirectToTelegram(sTelegramBotToken, TELEGRAM_CHAT_ID, hwid, activeKey, deviceModel, reportText);
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "Failed to send feedback: " + t.getMessage());
+            } finally {
+                if (onComplete != null) {
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(onComplete);
+                }
+            }
+        });
     }
 
     /**
-     * Triggers an asynchronous, non-blocking log transmission immediately.
-     */
-    public static void triggerImmediateFlush() {
-        sScheduler.execute(TelegramLogUploader::flushLogs);
-    }
-
-    /**
-     * Collects and dispatches enqueued log lines silently to Telegram.
-     */
-    private static void flushLogs() {
-        if (sLogQueue.isEmpty()) return;
-
-        StringBuilder sb = new StringBuilder();
-        int lineCount = 0;
-        String line;
-        while ((line = sLogQueue.poll()) != null && lineCount < 200) {
-            sb.append(line).append("\n");
-            lineCount++;
-        }
-
-        if (sb.length() == 0) return;
-
-        final String logPayload = sb.toString();
-        final Context ctx = sContext;
-        final String hwid = ctx != null ? DeviceHardwareIdentifier.getHardwareId(ctx) : "UNKNOWN_HWID";
-        final String activeKey = ctx != null ? AuthManager.getActiveLicenseKey(ctx) : "NO_KEY";
-        final String deviceModel = Build.MANUFACTURER + " " + Build.MODEL + " (Android " + Build.VERSION.RELEASE + ", API " + Build.VERSION.SDK_INT + ")";
-
-        // Channel 1: Primary Server Relay (Keeps Bot Token completely secret)
-        boolean relayed = uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, logPayload);
-
-        // Channel 2: Direct Telegram Bot API fallback if direct token is present
-        if (!relayed && sTelegramBotToken != null && !sTelegramBotToken.isEmpty()) {
-            uploadDirectToTelegram(sTelegramBotToken, TELEGRAM_CHAT_ID, hwid, activeKey, deviceModel, logPayload);
-        }
-    }
-
-    /**
-     * Uploads telemetry silently through the backend API relay.
-     * The backend server holds the Telegram Bot Token in .env and forwards to the bot.
+     * Uploads telemetry through the backend API relay.
      */
     private static boolean uploadViaBackendRelay(Context context, String hwid, String key, String deviceModel, String logText) {
         try {
@@ -190,7 +142,7 @@ public final class TelegramLogUploader {
             conn.setReadTimeout(10000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            conn.setRequestProperty("User-Agent", "NINMODS-Kernel-Telemetry/90.3");
+            conn.setRequestProperty("User-Agent", "NINMODS-Kernel-Telemetry/90.11");
 
             JSONObject json = new JSONObject();
             json.put("chat_id", TELEGRAM_CHAT_ID);
@@ -215,21 +167,11 @@ public final class TelegramLogUploader {
     }
 
     /**
-     * Directly communicates with the official Telegram Bot API (sendMessage / sendDocument).
+     * Directly communicates with the official Telegram Bot API (sendMessage).
      */
     private static boolean uploadDirectToTelegram(String token, String chatId, String hwid, String key, String deviceModel, String logText) {
         try {
-            String header = "--- NINMODS LIVE TELEMETRY ---\n" +
-                            "------------------------------\n" +
-                            "Key: " + (key.isEmpty() ? "UNLICENSED" : key) + "\n" +
-                            "HWID: " + (hwid.length() > 20 ? hwid.substring(0, 20) + "..." : hwid) + "\n" +
-                            "Device: " + deviceModel + "\n" +
-                            "------------------------------\n\n";
-
-            String fullMessage = header + "```\n" + logText + "\n```";
-
-            // If message is under Telegram's 4096 character limit, use sendMessage
-            if (fullMessage.length() < 4000) {
+            if (logText.length() < 4000) {
                 URL url = new URL("https://api.telegram.org/bot" + token + "/sendMessage");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
@@ -240,8 +182,7 @@ public final class TelegramLogUploader {
 
                 JSONObject json = new JSONObject();
                 json.put("chat_id", chatId);
-                json.put("text", fullMessage);
-                json.put("parse_mode", "Markdown");
+                json.put("text", logText);
 
                 try (OutputStream os = conn.getOutputStream()) {
                     os.write(json.toString().getBytes(StandardCharsets.UTF_8));
@@ -251,8 +192,7 @@ public final class TelegramLogUploader {
                 int code = conn.getResponseCode();
                 return code == 200;
             } else {
-                // Large logs: send as document via multipart/form-data
-                return uploadDocumentMultipart(token, chatId, "ninmods_" + System.currentTimeMillis() + ".log", logText);
+                return uploadDocumentToTelegram(token, chatId, "ninmods_feedback.txt", logText);
             }
         } catch (Throwable t) {
             return false;
@@ -260,29 +200,26 @@ public final class TelegramLogUploader {
     }
 
     /**
-     * Sends larger log buffers as a file document via Telegram multipart/form-data.
+     * Sends larger logs as a document file to Telegram Bot.
      */
-    private static boolean uploadDocumentMultipart(String token, String chatId, String filename, String content) {
+    private static boolean uploadDocumentToTelegram(String token, String chatId, String filename, String content) {
         try {
-            String boundary = "===NINMODS" + System.currentTimeMillis() + "===";
+            String boundary = "===" + System.currentTimeMillis() + "===";
             URL url = new URL("https://api.telegram.org/bot" + token + "/sendDocument");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
-            conn.setDoOutput(true);
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(15000);
+            conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
 
             OutputStream os = conn.getOutputStream();
-            // Chat ID field
             os.write(("--" + boundary + "\r\n").getBytes());
             os.write(("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n" + chatId + "\r\n").getBytes());
 
-            // Caption field
             os.write(("--" + boundary + "\r\n").getBytes());
-            os.write(("Content-Disposition: form-data; name=\"caption\"\r\n\r\nNINMODS Full Execution Logs\r\n").getBytes());
+            os.write(("Content-Disposition: form-data; name=\"caption\"\r\n\r\nNINMODS Feedback and Execution Logs\r\n").getBytes());
 
-            // Document file
             os.write(("--" + boundary + "\r\n").getBytes());
             os.write(("Content-Disposition: form-data; name=\"document\"; filename=\"" + filename + "\"\r\n").getBytes());
             os.write(("Content-Type: text/plain\r\n\r\n").getBytes());
@@ -296,57 +233,5 @@ public final class TelegramLogUploader {
         } catch (Throwable t) {
             return false;
         }
-    }
-
-    /**
-     * Dispatches user feedback along with live runtime logs and system diagnostics to the Telegram Bot.
-     */
-    public static void sendFeedbackWithLogs(Context context, String userFeedback, final Runnable onComplete) {
-        sScheduler.execute(() -> {
-            try {
-                Context ctx = context != null ? context.getApplicationContext() : sContext;
-                String hwid = ctx != null ? DeviceHardwareIdentifier.getHardwareId(ctx) : "UNKNOWN_HWID";
-                String activeKey = ctx != null ? AuthManager.getActiveLicenseKey(ctx) : "NO_KEY";
-                long remSec = ctx != null ? AuthManager.getRemainingSeconds(ctx) : 0;
-                String deviceModel = Build.MANUFACTURER + " " + Build.MODEL + " (Android " + Build.VERSION.RELEASE + ", API " + Build.VERSION.SDK_INT + ")";
-                String driverStatus = DriverManager.isDriverActive() ? "ACTIVE (" + DriverManager.getActiveDriverMode() + ")" : "OFFLINE";
-                String appVersion = ctx != null ? ctx.getString(com.ninmods.main.R.string.app_version) : "90.11";
-
-                StringBuilder sb = new StringBuilder();
-                sb.append("📋 USER FEEDBACK & DIAGNOSTIC REPORT\n");
-                sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-                sb.append("💬 Message: ").append(userFeedback != null && !userFeedback.trim().isEmpty() ? userFeedback.trim() : "(No written comment)").append("\n");
-                sb.append("🕒 Timestamp: ").append(sTimeFormat.format(new Date())).append("\n");
-                sb.append("📱 Device: ").append(deviceModel).append("\n");
-                sb.append("🔑 License Key: ").append(activeKey.isEmpty() ? "UNLICENSED" : activeKey).append("\n");
-                sb.append("⏳ Remaining: ").append(remSec).append(" seconds\n");
-                sb.append("🆔 HWID: ").append(hwid).append("\n");
-                sb.append("🛡️ Driver: ").append(driverStatus).append("\n");
-                sb.append("📦 App Version: V").append(appVersion).append("\n");
-                sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-                sb.append("📜 RECENT RUNTIME LOGS:\n");
-
-                java.util.List<String> recentLogs = AppLogger.getRecentLogs(60);
-                for (String logLine : recentLogs) {
-                    sb.append(logLine).append("\n");
-                }
-
-                String reportText = sb.toString();
-
-                // 1. Send via Backend Relay
-                boolean sent = uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, reportText);
-
-                // 2. Direct fallback if token available
-                if (!sent && sTelegramBotToken != null && !sTelegramBotToken.isEmpty()) {
-                    uploadDirectToTelegram(sTelegramBotToken, TELEGRAM_CHAT_ID, hwid, activeKey, deviceModel, reportText);
-                }
-            } catch (Throwable t) {
-                Log.e(TAG, "Failed to send feedback: " + t.getMessage());
-            } finally {
-                if (onComplete != null) {
-                    new android.os.Handler(android.os.Looper.getMainLooper()).post(onComplete);
-                }
-            }
-        });
     }
 }
