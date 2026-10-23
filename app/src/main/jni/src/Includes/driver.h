@@ -18,12 +18,16 @@
 #include <regex.h>
 #include <sys/uio.h>
 #include <sys/prctl.h>
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <cstdint>
 #include <atomic>
 #include <mutex>
 #include <vector>
+#include <initializer_list>
+#include <linux/input.h>
+#include <linux/uinput.h>
 
 #include "Logger.h"
 
@@ -32,62 +36,78 @@
 // ══════════════════════════════════════════════════════════════════════
 
 // [Group 1] RT DEV Standard (0x801 / 0x802 / 0x803)
-#define DEV_OP_INIT_KEY       0x800
-#define DEV_OP_READ_MEM       0x801
-#define DEV_OP_WRITE_MEM      0x802
-#define DEV_OP_MODULE_BASE    0x803
-#define DEV_OP_HIDE_PROCESS   0x804
-#define DEV_OP_GET_PID        0x805
+#define DEV_OP_INIT_KEY           0x800
+#define DEV_OP_READ_MEM           0x801
+#define DEV_OP_WRITE_MEM          0x802
+#define DEV_OP_MODULE_BASE        0x803
+#define DEV_OP_HIDE_PROCESS       0x804
+#define DEV_OP_GET_PID            0x805
 
 // [Group 2] RT Hook / Classic Breakpoint
-#define HOOK_OP_READ_MEM      601
-#define HOOK_OP_WRITE_MEM     602
-#define HOOK_OP_MODULE_BASE   603
-#define HOOK_OP_GET_PID       604
-#define HOOK_OP_HIDE_PROCESS  605
-#define HOOK_OP_UN_HOOK       606
-#define HOOK_OP_RECOVER       607
-#define HOOK_OP_INIT_KEY      610
+#define HOOK_OP_READ_MEM          601
+#define HOOK_OP_WRITE_MEM         602
+#define HOOK_OP_MODULE_BASE       603
+#define HOOK_OP_GET_PID           604
+#define HOOK_OP_HIDE_PROCESS      605
+#define HOOK_OP_UN_HOOK           606
+#define HOOK_OP_RECOVER           607
+#define HOOK_OP_HW_BREAKPOINT_CTL 608
+#define HOOK_OP_HW_BP_GET_HITS    609
+#define HOOK_OP_INIT_KEY          610
 
 // [Group 3] RT-Dev / RTModule (3495161 / 3495162 / 3495163)
-#define RT_CMD_READ           3495161
-#define RT_CMD_WRITE          3495162
-#define RT_CMD_BASE           3495163
-#define RT_CMD_GETPID         3495164
-#define RT_CMD_HIDE_PROCESS   3495165
+#define RT_CMD_READ               3495161
+#define RT_CMD_WRITE              3495162
+#define RT_CMD_BASE               3495163
+#define RT_CMD_GETPID             3495164
+#define RT_CMD_HIDE_PROCESS       3495165
+#define RT_CMD_UN_HOOK            3495166
+#define RT_CMD_RECOVER_PROCESS    3495167
+#define RT_CMD_GYRO               3495168
+#define RT_CMD_HWBP_ADD           3495169
+#define RT_CMD_HWBP_GET_HITS      3495170
+#define RT_CMD_HWBP_ENABLE        3495171
+#define RT_CMD_HWBP_CLEAR         3495172
+#define RT_CMD_HWBP_DISABLE       3495173
 
 // [Group 4] Alternative DEV / PROC
-#define PROC_OP_INIT_KEY      0xC00
-#define PROC_OP_READ_MEM      0xC01
-#define PROC_OP_WRITE_MEM     0xC02
-#define PROC_OP_MODULE_BASE   0xC03
-#define PROC_OP_HIDE_PROCESS  0xC04
+#define PROC_OP_INIT_KEY          0xC00
+#define PROC_OP_READ_MEM          0xC01
+#define PROC_OP_WRITE_MEM         0xC02
+#define PROC_OP_MODULE_BASE       0xC03
+#define PROC_OP_HIDE_PROCESS      0xC04
 
 // [Group 5] Socket DGRAM IOCTL (HookRW)
-#define SOCK_OP_READ_MEM      8001
-#define SOCK_OP_WRITE_MEM     8002
-#define SOCK_OP_GET_BASE      8003
-#define SOCK_OP_GET_PID       8004
-#define SOCK_OP_PROCESS_HIDE  8005
+#define SOCK_OP_READ_MEM          8001
+#define SOCK_OP_WRITE_MEM         8002
+#define SOCK_OP_GET_BASE          8003
+#define SOCK_OP_GET_PID           8004
+#define SOCK_OP_PROCESS_HIDE      8005
+#define SOCK_OP_PROCESS_RESTORE   8006
+#define SOCK_OP_PROCESS_HIDE_KGSL 8007
+#define SOCK_OP_PROCESS_HIDE_CTS  8008
 
 // [Group 6] NA KPM Neo Driver (prctl 0x4E41)
-#define NA_PRCTL_MAGIC        0x4E41
-#define NA_CMD_READ_MEM       1
-#define NA_CMD_WRITE_MEM      2
-#define NA_CMD_READ_PHYS      3
-#define NA_CMD_WRITE_PHYS     4
-#define NA_CMD_GET_PID        5
-#define NA_MAX_RW_SIZE        4096
-#define NA_MAX_PKG_NAME       256
+#define NA_PRCTL_MAGIC            0x4E41
+#define NA_CMD_READ_MEM           1
+#define NA_CMD_WRITE_MEM          2
+#define NA_CMD_READ_PHYS          3
+#define NA_CMD_WRITE_PHYS         4
+#define NA_CMD_GET_PID            5
+#define NA_CMD_INJECT_TOUCH       6
+#define NA_CMD_FIND_INPUT         7
+#define NA_CMD_GET_SCREEN         8
+#define NA_MAX_RW_SIZE            4096
+#define NA_MAX_PKG_NAME           256
 
 // [Group 7] LDG KPM Driver (prctl 0x20250901)
-#define LDG_PRCTL_READ_MEM    0x20250901
-#define LDG_PRCTL_WRITE_MEM   0x20260121
-#define LDG_PRCTL_GET_PID     0x20270108
-#define LDG_PRCTL_PING        0x20270120  // Returns 0x1354c28
+#define LDG_PRCTL_READ_MEM        0x20250901
+#define LDG_PRCTL_WRITE_MEM       0x20260121
+#define LDG_PRCTL_GET_PID         0x20270108
+#define LDG_PRCTL_PING            0x20270120  // Returns 0x1354c28
 
 // ══════════════════════════════════════════════════════════════════════
-//  2. SHARED DATA STRUCTURES
+//  2. SHARED DATA STRUCTURES & MATH TYPES
 // ══════════════════════════════════════════════════════════════════════
 
 #pragma pack(push, 8)
@@ -139,8 +159,105 @@ struct LdgPrctlWriteReq {
     uint64_t size;
 };
 
+// Lightweight 3D Vector for Internal Lead Prediction & Aim Calculations
+struct DriverVec3 {
+    float x, y, z;
+    DriverVec3() : x(0.0f), y(0.0f), z(0.0f) {}
+    DriverVec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+    DriverVec3 operator+(const DriverVec3& o) const { return DriverVec3(x + o.x, y + o.y, z + o.z); }
+    DriverVec3 operator-(const DriverVec3& o) const { return DriverVec3(x - o.x, y - o.y, z - o.z); }
+    DriverVec3 operator*(float s) const { return DriverVec3(x * s, y * s, z * s); }
+    float length() const { return sqrtf(x * x + y * y + z * z); }
+    static float distance(const DriverVec3& a, const DriverVec3& b) {
+        float dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+        return sqrtf(dx * dx + dy * dy + dz * dz);
+    }
+};
+
 // ══════════════════════════════════════════════════════════════════════
-//  3. THE CORE c_driver CLASS (Advanced Multi-Protocol Driver Engine)
+//  3. LINUX TOUCHSCREEN INPUT DRIVER (Touch Injection Subsystem)
+// ══════════════════════════════════════════════════════════════════════
+
+class TouchDriver {
+private:
+    int touch_fd;
+    int screen_w;
+    int screen_h;
+    bool is_initialized;
+
+public:
+    TouchDriver() : touch_fd(-1), screen_w(1920), screen_h(1080), is_initialized(false) {}
+    ~TouchDriver() { closeTouch(); }
+
+    bool initTouch(int width = 1920, int height = 1080) {
+        if (touch_fd >= 0) return true;
+        this->screen_w = width;
+        this->screen_h = height;
+
+        char event_path[64];
+        for (int i = 0; i < 16; i++) {
+            snprintf(event_path, sizeof(event_path), "/dev/input/event%d", i);
+            int fd = open(event_path, O_RDWR | O_NONBLOCK);
+            if (fd >= 0) {
+                uint8_t abs_bits[ABS_MAX / 8 + 1] = {0};
+                if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs_bits)), abs_bits) >= 0) {
+                    if ((abs_bits[ABS_MT_POSITION_X / 8] & (1 << (ABS_MT_POSITION_X % 8))) != 0) {
+                        touch_fd = fd;
+                        is_initialized = true;
+                        NIN_LOGI("TouchDriver", "Touch device attached: %s (FD: %d)", event_path, touch_fd);
+                        return true;
+                    }
+                }
+                close(fd);
+            }
+        }
+        return false;
+    }
+
+    void touchDown(int slot, float x, float y) {
+        if (touch_fd < 0 && !initTouch(screen_w, screen_h)) return;
+        struct input_event evs[6]{};
+        evs[0] = { {}, EV_ABS, ABS_MT_SLOT, slot };
+        evs[1] = { {}, EV_ABS, ABS_MT_TRACKING_ID, slot + 100 };
+        evs[2] = { {}, EV_ABS, ABS_MT_POSITION_X, (int)x };
+        evs[3] = { {}, EV_ABS, ABS_MT_POSITION_Y, (int)y };
+        evs[4] = { {}, EV_SYN, SYN_MT_REPORT, 0 };
+        evs[5] = { {}, EV_SYN, SYN_REPORT, 0 };
+        write(touch_fd, evs, sizeof(evs));
+    }
+
+    void touchMove(int slot, float x, float y) {
+        if (touch_fd < 0) return;
+        struct input_event evs[5]{};
+        evs[0] = { {}, EV_ABS, ABS_MT_SLOT, slot };
+        evs[1] = { {}, EV_ABS, ABS_MT_POSITION_X, (int)x };
+        evs[2] = { {}, EV_ABS, ABS_MT_POSITION_Y, (int)y };
+        evs[3] = { {}, EV_SYN, SYN_MT_REPORT, 0 };
+        evs[4] = { {}, EV_SYN, SYN_REPORT, 0 };
+        write(touch_fd, evs, sizeof(evs));
+    }
+
+    void touchUp(int slot) {
+        if (touch_fd < 0) return;
+        struct input_event evs[4]{};
+        evs[0] = { {}, EV_ABS, ABS_MT_SLOT, slot };
+        evs[1] = { {}, EV_ABS, ABS_MT_TRACKING_ID, -1 };
+        evs[2] = { {}, EV_SYN, SYN_MT_REPORT, 0 };
+        evs[3] = { {}, EV_SYN, SYN_REPORT, 0 };
+        write(touch_fd, evs, sizeof(evs));
+    }
+
+    void closeTouch() {
+        if (touch_fd >= 0) {
+            close(touch_fd);
+            touch_fd = -1;
+            is_initialized = false;
+        }
+    }
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  4. THE ADVANCED c_driver CLASS (Multi-Protocol, Pagemap & HWBP)
 // ══════════════════════════════════════════════════════════════════════
 
 enum DriverMode {
@@ -167,6 +284,7 @@ private:
     bool is_nodeless;
     char active_node_name[128];
     std::atomic<int> in_flight_ops;
+    TouchDriver touch;
 
     char* execCom(const char *shell) {
         FILE *fp = popen(shell, "r");
@@ -216,9 +334,7 @@ private:
         return 0;
     }
 
-    // ──────────────────────────────────────────────────────────────────
     // Heuristic character device discovery in /dev (Creation Time & Inode)
-    // ──────────────────────────────────────────────────────────────────
     char* driver_path() {
         const char *dev_path = "/dev";
         DIR *dir = opendir(dev_path);
@@ -274,9 +390,7 @@ private:
         return nullptr;
     }
 
-    // ──────────────────────────────────────────────────────────────────
     // Self-test IOCTL read: Verifies real execution with a known magic
-    // ──────────────────────────────────────────────────────────────────
     bool test_ioctl_read(int target_fd, int cmd) {
         pid_t self_pid = getpid();
         uintptr_t test_magic = 0x5A5AA5A512345678ULL;
@@ -288,9 +402,7 @@ private:
         return false;
     }
 
-    // ──────────────────────────────────────────────────────────────────
     // Probe KPM Neo via prctl
-    // ──────────────────────────────────────────────────────────────────
     bool probe_kpm() {
         na_cmd cmd{};
         prctl(0xDEAD, 0, 0, 0, 0);
@@ -299,9 +411,7 @@ private:
         return (r == 0);
     }
 
-    // ──────────────────────────────────────────────────────────────────
     // Probe LDG KPM via prctl ping
-    // ──────────────────────────────────────────────────────────────────
     bool probe_ldg() {
         long ping_res = prctl(LDG_PRCTL_PING, 0, 0, 0, 0);
         if (ping_res == 0x1354c28) return true;
@@ -378,7 +488,6 @@ public:
         if (device_path != nullptr) {
             int try_fd = open(device_path, O_RDWR);
             if (try_fd >= 0) {
-                // Determine opcode through self-test read
                 int chosen_read = -1;
                 for (int cmd : test_cmds) {
                     if (test_ioctl_read(try_fd, cmd)) {
@@ -387,7 +496,6 @@ public:
                     }
                 }
 
-                // If test passed or device is our known RT Dev node, accept
                 if (chosen_read > 0 || strstr(device_path, "health_storage_service_alloc") || strstr(device_path, "BYNb")) {
                     fd = try_fd;
                     if (chosen_read == RT_CMD_READ) {
@@ -531,6 +639,43 @@ public:
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // Pagemap Virtual-to-Physical & Page Presence Validation
+    // ──────────────────────────────────────────────────────────────────
+    bool isPagePresent(uintptr_t vaddr) {
+        if (this->pid <= 0 || vaddr == 0) return false;
+        long pageSize = sysconf(_SC_PAGESIZE);
+        if (pageSize <= 0) pageSize = 4096;
+        unsigned long v_pageIndex = vaddr / pageSize;
+        unsigned long pfn_offset = v_pageIndex * sizeof(uint64_t);
+        uint64_t item = 0;
+
+        char filename[64];
+        snprintf(filename, sizeof(filename), "/proc/%d/pagemap", this->pid);
+        int page_fd = open(filename, O_RDONLY);
+        if (page_fd < 0) return true; // If pagemap unreadable due to SELinux, assume OK
+
+        if (lseek(page_fd, pfn_offset, SEEK_SET) < 0) {
+            close(page_fd);
+            return false;
+        }
+        if (::read(page_fd, &item, sizeof(uint64_t)) != sizeof(uint64_t)) {
+            close(page_fd);
+            return false;
+        }
+        close(page_fd);
+        // Bit 63 is set if page is present in RAM
+        return ((item & (1ULL << 63)) != 0);
+    }
+
+    // Strict ARM64 User-space 64-bit Pointer Bounds Check
+    inline bool isPointerValid(uintptr_t ptr) {
+        if ((ptr >> 48) != 0) return false;
+        if (ptr < 0x0000001000000000ULL || ptr > 0x0000007FFFFFFFFFULL) return false;
+        if ((ptr & 0x3) != 0) return false;
+        return true;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // Core Memory Read (Safe, Chunked, Multi-Backend)
     // ──────────────────────────────────────────────────────────────────
     bool read(uintptr_t addr, void *buffer, size_t size) {
@@ -538,7 +683,6 @@ public:
         if (!isConnected() && !initDriver()) return false;
 
         in_flight_ops.fetch_add(1, std::memory_order_relaxed);
-
         bool success = false;
 
         // Backend 1: KPM Neo (NA prctl)
@@ -584,6 +728,35 @@ public:
         return success;
     }
 
+    // Safe Cross-Page Boundary Read (Prevents page-boundary crash)
+    bool readSafe(uintptr_t addr, void *buffer, size_t size) {
+        if (addr == 0 || buffer == nullptr || size == 0) return false;
+        const size_t PAGE_SIZE = 4096;
+        size_t page_offset = addr % PAGE_SIZE;
+
+        // If entire read fits on the same 4KB page, read in one single call
+        if (page_offset + size <= PAGE_SIZE) {
+            return read(addr, buffer, size);
+        }
+
+        // Crosses boundary: split per page chunk safely
+        uint8_t *dst = (uint8_t *)buffer;
+        size_t bytes_left = size;
+        uintptr_t curr_addr = addr;
+
+        while (bytes_left > 0) {
+            size_t chunk_limit = PAGE_SIZE - (curr_addr % PAGE_SIZE);
+            size_t chunk_size = (bytes_left < chunk_limit) ? bytes_left : chunk_limit;
+            if (!read(curr_addr, dst, chunk_size)) {
+                return false;
+            }
+            curr_addr += chunk_size;
+            dst += chunk_size;
+            bytes_left -= chunk_size;
+        }
+        return true;
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // Core Memory Write
     // ──────────────────────────────────────────────────────────────────
@@ -592,7 +765,6 @@ public:
         if (!isConnected() && !initDriver()) return false;
 
         in_flight_ops.fetch_add(1, std::memory_order_relaxed);
-
         bool success = false;
 
         if (active_mode == DRIVER_MODE_KPM_NA) {
@@ -650,13 +822,37 @@ public:
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // Multi-Level Pointer Chain Resolution
+    // ──────────────────────────────────────────────────────────────────
+    uintptr_t readChain(uintptr_t base, const std::vector<uintptr_t>& offsets) {
+        if (base == 0) return 0;
+        uintptr_t curr = base;
+        for (size_t i = 0; i < offsets.size(); i++) {
+            curr = read<uintptr_t>(curr + offsets[i]);
+            if (!isPointerValid(curr)) return 0;
+        }
+        return curr;
+    }
+
+    uintptr_t readChain(uintptr_t base, const std::initializer_list<uintptr_t>& offsets) {
+        std::vector<uintptr_t> off_vec(offsets);
+        return readChain(base, off_vec);
+    }
+
+    template <typename T>
+    T readChainValue(uintptr_t base, const std::vector<uintptr_t>& offsets, uintptr_t final_offset) {
+        uintptr_t obj = readChain(base, offsets);
+        if (obj == 0) return T{};
+        return read<T>(obj + final_offset);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // Module Base Address Lookup
     // ──────────────────────────────────────────────────────────────────
     uintptr_t getModuleBase(const char *name) {
         if (!name || this->pid <= 0) return 0;
         if (!isConnected() && !initDriver()) return 0;
 
-        // 1. If IOCTL module base command is available
         if (active_mode != DRIVER_MODE_KPM_NA && active_mode != DRIVER_MODE_LDG_PRCTL) {
             MODULE_BASE mb{};
             char buf[128] = {0};
@@ -670,7 +866,6 @@ public:
             }
         }
 
-        // 2. Maps fallback for Nodeless & KPM
         char maps_path[64];
         snprintf(maps_path, sizeof(maps_path), "/proc/%d/maps", this->pid);
         FILE *f = fopen(maps_path, "r");
@@ -687,7 +882,63 @@ public:
         return base;
     }
 
-    void hide_process() {
+    // ──────────────────────────────────────────────────────────────────
+    // Bullet Velocity & Movement Lead Prediction Engine
+    // ──────────────────────────────────────────────────────────────────
+    DriverVec3 predictLeadPosition(const DriverVec3& targetPos, const DriverVec3& targetVelocity,
+                                   float distance, float bulletSpeed = 600.0f, float gravity = 9.8f) {
+        if (bulletSpeed <= 0.0f) bulletSpeed = 600.0f;
+        float travelTime = distance / bulletSpeed;
+        
+        // Horizontal lead prediction
+        DriverVec3 predicted = targetPos + (targetVelocity * travelTime);
+
+        // Vertical bullet drop compensation: 0.5 * g * t^2
+        float dropCompensation = 0.5f * gravity * (travelTime * travelTime);
+        predicted.y += dropCompensation;
+
+        return predicted;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Hardware Breakpoints Control
+    // ──────────────────────────────────────────────────────────────────
+    bool addHardwareBreakpoint(uintptr_t addr) {
+        if (!isConnected() || addr == 0) return false;
+        int use_fd = (fd >= 0) ? fd : 0;
+        if (active_mode == DRIVER_MODE_RT_MODULE) {
+            return (ioctl(use_fd, RT_CMD_HWBP_ADD, &addr) == 0);
+        } else if (active_mode == DRIVER_MODE_RT_HOOK) {
+            return (ioctl(use_fd, HOOK_OP_HW_BREAKPOINT_CTL, &addr) == 0);
+        }
+        return false;
+    }
+
+    bool clearHardwareBreakpoints() {
+        if (!isConnected()) return false;
+        int use_fd = (fd >= 0) ? fd : 0;
+        if (active_mode == DRIVER_MODE_RT_MODULE) {
+            return (ioctl(use_fd, RT_CMD_HWBP_CLEAR, 0) == 0);
+        }
+        return false;
+    }
+
+    int getHardwareBreakpointHits() {
+        if (!isConnected()) return 0;
+        int hits = 0;
+        int use_fd = (fd >= 0) ? fd : 0;
+        if (active_mode == DRIVER_MODE_RT_MODULE) {
+            ioctl(use_fd, RT_CMD_HWBP_GET_HITS, &hits);
+        } else if (active_mode == DRIVER_MODE_RT_HOOK) {
+            ioctl(use_fd, HOOK_OP_HW_BP_GET_HITS, &hits);
+        }
+        return hits;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Stealth & Process Hiding (Adreno KGSL & CTS SafetyNet bypass)
+    // ──────────────────────────────────────────────────────────────────
+    void hide_process(int flags = 0) {
         if (!isConnected()) return;
         int use_fd = (fd >= 0) ? fd : 0;
         if (active_mode == DRIVER_MODE_RT_HOOK) {
@@ -697,15 +948,24 @@ public:
         } else if (active_mode == DRIVER_MODE_RT_MODULE) {
             ioctl(use_fd, RT_CMD_HIDE_PROCESS);
         } else if (active_mode == DRIVER_MODE_HOOK_RW) {
+            if (flags & 1) {
+                ioctl(use_fd, SOCK_OP_PROCESS_HIDE_KGSL); // Adreno GPU Driver stealth
+            }
+            if (flags & 2) {
+                ioctl(use_fd, SOCK_OP_PROCESS_HIDE_CTS);  // SafetyNet / CTS stealth
+            }
             ioctl(use_fd, SOCK_OP_PROCESS_HIDE);
         }
     }
+
+    // Touch injection wrapper
+    TouchDriver& getTouch() { return touch; }
 
     void closeDriver() {
         int old_fd = fd;
         fd = -1;
         active_mode = DRIVER_MODE_NONE;
-        // Drain in-flight operations safely
+        touch.closeTouch();
         while (in_flight_ops.load(std::memory_order_relaxed) > 0) {
             usleep(100);
         }
@@ -716,7 +976,7 @@ public:
 };
 
 // ══════════════════════════════════════════════════════════════════════
-//  4. GLOBAL INSTANCE & NAMESPACE MEMORY (Matching Reference Exactly)
+//  5. GLOBAL INSTANCE & NAMESPACE MEMORY (Matching Reference Exactly)
 // ══════════════════════════════════════════════════════════════════════
 
 inline c_driver *driver = new c_driver();
@@ -727,7 +987,7 @@ namespace Memory {
     inline int ProcessRead(uintptr_t address, void* buffer, size_t size, pid_t pid = 0) {
         if (!buffer || address == 0) return -1;
         if (pid > 0 && driver) driver->initialize(pid);
-        if (driver && driver->read(address, buffer, size)) return 0;
+        if (driver && driver->readSafe(address, buffer, size)) return 0;
         return -1;
     }
 
@@ -748,6 +1008,11 @@ namespace Memory {
     inline bool Write(uintptr_t address, T value) {
         if (driver) return driver->write<T>(address, value);
         return false;
+    }
+
+    inline uintptr_t ReadChain(uintptr_t base, const std::initializer_list<uintptr_t>& offsets) {
+        if (driver) return driver->readChain(base, offsets);
+        return 0;
     }
 }
 

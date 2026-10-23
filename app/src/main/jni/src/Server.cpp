@@ -258,13 +258,14 @@ void getUTF8(char* dst, uintptr_t addr) {
         stringLen = 32; 
     }
 
-    unsigned char raw[128]; 
-    for (int i = 0; i < (stringLen * 2); i++) {
-        raw[i] = Read<unsigned char>(addr + Offsets::StringChars + i);
-    }
+    unsigned char raw[128];
+    memset(raw, 0, sizeof(raw));
+    size_t toRead = (size_t)(stringLen * 2);
+    if (toRead > sizeof(raw)) toRead = sizeof(raw);
+    DriverReadMemory(addr + Offsets::StringChars, raw, toRead);
 
     int j = 0;
-    for (int i = 0; i < (stringLen * 2); i += 2) {
+    for (int i = 0; i < (stringLen * 2) && (i + 1) < (int)toRead; i += 2) {
         unsigned short unicode = raw[i] | (raw[i + 1] << 8);
         if (unicode == 0) break;
         if (unicode < 0x80) {
@@ -274,6 +275,7 @@ void getUTF8(char* dst, uintptr_t addr) {
             dst[j++] = (char)((unicode & 0x3F) | 0x80);
         } else if (unicode >= 0xD800 && unicode <= 0xDBFF) { 
             i += 2;
+            if ((i + 1) >= (int)toRead) break;
             unsigned short low = raw[i] | (raw[i + 1] << 8);
             unsigned int codepoint = 0x10000 + ((unicode - 0xD800) << 10) + (low - 0xDC00);
             dst[j++] = (char)((codepoint >> 18) | 0xF0);
@@ -310,13 +312,56 @@ float FastRandomFloat() {
 
 void ContinuousAim(uintptr_t oneself) {
     while (keepAiming.load()) {
-        uint64_t aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfo);
-        if (!aimingInfo) aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfoOld);
-        if (aimingInfo) {
-            Vector3 startPos = Read<Vector3>(aimingInfo + Offsets::AimingStartPos);
-            Vector3 dir = currentBestTargetPos - startPos;  
-            Write<Vector3>(aimingInfo + Offsets::AimingDirection, dir);
+        if (!IsValidUserPointer64(oneself)) break;
+        if (currentBestTargetPos == Vector3::Zero()) {
+            usleep(5000);
+            continue;
         }
+
+        int mIsFiring = Read<int>(oneself + Offsets::IsFiring);
+        if (mIsFiring <= 0) mIsFiring = Read<int>(oneself + Offsets::IsFiringOld);
+        if (mIsFiring <= 0) mIsFiring = Read<bool>(oneself + Offsets::Player_FiringStateAlt) ? 1 : 0;
+
+        bool shouldLock = pPlayer.aimbotlock || (mIsFiring > 0);
+
+        // 1. Camera LookRotation Aimbot (matches Kernel & Scarecrow)
+        if ((pPlayer.aimbot || pPlayer.aimbotlock) && shouldLock) {
+            Vector3 camPos = MainCameraTransformPos;
+            if (camPos == Vector3::Zero()) camPos = GetNodePosition(oneself) + Vector3(0, 1.85f, 0);
+            Quaternion targetRot = GetRotationToTheLocation(currentBestTargetPos, 0.0f, camPos);
+            Write<Quaternion>(oneself + Offsets::PlayerRotation, targetRot);
+        }
+
+        // 2. Silent Bullet Ray Redirection (matches Kernel sAim2 & sAim4)
+        if (pPlayer.silen4a && shouldLock) {
+            uint64_t aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfo);
+            if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfoAlt);
+            if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfoOld);
+            if (IsValidUserPointer64(aimingInfo)) {
+                Vector3 rayStart = Read<Vector3>(aimingInfo + Offsets::AimingStartPos);
+                if (rayStart == Vector3::Zero()) rayStart = Read<Vector3>(aimingInfo + Offsets::AimingStartPosAlt);
+                if (rayStart != Vector3::Zero()) {
+                    Vector3 diff = currentBestTargetPos - rayStart;
+                    float dist = diff.Length();
+                    if (dist >= 0.5f && dist <= 500.0f) {
+                        Vector3 dir = diff / dist;
+                        Write<Vector3>(aimingInfo + Offsets::AimingDirection, dir);
+                        Write<Vector3>(aimingInfo + Offsets::AimingDirectionAlt, dir);
+                        Write<bool>(aimingInfo + 0x71, false);
+                    }
+                }
+            }
+        }
+
+        // 3. Instant Head Collider Lock (Scarecrow AimTargetWrite)
+        if (pPlayer.aimbotlock && IsValidUserPointer64(currentBestTargetObj)) {
+            uintptr_t headCollider = Read<uintptr_t>(currentBestTargetObj + Offsets::Player_HeadCollider);
+            if (IsValidUserPointer64(headCollider)) {
+                Write<uintptr_t>(currentBestTargetObj + Offsets::Player_AimTargetWrite, headCollider);
+            }
+        }
+
+        usleep(4000); // 250Hz smooth iteration rate
     }  
 }
 
@@ -853,9 +898,10 @@ void CreateDataList(Response& SendResponse) {
             if (data->PlayerName[0] == '\0') strcpy(data->PlayerName, "Enemy");
         }
 
-        // Silent Aim & Aimbot evaluation
+        // Silent Aim & Aimbot evaluation (Matches Kernel & Scarecrow)
+        bool aimActive = (pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock);
         float screenDist = sqrt(pow(LocationHeadBox.X - g_screenWidth/2, 2) + pow(LocationHeadBox.Y - g_screenHeight/2, 2));
-        if (pPlayer.silen4a && isWithinFOV(LocationHeadBox, fovRadius) && distanceToEnemy <= pPlayer.AimDistance) {
+        if (aimActive && isWithinFOV(LocationHeadBox, fovRadius) && distanceToEnemy <= pPlayer.AimDistance) {
             float priorityValue = pPlayer.targetByDistance ? distanceToEnemy : screenDist;
             if (priorityValue < bestPriority) {
                 bestPriority = priorityValue;
@@ -901,7 +947,8 @@ void CreateDataList(Response& SendResponse) {
         }
     }
 
-    if (pPlayer.silen4a && hasValidTarget) {
+    bool aimActive = (pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock);
+    if (aimActive && hasValidTarget) {
         currentBestTargetPos = bestTargetPos;
         currentBestTargetObj = bestTargetObj;
         if (!keepAiming.load()) {

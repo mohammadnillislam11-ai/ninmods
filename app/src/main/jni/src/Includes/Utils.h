@@ -64,7 +64,7 @@ static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, 
     }
 
     driver->initialize(pid);
-    bool ret = driver->read(address, buffer, size);
+    bool ret = driver->readSafe(address, buffer, size);
     if (ret) {
         static uint32_t s_read_success_count = 0;
         if ((++s_read_success_count % 500) == 1) {

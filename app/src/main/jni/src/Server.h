@@ -130,32 +130,39 @@ struct Matrix {
 
 static Vector3 GetPosition(uintptr_t Transform) {
     auto pos = Vector3::Zero();
+    if (!IsValidUserPointer64(Transform)) return pos;
 
-    if (Transform == 0) return pos;
-
-    auto transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObj);
-    if (transformObjValue == 0) return pos;
+    uintptr_t transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObj);
+    if (!IsValidUserPointer64(transformObjValue)) {
+        transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObjAlt);
+    }
+    if (!IsValidUserPointer64(transformObjValue)) {
+        transformObjValue = Transform;
+    }
 
     auto indexValue = Read<uintptr_t>(transformObjValue + Offsets::TransformIndex);
     auto matrixValue = Read<uintptr_t>(transformObjValue + Offsets::TransformMatrix);
+    if (!IsValidUserPointer64(matrixValue)) return pos;
 
-    if (matrixValue == 0) return pos;
-
-    auto matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixList);
+    uintptr_t matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixList);
+    if (!IsValidUserPointer64(matrixListValue)) {
+        matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixListAlt);
+    }
     auto matrixIndicesValue = Read<uintptr_t>(matrixValue + Offsets::MatrixIndices);
+    if (!IsValidUserPointer64(matrixListValue) || !IsValidUserPointer64(matrixIndicesValue)) return pos;
 
     auto resultValue = Read<Vector3>(matrixListValue + (indexValue * Offsets::MatrixDataSize));
 
     int maxTries = 50;
     int tries = 0;
-
     auto transformIndexValue = Read<int>(matrixIndicesValue + (indexValue * 4));
 
     while (transformIndexValue >= 0 && tries < maxTries) {
         tries++;
+        uintptr_t matrixItemPtr = matrixListValue + (transformIndexValue * Offsets::MatrixDataSize);
+        if (!IsValidUserPointer64(matrixItemPtr)) break;
 
-        auto tMatrixValue = Read<Matrix>(matrixListValue + (transformIndexValue * Offsets::MatrixDataSize));
-
+        auto tMatrixValue = Read<Matrix>(matrixItemPtr);
         auto rotX = tMatrixValue.Rotation.X;
         auto rotY = tMatrixValue.Rotation.Y;
         auto rotZ = tMatrixValue.Rotation.Z;
@@ -178,7 +185,9 @@ static Vector3 GetPosition(uintptr_t Transform) {
                         (scaleY * ((rotY * rotZ * 2.0f) - (rotW * rotX * -2.0f))) +
                         (scaleZ * ((rotX * rotX * -2.0f) - (rotY * rotY * 2.0f)));
 
-        transformIndexValue = Read<int>(matrixIndicesValue + (transformIndexValue * 4));
+        uintptr_t indexItemPtr = matrixIndicesValue + (transformIndexValue * 4);
+        if (!IsValidUserPointer64(indexItemPtr)) break;
+        transformIndexValue = Read<int>(indexItemPtr);
     }
 
     if (tries < maxTries) {
@@ -189,26 +198,35 @@ static Vector3 GetPosition(uintptr_t Transform) {
 }
 
 static Vector3 GetNodePosition(uintptr_t nodeTransform) {
-    if (!nodeTransform) return Vector3::Zero();
+    if (!IsValidUserPointer64(nodeTransform)) return Vector3::Zero();
     auto transformValue = Read<uintptr_t>(nodeTransform + Offsets::TransformObj);
-    if (transformValue == 0) {
+    if (!IsValidUserPointer64(transformValue)) {
+        transformValue = Read<uintptr_t>(nodeTransform + Offsets::TransformObjAlt);
+    }
+    if (!IsValidUserPointer64(transformValue)) {
         return GetPosition(nodeTransform);
     }
     return GetPosition(transformValue);
 }
 
 static Quaternion GetTransformRotation(uintptr_t Transform) {
-    if (!Transform) return Quaternion::Identity();
-    auto transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObj);
-    if (!transformObjValue) return Quaternion::Identity();
+    if (!IsValidUserPointer64(Transform)) return Quaternion::Identity();
+    uintptr_t transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObj);
+    if (!IsValidUserPointer64(transformObjValue)) {
+        transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObjAlt);
+    }
+    if (!IsValidUserPointer64(transformObjValue)) transformObjValue = Transform;
 
     auto indexValue = Read<uintptr_t>(transformObjValue + Offsets::TransformIndex);
     auto matrixValue = Read<uintptr_t>(transformObjValue + Offsets::TransformMatrix);
-    if (!matrixValue) return Quaternion::Identity();
+    if (!IsValidUserPointer64(matrixValue)) return Quaternion::Identity();
 
-    auto matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixList);
+    uintptr_t matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixList);
+    if (!IsValidUserPointer64(matrixListValue)) {
+        matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixListAlt);
+    }
     auto matrixIndicesValue = Read<uintptr_t>(matrixValue + Offsets::MatrixIndices);
-    if (!matrixListValue || !matrixIndicesValue) return Quaternion::Identity();
+    if (!IsValidUserPointer64(matrixListValue) || !IsValidUserPointer64(matrixIndicesValue)) return Quaternion::Identity();
 
     auto selfMatrix = Read<Matrix>(matrixListValue + (indexValue * Offsets::MatrixDataSize));
     Quaternion rot = selfMatrix.Rotation;
@@ -218,11 +236,19 @@ static Quaternion GetTransformRotation(uintptr_t Transform) {
     auto transformIndexValue = Read<int>(matrixIndicesValue + (indexValue * 4));
     while (transformIndexValue >= 0 && tries < maxTries) {
         tries++;
-        auto parentMatrix = Read<Matrix>(matrixListValue + (transformIndexValue * Offsets::MatrixDataSize));
+        uintptr_t parentItemPtr = matrixListValue + (transformIndexValue * Offsets::MatrixDataSize);
+        if (!IsValidUserPointer64(parentItemPtr)) break;
+        auto parentMatrix = Read<Matrix>(parentItemPtr);
         rot = parentMatrix.Rotation * rot;
-        transformIndexValue = Read<int>(matrixIndicesValue + (transformIndexValue * 4));
+        uintptr_t indexItemPtr = matrixIndicesValue + (transformIndexValue * 4);
+        if (!IsValidUserPointer64(indexItemPtr)) break;
+        transformIndexValue = Read<int>(indexItemPtr);
     }
     return rot;
+}
+
+inline Quaternion GetRotationToTheLocation(Vector3 Target, float Height, Vector3 MyEnemy) {
+    return Quaternion::LookRotation((Target + Vector3(0, Height, 0)) - MyEnemy, Vector3(0, 1, 0));
 }
 
 static D3DMatrix BuildViewMatrix(Vector3 camPos, Quaternion rot, float fovDeg, float aspect) {

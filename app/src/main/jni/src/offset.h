@@ -23,23 +23,30 @@ namespace Offsets {
     constexpr uintptr_t Feet = 0x60;
     constexpr uintptr_t FeetFallback = 0x6D0;
     
-    // Transform Offsets
-    constexpr uintptr_t TransformObj = 0x110;
-    constexpr uintptr_t TransformIndex = 0x40;
-    constexpr uintptr_t TransformMatrix = 0x38;
-    constexpr uintptr_t MatrixList = 0x108;
-    constexpr uintptr_t MatrixIndices = 0x20;
-    constexpr uintptr_t MatrixDataSize = 0x30;
-    constexpr uintptr_t TransformObject = 0x1288ULL; // from ninmods_offsets.h (COW.GamePlay.Player.m_TransformObject)
+    // Transform Offsets (Synchronized with Kernel & CROSS SRC ROOT 64-bit Unity Transform structure)
+    constexpr uintptr_t TransformObj = 0x10;          // Genuine Unity TransformToObj (0x10)
+    constexpr uintptr_t TransformObjAlt = 0x110;      // Legacy fallback
+    constexpr uintptr_t TransformIndex = 0x40;        // ObjToIndex
+    constexpr uintptr_t TransformMatrix = 0x38;       // ObjToMatrix
+    constexpr uintptr_t MatrixList = 0x18;            // Genuine Unity MatrixList array pointer (0x18)
+    constexpr uintptr_t MatrixListAlt = 0x108;        // Legacy fallback
+    constexpr uintptr_t MatrixIndices = 0x20;         // Transform indices array
+    constexpr uintptr_t MatrixDataSize = 0x30;        // sizeof(Matrix) = 48 bytes
+    constexpr uintptr_t TransformIndexSize = 0x4;     // int index = 4 bytes
+    constexpr uintptr_t TransformObject = 0x1288ULL;  // from ninmods_offsets.h (COW.GamePlay.Player.m_TransformObject)
     
-    // Aiming Info
-    // Newer Free Fire: AimingInfo = 0xE58, Adjusted = 0xE60, older was 0x80
+    // Aiming Info (Verified against Kernel & Scarecrow)
+    // Newer Free Fire: AimingInfo = 0xE58, Alt = 0xE50 (sAim2), Adjusted = 0xE60, older was 0x80
     constexpr uintptr_t AimingInfo = 0xE58;
+    constexpr uintptr_t AimingInfoAlt = 0xE50;        // Kernel sAim2
     constexpr uintptr_t AimingInfoAdjusted = 0xE60ULL; // from ninmods_offsets.h (COW.GamePlay.Player.LastAimingInfoFromWeaponAdjusted)
     constexpr uintptr_t AimingInfoOld = 0x80;
     constexpr uintptr_t AimingStartPos = 0x4C;
-    constexpr uintptr_t AimingDirection = 0x430;
-    constexpr uintptr_t AimAssist = 0x638ULL; // from ninmods_offsets.h (COW.GamePlay.Player.m_AimAssist)
+    constexpr uintptr_t AimingStartPosAlt = 0x40;     // Kernel sAim3
+    constexpr uintptr_t AimingDirection = 0x40;       // Genuine Bullet ray direction offset (+0x40)
+    constexpr uintptr_t AimingDirectionAlt = 0xD0;    // Kernel sAim4 (+0xD0)
+    constexpr uintptr_t AimingDirectionLegacy = 0x430;
+    constexpr uintptr_t AimAssist = 0x638ULL;         // from ninmods_offsets.h (COW.GamePlay.Player.m_AimAssist)
     constexpr uintptr_t CurrentAimRotation = 0x1A8CULL; // from ninmods_offsets.h (COW.GamePlay.Player.m_CurrentAimRotation)
     constexpr uintptr_t ActiveUISightingWeapon = 0x600ULL; // from ninmods_offsets.h (COW.GamePlay.Player.ActiveUISightingWeapon)
     constexpr uintptr_t CallSetAimRotationCount = 0x810ULL; // from ninmods_offsets.h (COW.GamePlay.Player.CallSetAimRotationCount)
