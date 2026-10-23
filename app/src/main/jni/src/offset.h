@@ -130,6 +130,8 @@ namespace Offsets {
     constexpr uintptr_t WeaponPtrOld = 0x4C8;
     constexpr uintptr_t WeaponAimlock = 0x644;
     constexpr uintptr_t WeaponAimlockOld = 0x4DC;
+    constexpr uintptr_t PlayerAttributes = 0x770;        // Scarecrow PlayerAttributes
+    constexpr uintptr_t ShootNoReload = 0x111;           // Scarecrow ShootNoReload trigger
     
     // Enemy/Bot State
     constexpr uintptr_t IsClientBot = 0x4A0; // Corrected from 0x4A8 to 0x4A0 (ninmods_offsets.h OFFSET_Player_IsClientBot)

@@ -617,6 +617,24 @@ void CreateDataList(Response& SendResponse) {
         }
     }
 
+    // Scarecrow NoReload / PlayerAttributes (Triggered strictly when pPlayer.NoRecoil is enabled)
+    if (IsValidUserPointer64(localPlayer)) {
+        uintptr_t attrs = Read<uintptr_t>(localPlayer + Offsets::PlayerAttributes);
+        if (IsValidUserPointer64(attrs)) {
+            static uintptr_t lastAttrs = 0;
+            static bool origSaved = false;
+            static bool origValue = false;
+            if (attrs != lastAttrs) { lastAttrs = attrs; origSaved = false; origValue = false; }
+            if (pPlayer.NoRecoil) {
+                if (!origSaved) { origValue = Read<bool>(attrs + Offsets::ShootNoReload); origSaved = true; }
+                Write<bool>(attrs + Offsets::ShootNoReload, true);
+            } else if (origSaved) {
+                Write<bool>(attrs + Offsets::ShootNoReload, origValue);
+                origSaved = false;
+            }
+        }
+    }
+
     // 4. Resolve Camera & ViewMatrix (Proven CROSS SRC ROOT, Bull_Team, treasure, Mayur)
     D3DMatrix matrix = {0};
     uintptr_t Camera = 0;
