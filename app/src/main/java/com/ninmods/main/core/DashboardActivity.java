@@ -91,6 +91,19 @@ public class DashboardActivity extends BaseActivity {
         }
 
         buildInterface();
+
+        // Asynchronously synchronize active plan and license directly from server database
+        AuthApiController.fetchProfile(this, new AuthApiController.ApiCallback() {
+            @Override
+            public void onSuccess(String message) {
+                runOnUiThread(() -> {
+                    DashboardContentView.updateLicenseCard(currentBodyView, DashboardActivity.this);
+                    refreshBody();
+                });
+            }
+            @Override
+            public void onError(String errorMessage) {}
+        });
     }
 
     @Override

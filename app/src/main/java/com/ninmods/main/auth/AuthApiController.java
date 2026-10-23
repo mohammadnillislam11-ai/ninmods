@@ -428,21 +428,33 @@ public final class AuthApiController {
                         Prefs.with(context).writeFloat("auth_balance", (float) balance);
                         Prefs.with(context).writeString("auth_currency", currency);
 
-                        if (prof.has("active_license") && !prof.isNull("active_license")) {
-                            JSONObject licObj = prof.getJSONObject("active_license");
-                            String activeKey = licObj.optString("license_key", "");
-                            String durationType = licObj.optString("duration_type", "30_days");
-                            String expAt = licObj.optString("expires_at", "");
-                            int remSec = licObj.optInt("remaining_seconds", 0);
-
-                            if (!activeKey.isEmpty() && remSec > 0) {
-                                AuthManager.setActiveLicenseKey(context, activeKey);
-                                Prefs.with(context).writeString("license_duration_type", durationType);
-                                Prefs.with(context).writeString("license_expires_at", expAt);
-                                Prefs.with(context).writeInt("license_remaining_sec", remSec);
-                                Prefs.with(context).writeLong("license_saved_at_ms", System.currentTimeMillis());
-                                Prefs.with(context).writeLong("license_expires_at_ms", System.currentTimeMillis() + (remSec * 1000L));
+                        JSONObject licObj = prof.optJSONObject("active_license");
+                        if (licObj == null) licObj = prof.optJSONObject("license");
+                        if (licObj == null && prof.has("user")) {
+                            JSONObject u = prof.optJSONObject("user");
+                            if (u != null) {
+                                licObj = u.optJSONObject("active_license");
+                                if (licObj == null) licObj = u.optJSONObject("license");
                             }
+                        }
+
+                        String activeKey = "";
+                        String durationType = "30_days";
+                        String expAt = "";
+                        int remSec = 0;
+                        if (licObj != null) {
+                            activeKey = licObj.optString("license_key", licObj.optString("key", ""));
+                            durationType = licObj.optString("duration_type", licObj.optString("plan", "30_days"));
+                            expAt = licObj.optString("expires_at", licObj.optString("expiresAt", ""));
+                            remSec = licObj.optInt("remaining_seconds", licObj.optInt("remainingSeconds", 0));
+                        } else {
+                            activeKey = prof.optString("license_key", prof.optString("license", ""));
+                            remSec = prof.optInt("remaining_seconds", 0);
+                        }
+
+                        if (!activeKey.isEmpty() && remSec > 0) {
+                            AuthManager.updateActiveLicense(context, activeKey, durationType, expAt, remSec);
+                            AuthManager.setRememberedKey(context, activeKey, true);
                         }
 
                         if (callback != null) {
