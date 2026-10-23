@@ -59,4 +59,5 @@ public:
 };
 
 #define NIN_LOGI(tag, fmt, ...) NinLogger::Log(tag, fmt, ##__VA_ARGS__)
+#define NIN_LOGD(tag, fmt, ...) NinLogger::Log(tag, "[DEBUG] " fmt, ##__VA_ARGS__)
 #define NIN_LOGE(tag, fmt, ...) NinLogger::Log(tag, "[ERROR] " fmt, ##__VA_ARGS__)
