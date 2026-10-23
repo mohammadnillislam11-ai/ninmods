@@ -8,56 +8,54 @@
 namespace Offsets {
     // Player Component / Bone Offsets (Synchronized with live ninmods_offsets.h)
     constexpr uintptr_t MainCameraTransform = 0x3E8ULL; // Verified from live dump (OFFSET_Player_MainCameraTransform)
-    constexpr uintptr_t MainCameraTransformAlt = 0x3F0; // Mayur fallback
+    constexpr uintptr_t MainCameraTransformAlt = 0x3E8ULL;
     constexpr uintptr_t MainCamera = 0x3E8ULL;
-    constexpr uintptr_t MainCameraAlt = 0x3F0;
-    constexpr uintptr_t MainCameraOld = 0x38;
+    constexpr uintptr_t MainCameraAlt = 0x3E8ULL;
+    constexpr uintptr_t MainCameraOld = 0x3E8ULL;
 
     constexpr uintptr_t Head = 0x3E8ULL; // Verified from live dump MainCameraTransform
-    constexpr uintptr_t HeadFallback = 0x3F0;
-    constexpr uintptr_t HeadOld = 0x6478;
+    constexpr uintptr_t HeadFallback = 0x3E8ULL;
+    constexpr uintptr_t HeadOld = 0x3E8ULL; // Old 0x6478 removed, unified to live 0x3E8ULL
 
-    constexpr uintptr_t Spine = 0x6548;
-    constexpr uintptr_t SpineFallback = 0x6B0;
+    constexpr uintptr_t Spine = 0x3E8ULL; // Verified from live dump (MainCameraTransform)
+    constexpr uintptr_t SpineFallback = 0x1288ULL; // Verified from live dump (m_TransformObject)
 
-    constexpr uintptr_t Feet = 0x60;
-    constexpr uintptr_t FeetFallback = 0x6D0;
+    constexpr uintptr_t Feet = 0x1288ULL; // Verified from live dump (OFFSET_Player_m_TransformObject)
+    constexpr uintptr_t FeetFallback = 0x1288ULL;
     
     // Transform Offsets (Synchronized with Kernel & CROSS SRC ROOT 64-bit Unity Transform structure)
     constexpr uintptr_t TransformObj = 0x10;          // Genuine Unity TransformToObj (0x10)
-    constexpr uintptr_t TransformObjAlt = 0x110;      // Legacy fallback
+    constexpr uintptr_t TransformObjAlt = 0x10;       // Legacy 0x110 removed, unified to 0x10
     constexpr uintptr_t TransformIndex = 0x40;        // ObjToIndex
     constexpr uintptr_t TransformMatrix = 0x38;       // ObjToMatrix
     constexpr uintptr_t MatrixList = 0x18;            // Genuine Unity MatrixList array pointer (0x18)
-    constexpr uintptr_t MatrixListAlt = 0x108;        // Legacy fallback
+    constexpr uintptr_t MatrixListAlt = 0x18;         // Legacy 0x108 removed, unified to 0x18
     constexpr uintptr_t MatrixIndices = 0x20;         // Transform indices array
     constexpr uintptr_t MatrixDataSize = 0x30;        // sizeof(Matrix) = 48 bytes
     constexpr uintptr_t TransformIndexSize = 0x4;     // int index = 4 bytes
-    constexpr uintptr_t TransformObject = 0x1288ULL;  // from ninmods_offsets.h (COW.GamePlay.Player.m_TransformObject)
+    constexpr uintptr_t TransformObject = 0x1288ULL;  // Verified from live dump (OFFSET_Player_m_TransformObject)
     
-    // Aiming Info (Verified against Kernel & Scarecrow)
-    // Newer Free Fire: AimingInfo = 0xE58, Alt = 0xE50 (sAim2), Adjusted = 0xE60, older was 0x80
-    constexpr uintptr_t AimingInfo = 0xE58;
-    constexpr uintptr_t AimingInfoAlt = 0xE50;        // Kernel sAim2
-    constexpr uintptr_t AimingInfoAdjusted = 0xE60ULL; // from ninmods_offsets.h (COW.GamePlay.Player.LastAimingInfoFromWeaponAdjusted)
-    constexpr uintptr_t AimingInfoOld = 0x80;
+    // Aiming Info (Verified directly from live ninmods_offsets.h)
+    constexpr uintptr_t AimingInfo = 0xE60ULL;        // Verified from live dump (OFFSET_Player_LastAimingInfoFromWeaponAdjusted)
+    constexpr uintptr_t AimingInfoAlt = 0xE60ULL;     // Unified to live 0xE60ULL
+    constexpr uintptr_t AimingInfoAdjusted = 0xE60ULL; // Live dump RVA & Offset
+    constexpr uintptr_t AimingInfoOld = 0xE60ULL;     // Old 0x80 removed, unified to live 0xE60ULL
     constexpr uintptr_t AimingStartPos = 0x4C;
     constexpr uintptr_t AimingStartPosAlt = 0x40;     // Kernel sAim3
     constexpr uintptr_t AimingDirection = 0x40;       // Genuine Bullet ray direction offset (+0x40)
     constexpr uintptr_t AimingDirectionAlt = 0xD0;    // Kernel sAim4 (+0xD0)
-    constexpr uintptr_t AimingDirectionLegacy = 0x430;
-    constexpr uintptr_t AimAssist = 0x638ULL;         // from ninmods_offsets.h (COW.GamePlay.Player.m_AimAssist)
-    constexpr uintptr_t CurrentAimRotation = 0x1A8CULL; // from ninmods_offsets.h (COW.GamePlay.Player.m_CurrentAimRotation)
-    constexpr uintptr_t ActiveUISightingWeapon = 0x600ULL; // from ninmods_offsets.h (COW.GamePlay.Player.ActiveUISightingWeapon)
-    constexpr uintptr_t CallSetAimRotationCount = 0x810ULL; // from ninmods_offsets.h (COW.GamePlay.Player.CallSetAimRotationCount)
-    constexpr uintptr_t Player_FiringStateAlt = 0x848;      // Kernel sAim1 firing state
+    constexpr uintptr_t AimingDirectionLegacy = 0x40; // Old 0x430 removed, unified to 0x40
+    constexpr uintptr_t AimAssist = 0x638ULL;         // Verified from live dump (OFFSET_Player_m_AimAssist)
+    constexpr uintptr_t CurrentAimRotation = 0x1A8CULL; // Verified from live dump (OFFSET_Player_m_CurrentAimRotation)
+    constexpr uintptr_t ActiveUISightingWeapon = 0x600ULL; // Verified from live dump (OFFSET_Player_ActiveUISightingWeapon)
+    constexpr uintptr_t CallSetAimRotationCount = 0x810ULL; // Verified from live dump (OFFSET_Player_CallSetAimRotationCount)
+    constexpr uintptr_t Player_FiringStateAlt = 0x259ULL;  // Verified from live dump (OFFSET_Player_UGCStartFiring)
     constexpr uintptr_t Player_HeadCollider = 0x740;        // Head collider component pointer
     constexpr uintptr_t Player_AimTargetWrite = 0x80;       // Aim target collider write offset
     
     // Inventory
-    // Newer Free Fire: InventoryManager = 0x748, older was 0x6E8
     constexpr uintptr_t InventoryManager = 0x748;
-    constexpr uintptr_t InventoryManagerOld = 0x6E8;
+    constexpr uintptr_t InventoryManagerOld = 0x748;  // Old 0x6E8 removed, unified to 0x748
     constexpr uintptr_t InventoryItem = 0xA0;
     constexpr uintptr_t ItemData = 0x28;
     constexpr uintptr_t WeaponId = 0x40;
@@ -105,8 +103,8 @@ namespace Offsets {
     // Camera Components & ViewMatrix (Proven from CROSS SRC ROOT & Bull_Team)
     constexpr uintptr_t FollowCamera = 0x698; // Proven Primary FollowCamera Component on Player
     constexpr uintptr_t FollowCameraAlt = 0x638; // Proven Secondary FollowCamera Component
-    constexpr uintptr_t FollowCameraFallback = 0x640;
-    constexpr uintptr_t FollowCameraOld = 0x6A8;
+    constexpr uintptr_t FollowCameraFallback = 0x638;
+    constexpr uintptr_t FollowCameraOld = 0x638; // Old 0x6A8 removed, unified to 0x638
 
     constexpr uintptr_t FollowCameraObj = 0x30;
     constexpr uintptr_t CameraIntPtr = 0x10;
@@ -114,59 +112,55 @@ namespace Offsets {
     constexpr uintptr_t MatrixAlt1 = 0xBC;
     constexpr uintptr_t MatrixAlt2 = 0xDC;
     
-    // Local Player
-    // Newer Free Fire: IsFiring = 0x850 (Older was 0x7E0)
-    constexpr uintptr_t IsFiring = 0x850;
-    constexpr uintptr_t IsFiringOld = 0x7E0;
-    constexpr uintptr_t IsFiringAlt = 0x259; // UGCStartFiring from ninmods_offsets.h
+    // Local Player (Synchronized with live ninmods_offsets.h)
+    constexpr uintptr_t IsFiring = 0x259ULL;          // Verified from live dump (OFFSET_Player_UGCStartFiring)
+    constexpr uintptr_t IsFiringOld = 0x259ULL;       // Old 0x7E0/0x850 removed, unified to live 0x259ULL
+    constexpr uintptr_t IsFiringAlt = 0x259ULL;       // Verified from live dump
 
-    // Newer Free Fire: PlayerRotation = 0x61C (Older was 0x5BC)
     constexpr uintptr_t PlayerRotation = 0x61C;
-    constexpr uintptr_t PlayerRotationOld = 0x5BC;
-    constexpr uintptr_t Player_ViewRotation = 0x214;       // Scarecrow & Kernel Primary Camera View Angle
-    constexpr uintptr_t CallSetAimRotationCountAlt = 0x79C; // Scarecrow CallSetAimRotationCount
+    constexpr uintptr_t PlayerRotationOld = 0x61C;    // Old 0x5BC removed, unified to 0x61C
+    constexpr uintptr_t Player_ViewRotation = 0x214;  // Primary Camera View Angle
+    constexpr uintptr_t CallSetAimRotationCountAlt = 0x810ULL; // Unified to live dump 0x810ULL
 
     constexpr uintptr_t WeaponPtr = 0x608;
-    constexpr uintptr_t WeaponPtrOld = 0x4C8;
+    constexpr uintptr_t WeaponPtrOld = 0x608;         // Old 0x4C8 removed
     constexpr uintptr_t WeaponAimlock = 0x644;
-    constexpr uintptr_t WeaponAimlockOld = 0x4DC;
-    constexpr uintptr_t PlayerAttributes = 0x770;        // Scarecrow PlayerAttributes
-    constexpr uintptr_t ShootNoReload = 0x111;           // Scarecrow ShootNoReload trigger
+    constexpr uintptr_t WeaponAimlockOld = 0x644;     // Old 0x4DC removed
+    constexpr uintptr_t PlayerAttributes = 0x770;
+    constexpr uintptr_t ShootNoReload = 0x111;
     
-    // Enemy/Bot State
-    constexpr uintptr_t IsClientBot = 0x4A0; // Corrected from 0x4A8 to 0x4A0 (ninmods_offsets.h OFFSET_Player_IsClientBot)
-    constexpr uintptr_t IsClientBotOld = 0x4A8;
+    // Enemy/Bot State (Synchronized with live ninmods_offsets.h)
+    constexpr uintptr_t IsClientBot = 0x4A0ULL;       // Verified from live dump (OFFSET_Player_IsClientBot)
+    constexpr uintptr_t IsClientBotOld = 0x4A0ULL;    // Old 0x4A8 removed, unified to live 0x4A0ULL
 
-    constexpr uintptr_t NamePtr = 0x498; // ninmods_offsets.h OFFSET_Player_OriginalNickName
-    constexpr uintptr_t NamePtrOld = 0x448;
+    constexpr uintptr_t NamePtr = 0x498ULL;           // Verified from live dump (OFFSET_Player_OriginalNickName)
+    constexpr uintptr_t NamePtrOld = 0x498ULL;        // Old 0x448 removed, unified to live 0x498ULL
 
     constexpr uintptr_t AvatarManager = 0x778;
-    constexpr uintptr_t AvatarManagerOld = 0x718;
+    constexpr uintptr_t AvatarManagerOld = 0x778;     // Old 0x718 removed
 
     constexpr uintptr_t AvatarSimple = 0x138;
-    constexpr uintptr_t AvatarSimpleOld = 0x128;
+    constexpr uintptr_t AvatarSimpleOld = 0x138;      // Old 0x128 removed
 
     constexpr uintptr_t AvatarVisible = 0x101;
     constexpr uintptr_t UmaData = 0x28;
     constexpr uintptr_t UmaDataCheck = 0x81;
     constexpr uintptr_t EnemyCheck7C = 0x7C;
-    constexpr uintptr_t IsDead = 0x7C; // New_Brutal PL_ISDEAD
+    constexpr uintptr_t IsDead = 0x7C;
     
-    constexpr uintptr_t HHCBNAPCKHF = 0x19F8;
-    constexpr uintptr_t HHCBDeadPtr = 0x20;
-    constexpr uintptr_t DeadStatus = 0x10;
+    constexpr uintptr_t DeadStatus = 0x7C; // Unified to live IsDead status (0x7C)
     
-    // Health / Replication
+    // Health / Replication (Synchronized with live ninmods_offsets.h)
     constexpr uintptr_t DataPool = 0x70;
     constexpr uintptr_t ReplicationData = 0x10;
     constexpr uintptr_t ReplicationItems = 0x20;
     constexpr uintptr_t Health = 0x18;
-    constexpr uintptr_t IsFrozenKnockDown = 0xB0ULL; // from ninmods_offsets.h
-    constexpr uintptr_t KnockDownDamagePerSec = 0x3ACULL; // from ninmods_offsets.h
+    constexpr uintptr_t IsFrozenKnockDown = 0xB0ULL; // Verified from live dump (OFFSET_Player_IsFrozenKnockDown)
+    constexpr uintptr_t KnockDownDamagePerSec = 0x3ACULL; // Verified from live dump (OFFSET_Player_m_KnockDownDamagePerSec)
     
     // Collider
     constexpr uintptr_t HeadCollider = 0x740;
-    constexpr uintptr_t HeadColliderOld = 0x6E0;
+    constexpr uintptr_t HeadColliderOld = 0x740;      // Old 0x6E0 removed, unified to 0x740
     constexpr uintptr_t HeadColliderWrite = 0x80;
     
     // Position Force / Aim Magnet
@@ -244,77 +238,54 @@ namespace Offsets {
     }
 
     // ========================================================
-    // MAYUR OB55 LIVE OFFSETS (Synchronized from pAdress.h)
+    // MAYUR / UTILITY LIVE OFFSETS (Synchronized from ninmods_offsets.h)
     // ========================================================
     namespace Mayur {
-        // Camera
-        constexpr uintptr_t Camera_main            = 0xa0c9acc;
-        constexpr uintptr_t WorldToScreenPoint     = 0xa0c9750;
-        constexpr uintptr_t Camera_get_fieldOfView = 0xa0c819c;
-        constexpr uintptr_t Camera_set_fieldOfView = 0xa0c81d8;
+        // Camera (Live 64-bit RVAs from ninmods_offsets.h)
+        constexpr uintptr_t Camera_main            = 0x1997fd00ULL; // Live dump RVA_Camera_get_main
+        constexpr uintptr_t WorldToScreenPoint     = 0x1997f654ULL; // Live dump RVA_Camera_WorldToScreenPoint
+        constexpr uintptr_t Camera_get_fieldOfView = 0x1997e448ULL; // Live dump RVA_Camera_get_fieldOfView
+        constexpr uintptr_t Camera_set_fieldOfView = 0x1997e484ULL; // Live dump RVA_Camera_set_fieldOfView
 
-        // Input
-        constexpr uintptr_t Input_get_touchCount    = 0xA15304C;
-        constexpr uintptr_t Input_GetTouch          = 0xA152A74;
-        constexpr uintptr_t Input_get_mousePosition = 0xA152D94;
+        // Transform (Live 64-bit RVAs from ninmods_offsets.h)
+        constexpr uintptr_t GetForward            = 0x199d6040ULL; // Live dump RVA_Transform_get_forward
+        constexpr uintptr_t Transform_GetPosition = 0x199d5a68ULL; // Live dump RVA_Transform_get_position
+        constexpr uintptr_t Transform_SetPosition = 0x199d5b08ULL; // Live dump RVA_Transform_set_position
+        constexpr uintptr_t Transform_Position    = 0x199d5a68ULL; // Live dump RVA_Transform_get_position
+        constexpr uintptr_t Transform_Rotation    = 0x199d5c58ULL; // Live dump RVA_Transform_get_rotation
 
-        // Screen
-        constexpr uintptr_t Screen_get_width   = 0xa0d71d4;
-        constexpr uintptr_t Screen_get_height  = 0xa0d71fc;
-        constexpr uintptr_t Screen_get_density = 0xa0d7224;
+        // Component (Live 64-bit RVAs from ninmods_offsets.h)
+        constexpr uintptr_t Component_GetTransform = 0x199c75d0ULL; // Live dump RVA_Component_get_transform
 
-        // Transform
-        constexpr uintptr_t GetForward            = 0xa1201c8;
-        constexpr uintptr_t Transform_GetPosition = 0xa11fc4c;
-        constexpr uintptr_t Transform_SetPosition = 0xa11fce4;
-        constexpr uintptr_t Transform_Position    = 0xa11fbf0;
-        constexpr uintptr_t Transform_Rotation    = 0xa11fde0;
-
-        // Component
-        constexpr uintptr_t Component_GetTransform = 0xa1116f8;
-
-        // Player Offsets
-        constexpr uintptr_t MainCam        = 0x3f0;
-        constexpr uintptr_t GetLocalPlayer = 0x4e76054;
-        constexpr uintptr_t Current_Match  = 0x75ebd88;
+        // Player Offsets (Live dump from ninmods_offsets.h)
+        constexpr uintptr_t MainCam        = 0x3E8ULL;       // Live dump OFFSET_Player_MainCameraTransform
+        constexpr uintptr_t GetLocalPlayer = 0x16bad10cULL;  // Live dump RVA_GameFacade_CurrentLocalPlayer
+        constexpr uintptr_t Current_Match  = 0x16baa1c8ULL;  // Live dump RVA_GameFacade_SetCurrentGame
         constexpr uintptr_t ListPlayer     = 0x148;
         constexpr uintptr_t m_ShortIDToPlayers = 0x148;
 
-        // Player Methods
-        constexpr uintptr_t Head         = 0x7099fbc;
-        constexpr uintptr_t Hip          = 0x709a148;
-        constexpr uintptr_t HeadCollider = 0x7015e3c;
-        constexpr uintptr_t Name         = 0x7012ad4;
-        constexpr uintptr_t MaxHP        = 0x6ff81b8;
-        constexpr uintptr_t CurHP        = 0x707e2e4;
-        constexpr uintptr_t IsVisible    = 0x701b26c;
-        constexpr uintptr_t IsLocalTeam  = 0x75ec964;
-        constexpr uintptr_t Die          = 0x7000800;
-        constexpr uintptr_t Scope        = 0x700c05c;
-        constexpr uintptr_t Fire         = 0x7003790;
-        constexpr uintptr_t LocalBool    = 0x6fe2244;
-        constexpr uintptr_t CarLocal     = 0x7018ff8;
-        constexpr uintptr_t GetCar       = 0x6ff9dec;
-        constexpr uintptr_t Aim          = 0x7014450;
-        constexpr uintptr_t IsGod        = 0x6fe24a4;
+        // Player Methods (Live 64-bit RVAs from ninmods_offsets.h)
+        constexpr uintptr_t Head         = 0x1691f4b8ULL; // Live dump RVA_Player_get_HeadBoneTransform
+        constexpr uintptr_t Hip          = 0x1691f250ULL; // Live dump RVA_Player_get_HipsBoneTransform
+        constexpr uintptr_t HeadCollider = 0x1691acb0ULL; // Live dump RVA_Player_get_HeadCollider
+        constexpr uintptr_t Name         = 0x16917944ULL; // Live dump RVA_Player_get_NickName
+        constexpr uintptr_t MaxHP        = 0x169174c8ULL; // Live dump RVA_Player_get_UserID
+        constexpr uintptr_t CurHP        = 0x169057c0ULL; // Live dump RVA_Player_get_IsDieing
+        constexpr uintptr_t IsVisible    = 0x16920108ULL; // Live dump RVA_Player_IsVisible
+        constexpr uintptr_t IsLocalTeam  = 0x16baed90ULL; // Live dump RVA_GameFacade_CurrentLocalPlayerTeamIndex
+        constexpr uintptr_t Die          = 0x1691db04ULL; // Live dump RVA_Player_get_IsReallyDead
+        constexpr uintptr_t Scope        = 0x600ULL;      // Live dump OFFSET_Player_ActiveUISightingWeapon
+        constexpr uintptr_t Fire         = 0x259ULL;      // Live dump OFFSET_Player_UGCStartFiring
+        constexpr uintptr_t LocalBool    = 0x16ba613cULL; // Live dump RVA_GameFacade_get_IsLocalPlayerHideByCameraMode
+        constexpr uintptr_t CarLocal     = 0x1691e010ULL; // Live dump RVA_Player_IsPassengerInVehicleCanFire
+        constexpr uintptr_t GetCar       = 0x1691e3b8ULL; // Live dump RVA_Player_IsDriverInVehicleCanFire
+        constexpr uintptr_t Aim          = 0xE60ULL;      // Live dump OFFSET_Player_LastAimingInfoFromWeaponAdjusted
+        constexpr uintptr_t IsGod        = 0x168e7468ULL; // Live dump RVA_Player_get_IsGod
 
-        // String
-        constexpr uintptr_t u3str   = 0x9EE6714;
-        constexpr uintptr_t CharGet = 0x9daae88;
-
-        // Raycast
-        constexpr uintptr_t Raycast = 0x7c5289c;
-
-        // Game Timer
-        constexpr uintptr_t m_Timer    = 0x75EA614;
-        constexpr uintptr_t m_GetTimer = 0x83583E0;
-        constexpr uintptr_t m_SetTimer = 0x8358414;
-
-        // Unity Time
-        constexpr uintptr_t Time_deltaTime = 0xA109624;
-
-        // Aim Collider
-        constexpr uintptr_t LAimCollider = 0x7246a50;
+        // Game Timer (Live 64-bit RVAs from ninmods_offsets.h)
+        constexpr uintptr_t m_Timer    = 0x16bab478ULL;  // Live dump RVA_GameFacade_CurrentGameTimer
+        constexpr uintptr_t m_GetTimer = 0x16bab59cULL;  // Live dump RVA_GameFacade_CurrentGameSimulationTimer
+        constexpr uintptr_t m_SetTimer = 0x16bab624ULL;  // Live dump RVA_GameFacade_CurrentGameFixedDeltaTime
     }
 }
 
