@@ -40,6 +40,8 @@ public:
         const char* paths[] = {
             "/sdcard/ninmods.log",
             "/storage/emulated/0/ninmods.log",
+            "/data/data/com.ninmods.main/files/ninmods.log",
+            "/data/user/0/com.ninmods.main/files/ninmods.log",
             "/data/data/nin.app/files/ninmods.log",
             "/data/user/0/nin.app/files/ninmods.log"
         };

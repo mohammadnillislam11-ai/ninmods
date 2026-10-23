@@ -1222,6 +1222,10 @@ void StartDaemon() {
 
     const char* dName = isX86 ? "Titoo1" : "Titoo";
     const char* paths[] = {
+        "/data/user/0/com.ninmods.main/files/",
+        "/data/data/com.ninmods.main/files/",
+        "/data/user/0/com.ninmods.main/cache/",
+        "/data/data/com.ninmods.main/cache/",
         "/data/user/0/nin.app/files/",
         "/data/data/nin.app/files/",
         "/data/user/0/nin.app/cache/",

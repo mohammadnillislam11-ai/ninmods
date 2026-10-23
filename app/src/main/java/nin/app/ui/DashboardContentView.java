@@ -321,7 +321,7 @@ public class DashboardContentView {
         FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(dp(context, 26), dp(context, 26));
         ivLp.gravity = Gravity.CENTER;
         iconView.setLayoutParams(ivLp);
-        iconView.setImageResource(R.mipmap.ic_launcher);
+        iconView.setImageResource(R.drawable.ic_launcher);
         iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         iconBox.addView(iconView);
         card.addView(iconBox);

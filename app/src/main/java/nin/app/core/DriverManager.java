@@ -16,6 +16,7 @@ import java.io.File;
  */
 public class DriverManager {
 
+    public static final String MAIN_PACKAGE_NAME = "com.ninmods.main";
     public static final String LOADER_PACKAGE_NAME = "com.ninmods.loader";
     public static final String LOADER_ACTIVITY_NAME = "com.ninmods.loader.MainActivity";
     public static final String ACTION_DRIVER_STATE = "com.ninmods.action.DRIVER_STATE";

@@ -17,7 +17,7 @@ android {
     namespace 'nin.app'
 
     defaultConfig {
-        applicationId "nin.app"
+        applicationId "com.ninmods.main"
         minSdkVersion 21
         targetSdkVersion 28
         versionCode getVersionProp("version_code", "81").toInteger()
