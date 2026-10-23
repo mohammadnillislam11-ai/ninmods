@@ -74,7 +74,7 @@ public class CrossMenuFloater {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
                 if (activeInstance != null && activeInstance.isAttached()) {
-                    activeInstance.openMenu();
+                    activeInstance.closeMenu();
                     return;
                 }
                 if (activeInstance != null) {
@@ -86,7 +86,7 @@ public class CrossMenuFloater {
                     t.printStackTrace();
                 }
                 activeInstance = new CrossMenuFloater(target);
-                activeInstance.openMenu();
+                activeInstance.closeMenu();
             } catch (Throwable t) {
                 t.printStackTrace();
             }

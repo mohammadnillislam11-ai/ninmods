@@ -26,6 +26,7 @@ public abstract class BaseActivity extends Activity {
     private ParticleNetworkView particleBg;
     private FrameLayout contentContainer;
     private FooterView universalFooter;
+    private android.widget.ImageView modalBlurOverlay;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,6 +45,7 @@ public abstract class BaseActivity extends Activity {
             particleBg = baseRoot.findViewById(R.id.particleBg);
             contentContainer = baseRoot.findViewById(R.id.contentContainer);
             universalFooter = baseRoot.findViewById(R.id.universalFooter);
+            modalBlurOverlay = baseRoot.findViewById(R.id.modalBlurOverlay);
 
             if (!enableParticleBackground() && particleBg != null) {
                 particleBg.setVisibility(View.GONE);
@@ -138,15 +140,56 @@ public abstract class BaseActivity extends Activity {
         return true;
     }
 
-    private android.graphics.RenderEffect cachedModalBlur = null;
-
     /**
      * Applies full-screen hardware-accelerated blur across the entire activity layout
      * (background, content, and footer) when modal popups/dialogs are displayed.
+     * Works on ALL Android devices (API 21 to 35).
      * Clears instantly when dismissed.
      */
-    public void setScreenBlur(boolean enable) {
-        // Disabled compositor blur to prevent Android from flagging display as secure/blocking screen record
+    public void setScreenBlur(final boolean enable) {
+        runOnUiThread(() -> {
+            if (enable) {
+                // 1. Android 12+ (API 31+) Hardware RenderEffect view blur
+                if (contentContainer != null) {
+                    com.ninmods.main.ui.BlurHelper.applyViewBlur(contentContainer, 25f);
+                }
+
+                // 2. Universal StackBlur / Frosted backdrop for older Android versions (API < 31)
+                if (modalBlurOverlay != null) {
+                    boolean captured = false;
+                    if (contentContainer != null && contentContainer.getWidth() > 0 && contentContainer.getHeight() > 0) {
+                        try {
+                            android.graphics.Bitmap blurred = com.ninmods.main.ui.BlurHelper.createBlurredSnapshot(contentContainer, 0.12f, 10);
+                            if (blurred != null) {
+                                modalBlurOverlay.setImageBitmap(blurred);
+                                modalBlurOverlay.setColorFilter(0x33000000, android.graphics.PorterDuff.Mode.SRC_ATOP);
+                                captured = true;
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+                    if (!captured) {
+                        modalBlurOverlay.setBackgroundColor(android.graphics.Color.parseColor("#B30D021A"));
+                    }
+                    modalBlurOverlay.setVisibility(View.VISIBLE);
+                    modalBlurOverlay.setAlpha(0.0f);
+                    modalBlurOverlay.animate().alpha(1.0f).setDuration(160).start();
+                }
+            } else {
+                // 1. Clear Hardware RenderEffect
+                if (contentContainer != null) {
+                    com.ninmods.main.ui.BlurHelper.clearViewBlur(contentContainer);
+                }
+
+                // 2. Fade out and clear universal overlay
+                if (modalBlurOverlay != null) {
+                    modalBlurOverlay.animate().alpha(0.0f).setDuration(140).withEndAction(() -> {
+                        modalBlurOverlay.setVisibility(View.GONE);
+                        modalBlurOverlay.setImageDrawable(null);
+                        modalBlurOverlay.setBackground(null);
+                    }).start();
+                }
+            }
+        });
     }
 
     @Override

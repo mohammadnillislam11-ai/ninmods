@@ -110,13 +110,13 @@ public class ParticleNetworkView extends View {
         // 2: Deep Cyber Violet (#D050FF)
         particlePaints[2] = createPaint(0xAAD050FF);
 
-        // Enable hardware acceleration
-        setLayerType(LAYER_TYPE_HARDWARE, null);
-
         // Apply isolated view-level blur (Applies ONLY to this background animation view)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            setLayerType(LAYER_TYPE_HARDWARE, null);
             Api31BlurHelper.applyBlur(this, blurRadiusPx);
         } else {
+            // Software layer is strictly required on Android 7-11 for BlurMaskFilter to render
+            setLayerType(LAYER_TYPE_SOFTWARE, null);
             try {
                 BlurMaskFilter filter = new BlurMaskFilter(blurRadiusPx, BlurMaskFilter.Blur.NORMAL);
                 particlePaints[0].setMaskFilter(filter);

@@ -271,10 +271,40 @@ public final class AuthApiController {
                     JSONObject resJson = new JSONObject(response);
                     if (resJson.optBoolean("valid", false) || resJson.optBoolean("success", false) || resJson.optBoolean("status", false)) {
                         String resultMessage = resJson.optString("message", "License Key verified successfully!");
-                        int remainingSec = resJson.optInt("remaining_seconds", 86400);
-                        String expiresAt = resJson.optString("expires_at", "");
+                        int remainingSec = 0;
+                        if (resJson.has("remaining_seconds")) {
+                            remainingSec = resJson.optInt("remaining_seconds", 0);
+                            if (remainingSec <= 0) {
+                                try {
+                                    remainingSec = Integer.parseInt(resJson.optString("remaining_seconds", "0").trim());
+                                } catch (Exception ignored) {}
+                            }
+                        }
+                        if (remainingSec <= 0 && resJson.has("remainingSeconds")) {
+                            remainingSec = resJson.optInt("remainingSeconds", 0);
+                        }
+                        if (remainingSec <= 0 && resJson.has("remaining_time")) {
+                            remainingSec = resJson.optInt("remaining_time", 0);
+                        }
+                        if (remainingSec <= 0 && resJson.has("seconds")) {
+                            remainingSec = resJson.optInt("seconds", 0);
+                        }
+                        String expiresAt = resJson.optString("expires_at", resJson.optString("expiresAt", ""));
+                        if (remainingSec <= 0 && !expiresAt.isEmpty()) {
+                            try {
+                                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US);
+                                java.util.Date d = sdf.parse(expiresAt);
+                                if (d != null) {
+                                    remainingSec = (int) Math.max(0, (d.getTime() - System.currentTimeMillis()) / 1000L);
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                        if (remainingSec <= 0) {
+                            remainingSec = 86400 * 30; // 30 days fallback
+                        }
+
                         String sessionToken = resJson.optString("session_token", resJson.optString("token", ""));
-                        String durationType = resJson.optString("duration_type", "30_days");
+                        String durationType = resJson.optString("duration_type", resJson.optString("plan", "30_days"));
                         AuthManager.updateActiveLicense(context, key, durationType, expiresAt, remainingSec);
                         if (sessionToken.isEmpty()) {
                             sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();

@@ -134,14 +134,14 @@ public class Floater {
         mainHandler.post(() -> {
             try {
                 if (activeFloater != null && activeFloater.isAttached()) {
-                    activeFloater.openMenu();
+                    activeFloater.closeMenu();
                     return;
                 }
                 if (activeFloater != null) {
                     activeFloater.destroyOverlay();
                 }
                 Floater floater = new Floater(targetCtx);
-                floater.openMenu();
+                floater.closeMenu();
             } catch (Throwable t) {
                 t.printStackTrace();
             }

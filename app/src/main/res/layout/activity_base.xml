@@ -24,4 +24,12 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Universal Frosted Glass Modal Blur Overlay (Active during popups & dialogs) -->
+    <ImageView
+        android:id="@+id/modalBlurOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:visibility="gone" />
+
 </FrameLayout>

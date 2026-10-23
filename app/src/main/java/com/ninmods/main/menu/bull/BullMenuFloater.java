@@ -78,7 +78,7 @@ public class BullMenuFloater {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
                 if (activeInstance != null && activeInstance.isAttached()) {
-                    activeInstance.openMenu();
+                    activeInstance.closeMenu();
                     return;
                 }
                 if (activeInstance != null) {
@@ -90,7 +90,7 @@ public class BullMenuFloater {
                     t.printStackTrace();
                 }
                 activeInstance = new BullMenuFloater(target);
-                activeInstance.openMenu();
+                activeInstance.closeMenu();
             } catch (Throwable t) {
                 t.printStackTrace();
             }

@@ -1,7 +1,6 @@
 package com.ninmods.main.core;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -135,17 +134,24 @@ public class DashboardActivity extends BaseActivity {
 
         // Hardware-accelerated full screen blur behind the sidebar when opened
         drawerLayout.addDrawerListener(new DrawerLayout.DrawerListener() {
-            private RenderEffect cachedDrawerBlur = null;
-            private boolean isBlurred = false;
+            @Override
+            public void onDrawerSlide(View drawerView, float slideOffset) {
+                if (slideOffset > 0.05f) {
+                    com.ninmods.main.ui.BlurHelper.applyViewBlur(mainContainer, slideOffset * 22f);
+                } else {
+                    com.ninmods.main.ui.BlurHelper.clearViewBlur(mainContainer);
+                }
+            }
 
             @Override
-            public void onDrawerSlide(View drawerView, float slideOffset) {}
+            public void onDrawerOpened(View drawerView) {
+                com.ninmods.main.ui.BlurHelper.applyViewBlur(mainContainer, 22f);
+            }
 
             @Override
-            public void onDrawerOpened(View drawerView) {}
-
-            @Override
-            public void onDrawerClosed(View drawerView) {}
+            public void onDrawerClosed(View drawerView) {
+                com.ninmods.main.ui.BlurHelper.clearViewBlur(mainContainer);
+            }
 
             @Override
             public void onDrawerStateChanged(int newState) {}
@@ -216,19 +222,29 @@ public class DashboardActivity extends BaseActivity {
         setContentView(drawerLayout);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshBody();
+    }
+
     private void confirmLogout() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Log Out");
-        builder.setMessage("Are you sure you want to log out of your session?");
-        builder.setPositiveButton("Log Out", (dialog, which) -> {
-            AuthManager.clearSession(DashboardActivity.this);
-            Intent intent = new Intent(DashboardActivity.this, LoginActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            finish();
-        });
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
+        showCustomConfirmDialog(
+                "Log Out",
+                "Are you sure you want to log out of your session?",
+                "LOG OUT",
+                () -> {
+                    AuthManager.clearSession(DashboardActivity.this);
+                    Intent intent = new Intent(DashboardActivity.this, LoginActivity.class);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    startActivity(intent);
+                    finish();
+                },
+                null,
+                null,
+                "CANCEL",
+                null
+        );
     }
 
     private void refreshBody() {
@@ -254,17 +270,16 @@ public class DashboardActivity extends BaseActivity {
                 }
 
                 if (!DriverManager.isDriverActive()) {
-                    new AlertDialog.Builder(DashboardActivity.this)
-                            .setTitle("Driver Loader Required")
-                            .setMessage("Ring 0 Kernel Driver is not active. Would you like to open the Driver Loader (" + DriverManager.LOADER_PACKAGE_NAME + ") first?")
-                            .setPositiveButton("OPEN LOADER", (dialog, which) -> {
-                                DriverManager.launchDriverLoader(DashboardActivity.this);
-                            })
-                            .setNeutralButton("LAUNCH ANYWAY", (dialog, which) -> {
-                                launchGame(packageName, gameName);
-                            })
-                            .setNegativeButton("CANCEL", null)
-                            .show();
+                    showCustomConfirmDialog(
+                            "Driver Loader Required",
+                            "Ring 0 Kernel Driver is not active. Would you like to open the Driver Loader (" + DriverManager.LOADER_PACKAGE_NAME + ") first?",
+                            "OPEN LOADER",
+                            () -> DriverManager.launchDriverLoader(DashboardActivity.this),
+                            "LAUNCH ANYWAY",
+                            () -> launchGame(packageName, gameName),
+                            "CANCEL",
+                            null
+                    );
                     return;
                 }
 
@@ -275,19 +290,23 @@ public class DashboardActivity extends BaseActivity {
     }
 
     private void launchGame(final String packageName, final String gameName) {
-        new AlertDialog.Builder(DashboardActivity.this)
-                .setTitle("Launch " + gameName)
-                .setMessage("Do you want to launch " + gameName + "?")
-                .setPositiveButton("LAUNCH", (dialog, which) -> {
+        showCustomConfirmDialog(
+                "Launch " + gameName,
+                "Do you want to launch " + gameName + "?",
+                "LAUNCH",
+                () -> {
                     Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
                     if (launchIntent != null) {
                         startActivity(launchIntent);
                     } else {
                         Toast.makeText(DashboardActivity.this, "Unable to launch " + gameName, Toast.LENGTH_SHORT).show();
                     }
-                })
-                .setNegativeButton("CANCEL", null)
-                .show();
+                },
+                null,
+                null,
+                "CANCEL",
+                null
+        );
     }
 
     private void showKeyVerificationDialog(final IMenuProject menu) {
@@ -497,11 +516,10 @@ public class DashboardActivity extends BaseActivity {
             AuthApiController.verifyLicenseKey(DashboardActivity.this, inputKey, menu.getId(), new AuthApiController.ApiCallback() {
                 @Override
                 public void onSuccess(String message) {
-                    if (!dialog.isShowing()) return;
-
                     AuthManager.setRememberedKey(DashboardActivity.this, inputKey, cbRemember.isChecked());
 
                     dialog.dismiss();
+                    DashboardContentView.updateLicenseCard(currentBodyView, DashboardActivity.this);
                     refreshBody();
                     Toast.makeText(DashboardActivity.this, "Key Verified! Connecting Ring 0 Driver...", Toast.LENGTH_SHORT).show();
                     launchMenuWithOverlayCheck(menu, "Ring 0 Driver");
@@ -509,7 +527,6 @@ public class DashboardActivity extends BaseActivity {
 
                 @Override
                 public void onError(String errorMessage) {
-                    if (!dialog.isShowing()) return;
                     progressBar.setVisibility(View.GONE);
                     btnVerify.setVisibility(View.VISIBLE);
                     etKey.setEnabled(true);
@@ -534,6 +551,143 @@ public class DashboardActivity extends BaseActivity {
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             window.setDimAmount(0.65f);
         }
+
+        setScreenBlur(true);
+        dialog.setOnDismissListener(d -> setScreenBlur(false));
+        dialog.show();
+    }
+
+    private void showCustomConfirmDialog(String titleText, String messageText,
+                                         String positiveText, final Runnable onPositive,
+                                         String neutralText, final Runnable onNeutral,
+                                         String negativeText, final Runnable onNegative) {
+        if (isFinishing()) return;
+        final Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        FrameLayout dialogRoot = new FrameLayout(this);
+        dialogRoot.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        dialogRoot.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+        LinearLayout card = new LinearLayout(this);
+        card.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+        ));
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(20), dp(22), dp(20), dp(18));
+
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(AppColors.MAGENTA_CARD);
+        cardBg.setCornerRadius(dp(16));
+        cardBg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
+        card.setBackground(cardBg);
+
+        // Header Title
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText(titleText);
+        tvTitle.setTextColor(AppColors.WHITE);
+        tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        tvTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        tvTitle.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tLp.bottomMargin = dp(10);
+        tvTitle.setLayoutParams(tLp);
+        card.addView(tvTitle);
+
+        // Message
+        TextView tvMsg = new TextView(this);
+        tvMsg.setText(messageText);
+        tvMsg.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        tvMsg.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tvMsg.setGravity(Gravity.CENTER);
+        tvMsg.setLineSpacing(dp(2), 1.15f);
+        LinearLayout.LayoutParams mLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mLp.bottomMargin = dp(18);
+        tvMsg.setLayoutParams(mLp);
+        card.addView(tvMsg);
+
+        // Buttons Container
+        LinearLayout btnContainer = new LinearLayout(this);
+        btnContainer.setOrientation(LinearLayout.VERTICAL);
+        btnContainer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        if (positiveText != null && !positiveText.isEmpty()) {
+            Button btnPos = new Button(this);
+            LinearLayout.LayoutParams posLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+            btnPos.setLayoutParams(posLp);
+            btnPos.setText(positiveText);
+            btnPos.setTextColor(AppColors.WHITE);
+            btnPos.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            btnPos.setTypeface(Typeface.DEFAULT_BOLD);
+            GradientDrawable posBg = new GradientDrawable();
+            posBg.setColor(AppColors.MAGENTA_PRIMARY);
+            posBg.setCornerRadius(dp(8));
+            btnPos.setBackground(posBg);
+            btnPos.setOnClickListener(v -> {
+                dialog.dismiss();
+                if (onPositive != null) onPositive.run();
+            });
+            btnContainer.addView(btnPos);
+        }
+
+        if (neutralText != null && !neutralText.isEmpty()) {
+            Button btnNeu = new Button(this);
+            LinearLayout.LayoutParams neuLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42));
+            neuLp.topMargin = dp(8);
+            btnNeu.setLayoutParams(neuLp);
+            btnNeu.setText(neutralText);
+            btnNeu.setTextColor(AppColors.WHITE);
+            btnNeu.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            btnNeu.setTypeface(Typeface.DEFAULT_BOLD);
+            GradientDrawable neuBg = new GradientDrawable();
+            neuBg.setColor(AppColors.MAGENTA_CHIP);
+            neuBg.setCornerRadius(dp(8));
+            neuBg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
+            btnNeu.setBackground(neuBg);
+            btnNeu.setOnClickListener(v -> {
+                dialog.dismiss();
+                if (onNeutral != null) onNeutral.run();
+            });
+            btnContainer.addView(btnNeu);
+        }
+
+        if (negativeText != null && !negativeText.isEmpty()) {
+            Button btnNeg = new Button(this);
+            LinearLayout.LayoutParams negLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38));
+            negLp.topMargin = dp(6);
+            btnNeg.setLayoutParams(negLp);
+            btnNeg.setText(negativeText);
+            btnNeg.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+            btnNeg.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            btnNeg.setBackgroundColor(Color.TRANSPARENT);
+            btnNeg.setOnClickListener(v -> {
+                dialog.dismiss();
+                if (onNegative != null) onNegative.run();
+            });
+            btnContainer.addView(btnNeg);
+        }
+
+        card.addView(btnContainer);
+        dialogRoot.addView(card);
+        dialog.setContentView(dialogRoot);
+
+        if (dialog.getWindow() != null) {
+            Window window = dialog.getWindow();
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            window.setGravity(Gravity.CENTER);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.65f);
+        }
+
+        setScreenBlur(true);
+        dialog.setOnDismissListener(d -> setScreenBlur(false));
         dialog.show();
     }
 
@@ -565,17 +719,16 @@ public class DashboardActivity extends BaseActivity {
         }
 
         if (!DriverManager.isDriverActive()) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Kernel Driver Required")
-                    .setMessage("Ring 0 Kernel Driver is currently offline. You can open Driver Loader (" + DriverManager.LOADER_PACKAGE_NAME + ") to activate it, or launch the Floating Menu directly.")
-                    .setPositiveButton("OPEN LOADER", (d, which) -> {
-                        DriverManager.launchDriverLoader(DashboardActivity.this);
-                    })
-                    .setNeutralButton("LAUNCH MENU", (d, which) -> {
-                        MenuRouter.launchMenu(DashboardActivity.this, menu.getId());
-                    })
-                    .setNegativeButton("CANCEL", null)
-                    .show();
+            showCustomConfirmDialog(
+                    "Kernel Driver Required",
+                    "Ring 0 Kernel Driver is currently offline. You can open Driver Loader (" + DriverManager.LOADER_PACKAGE_NAME + ") to activate it, or launch the Floating Menu directly.",
+                    "OPEN LOADER",
+                    () -> DriverManager.launchDriverLoader(DashboardActivity.this),
+                    "LAUNCH MENU",
+                    () -> MenuRouter.launchMenu(DashboardActivity.this, menu.getId()),
+                    "CANCEL",
+                    null
+            );
             return;
         }
 

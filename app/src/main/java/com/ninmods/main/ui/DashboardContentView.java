@@ -64,12 +64,23 @@ public class DashboardContentView {
         container.addView(createBrandMenuGrid(context, listener));
 
         // 2. Active VIP License Session & Live Countdown Card
-        // Shown ONLY if an active plan is verified per user requirement
-        if (AuthManager.hasActiveLicense(context)) {
-            TextView licenseHeader = createSectionHeader(context, "ACTIVE LICENSE SESSION");
-            container.addView(licenseHeader);
-            container.addView(new ActiveLicenseCountdownCard(context));
-        }
+        // Real-time container that dynamically updates and displays instantly upon key verification
+        final LinearLayout licenseSection = new LinearLayout(context);
+        licenseSection.setTag("TAG_LICENSE_SECTION");
+        licenseSection.setOrientation(LinearLayout.VERTICAL);
+        licenseSection.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        TextView licenseHeader = createSectionHeader(context, "ACTIVE LICENSE SESSION");
+        licenseSection.addView(licenseHeader);
+        ActiveLicenseCountdownCard countdownCard = new ActiveLicenseCountdownCard(context);
+        countdownCard.setTag("TAG_COUNTDOWN_CARD");
+        licenseSection.addView(countdownCard);
+
+        licenseSection.setVisibility(AuthManager.hasActiveLicense(context) ? View.VISIBLE : View.GONE);
+        container.addView(licenseSection);
 
         // 3. Installed Games Section (Auto-detected from device, Zero buttons, dialog on click)
         TextView gamesHeader = createSectionHeader(context, "INSTALLED GAMES");
@@ -480,6 +491,19 @@ public class DashboardContentView {
         tv.setTypeface(Typeface.DEFAULT_BOLD);
         tv.setPadding(0, dp(context, 8), 0, dp(context, 6));
         return tv;
+    }
+
+    public static void updateLicenseCard(View rootView, Context context) {
+        if (rootView == null || context == null) return;
+        View licenseSection = rootView.findViewWithTag("TAG_LICENSE_SECTION");
+        ActiveLicenseCountdownCard card = rootView.findViewWithTag("TAG_COUNTDOWN_CARD");
+        boolean hasLicense = AuthManager.hasActiveLicense(context);
+        if (licenseSection != null) {
+            licenseSection.setVisibility(hasLicense ? View.VISIBLE : View.GONE);
+        }
+        if (card != null && hasLicense) {
+            card.updateTime();
+        }
     }
 
     private static int dp(Context context, int value) {
