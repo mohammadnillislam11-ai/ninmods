@@ -104,7 +104,11 @@ public final class AuthApiController {
                         String realUsername = resJson.optString("username", usernameOrEmail != null ? usernameOrEmail : "");
                         String realEmail = resJson.optString("email", "");
                         String realPhone = resJson.optString("telephone", resJson.optString("phone", ""));
-                        String realRole = resJson.optString("role", "VIP Member");
+                        String realRole = resJson.optString("role", "");
+                        if (realRole.isEmpty() && resJson.has("user")) {
+                            JSONObject uObj = resJson.optJSONObject("user");
+                            if (uObj != null) realRole = uObj.optString("role", "");
+                        }
 
                         Prefs.with(context).writeString("auth_api_key", apiKey);
                         Prefs.with(context).writeFloat("auth_balance", (float) balance);
@@ -368,7 +372,11 @@ public final class AuthApiController {
                         String username = prof.optString("username", "");
                         String email = prof.optString("email", "");
                         String phone = prof.optString("telephone", prof.optString("phone", ""));
-                        String role = prof.optString("role", "VIP Member");
+                        String role = prof.optString("role", "");
+                        if (role.isEmpty() && prof.has("user")) {
+                            JSONObject uObj = prof.optJSONObject("user");
+                            if (uObj != null) role = uObj.optString("role", "");
+                        }
                         double balance = prof.optDouble("balance", 0.0);
                         String currency = prof.optString("currency", "BDT");
 

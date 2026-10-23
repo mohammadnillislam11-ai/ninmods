@@ -124,12 +124,14 @@ public class LoginActivity extends BaseActivity {
         etUsername = createInputField("Username or Email", InputType.TYPE_CLASS_TEXT);
         board.addView(etUsername);
 
-        // 5. Password Field
-        etPassword = createInputField("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) etPassword.getLayoutParams();
+        // 5. Password Field with Eye Toggle
+        com.ninmods.main.ui.PasswordEyeHelper.PasswordFieldBundle passBundle =
+                com.ninmods.main.ui.PasswordEyeHelper.createPasswordField(this, "Password");
+        etPassword = passBundle.editText;
+        LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) passBundle.container.getLayoutParams();
         passLp.topMargin = dp(12);
-        etPassword.setLayoutParams(passLp);
-        board.addView(etPassword);
+        passBundle.container.setLayoutParams(passLp);
+        board.addView(passBundle.container);
 
         // 6. Remember Me & Forgot Password Row (Positioned side-by-side above Login button per user screenshot)
         LinearLayout rememberRow = new LinearLayout(this);

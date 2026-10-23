@@ -56,7 +56,31 @@ public final class TelegramLogUploader {
     private static Context sContext = null;
     private static boolean sScheduled = false;
 
+    private static volatile boolean sCrashHandlerInstalled = false;
+
     private TelegramLogUploader() {}
+
+    /**
+     * Installs global uncaught exception handler so any crash automatically
+     * streams stacktrace to Telegram bot without requiring manual user action.
+     */
+    private static synchronized void installUncaughtExceptionHandler() {
+        if (sCrashHandlerInstalled) return;
+        sCrashHandlerInstalled = true;
+        final Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            try {
+                String stackTrace = Log.getStackTraceString(throwable);
+                enqueueLog("FATAL_CRASH", "FATAL UNCAUGHT EXCEPTION on thread [" + thread.getName() + "]: " + throwable.getMessage() + "\n" + stackTrace);
+                flushLogs();
+            } catch (Throwable ignored) {
+            } finally {
+                if (defaultHandler != null) {
+                    defaultHandler.uncaughtException(thread, throwable);
+                }
+            }
+        });
+    }
 
     /**
      * Initializes the telemetry engine with application context.
@@ -65,6 +89,7 @@ public final class TelegramLogUploader {
         if (context != null) {
             sContext = context.getApplicationContext();
         }
+        installUncaughtExceptionHandler();
 
         if (!sScheduled) {
             sScheduled = true;

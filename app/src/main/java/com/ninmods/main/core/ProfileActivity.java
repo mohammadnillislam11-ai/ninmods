@@ -33,6 +33,7 @@ import com.ninmods.main.R;
 import com.ninmods.main.auth.AuthApiController;
 import com.ninmods.main.auth.AuthManager;
 import com.ninmods.main.auth.LoginActivity;
+import com.ninmods.main.ui.PasswordEyeHelper;
 
 public class ProfileActivity extends BaseActivity {
 
@@ -65,13 +66,14 @@ public class ProfileActivity extends BaseActivity {
     private String currentUsername = "";
     private String currentEmail = "";
     private String currentPhone = "";
-    private String currentRole = "VIP Member";
+    private String currentRole = "";
     private float currentBalance = 0.0f;
     private String currentCurrency = "BDT";
 
     private TextView tvHeroName;
     private TextView tvHeroMail;
     private TextView tvHeroPhone;
+    private TextView tvHeroRoleBadge;
     private TextView tvUsernameRowVal;
     private TextView tvEmailRowVal;
     private TextView tvPhoneRowVal;
@@ -132,7 +134,7 @@ public class ProfileActivity extends BaseActivity {
         }
         currentEmail = Prefs.with(this).readString(PREF_ACTIVE_EMAIL, "");
         currentPhone = Prefs.with(this).readString(PREF_ACTIVE_PHONE, "");
-        currentRole = Prefs.with(this).readString(PREF_ACTIVE_ROLE, "VIP Subscriber");
+        currentRole = Prefs.with(this).readString(PREF_ACTIVE_ROLE, "");
         currentBalance = Prefs.with(this).readFloat(PREF_AUTH_BALANCE, 0.0f);
         currentCurrency = Prefs.with(this).readString(PREF_AUTH_CURRENCY, "BDT");
     }
@@ -160,7 +162,10 @@ public class ProfileActivity extends BaseActivity {
             tvBalanceRowVal.setText(String.format(java.util.Locale.US, "%.2f %s", currentBalance, currentCurrency));
         }
         if (tvRoleRowVal != null) {
-            tvRoleRowVal.setText(currentRole.toUpperCase());
+            tvRoleRowVal.setText(currentRole.isEmpty() ? "---" : currentRole.toUpperCase());
+        }
+        if (tvHeroRoleBadge != null) {
+            tvHeroRoleBadge.setText(currentRole.isEmpty() ? "MEMBER" : currentRole.toUpperCase());
         }
         if (tvPlanValue != null) {
             tvPlanValue.setText(AuthManager.getActivePlanName(this));
@@ -268,7 +273,7 @@ public class ProfileActivity extends BaseActivity {
         content.addView(createAccountCredentialsCard());
 
         // 5. Active Membership & Live Expiration Countdown Card
-        content.addView(createSectionTitle("VIP MEMBERSHIP & EXPIRATION"));
+        content.addView(createSectionTitle("SUBSCRIPTION & EXPIRATION"));
         content.addView(createSubscriptionCountdownCard());
 
         // 6. Security & System Integrity Card
@@ -401,7 +406,8 @@ public class ProfileActivity extends BaseActivity {
         badgeRow.setOrientation(LinearLayout.HORIZONTAL);
         badgeRow.setPadding(0, dp(14), 0, 0);
 
-        badgeRow.addView(createStatusChip("VIP SUBSCRIBER", 0xFFF76BF7, 0x22F76BF7));
+        tvHeroRoleBadge = createStatusChip(currentRole.isEmpty() ? "MEMBER" : currentRole.toUpperCase(), 0xFFF76BF7, 0x22F76BF7);
+        badgeRow.addView(tvHeroRoleBadge);
 
         View spacer = new View(this);
         spacer.setLayoutParams(new LinearLayout.LayoutParams(dp(8), 1));
@@ -657,20 +663,23 @@ public class ProfileActivity extends BaseActivity {
         tvError.setVisibility(View.GONE);
         card.addView(tvError);
 
-        etCurrentPassword = createInputField("Current Password");
-        card.addView(etCurrentPassword);
+        PasswordEyeHelper.PasswordFieldBundle currentPassBundle = PasswordEyeHelper.createPasswordField(this, "Current Password");
+        etCurrentPassword = currentPassBundle.editText;
+        card.addView(currentPassBundle.container);
 
-        etNewPassword = createInputField("New Password");
-        LinearLayout.LayoutParams npLp = (LinearLayout.LayoutParams) etNewPassword.getLayoutParams();
+        PasswordEyeHelper.PasswordFieldBundle newPassBundle = PasswordEyeHelper.createPasswordField(this, "New Password");
+        etNewPassword = newPassBundle.editText;
+        LinearLayout.LayoutParams npLp = (LinearLayout.LayoutParams) newPassBundle.container.getLayoutParams();
         npLp.topMargin = dp(10);
-        etNewPassword.setLayoutParams(npLp);
-        card.addView(etNewPassword);
+        newPassBundle.container.setLayoutParams(npLp);
+        card.addView(newPassBundle.container);
 
-        etConfirmNewPassword = createInputField("Confirm New Password");
-        LinearLayout.LayoutParams cnpLp = (LinearLayout.LayoutParams) etConfirmNewPassword.getLayoutParams();
+        PasswordEyeHelper.PasswordFieldBundle confirmPassBundle = PasswordEyeHelper.createPasswordField(this, "Confirm New Password");
+        etConfirmNewPassword = confirmPassBundle.editText;
+        LinearLayout.LayoutParams cnpLp = (LinearLayout.LayoutParams) confirmPassBundle.container.getLayoutParams();
         cnpLp.topMargin = dp(10);
-        etConfirmNewPassword.setLayoutParams(cnpLp);
-        card.addView(etConfirmNewPassword);
+        confirmPassBundle.container.setLayoutParams(cnpLp);
+        card.addView(confirmPassBundle.container);
 
         updatePassBtn = new Button(this);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42));

@@ -24,6 +24,7 @@ public class SidebarView {
         void onDeviceInfoClick();
         void onDriverLoaderClick();
         void onProfileClick();
+        void onLogoutClick();
     }
 
     public static View create(Context context, final SidebarListener listener) {
@@ -79,25 +80,49 @@ public class SidebarView {
             if (listener != null) listener.onDashboardClick();
         }));
 
-
-        // 3. User Profile (Opens ProfileActivity)
+        // 2. User Profile (Opens ProfileActivity)
         navList.addView(createNavItem(context, "Account Profile", v -> {
             if (listener != null) listener.onProfileClick();
         }));
 
-        // 4. Device Information (Opens DeviceInfoActivity)
+        // 3. Device Information (Opens DeviceInfoActivity)
         navList.addView(createNavItem(context, "Device Information", v -> {
             if (listener != null) listener.onDeviceInfoClick();
         }));
 
-        // 5. Ring 0 Driver Loader (Opens com.ninmods.loader)
+        // 4. Ring 0 Driver Loader (Opens com.ninmods.loader)
         navList.addView(createNavItem(context, "Driver Loader Engine", v -> {
             if (listener != null) listener.onDriverLoaderClick();
+        }));
+
+        // 5. Log Out Session
+        navList.addView(createLogoutNavItem(context, "Log Out Session", v -> {
+            if (listener != null) listener.onLogoutClick();
         }));
 
         sidebar.addView(navList);
 
         return sidebar;
+    }
+
+    private static View createLogoutNavItem(Context context, String label, View.OnClickListener onClickListener) {
+        Button btn = new Button(context);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 44));
+        lp.setMargins(0, dp(context, 10), 0, 0);
+        btn.setLayoutParams(lp);
+        btn.setText(label);
+        btn.setTextColor(AppColors.WHITE);
+        btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        btn.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        btn.setGravity(Gravity.CENTER);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor("#441010"));
+        bg.setCornerRadius(dp(context, 8));
+        bg.setStroke(dp(context, 1), Color.parseColor("#882222"));
+        btn.setBackground(bg);
+        btn.setOnClickListener(onClickListener);
+        return btn;
     }
 
     private static View createNavItem(Context context, String label, View.OnClickListener onClickListener) {

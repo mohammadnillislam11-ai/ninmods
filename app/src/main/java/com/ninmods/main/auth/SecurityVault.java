@@ -125,6 +125,15 @@ public final class SecurityVault {
     }
 
     /**
+     * Resets and purges the native C++ security session.
+     */
+    public static void resetNativeSession() {
+        try {
+            nativeSetSession("", "", 0);
+        } catch (Throwable ignored) {}
+    }
+
+    /**
      * Checks if the native C++ session is currently valid and active.
      */
     public static boolean isSessionValid() {

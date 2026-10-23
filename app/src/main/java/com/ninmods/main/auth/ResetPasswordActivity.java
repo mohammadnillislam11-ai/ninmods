@@ -115,12 +115,14 @@ public class ResetPasswordActivity extends BaseActivity {
         etUsername = createInputField("Username", InputType.TYPE_CLASS_TEXT);
         board.addView(etUsername);
 
-        // 5. New Password Field
-        etNewPassword = createInputField("New Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) etNewPassword.getLayoutParams();
+        // 5. New Password Field with Eye Toggle
+        com.ninmods.main.ui.PasswordEyeHelper.PasswordFieldBundle passBundle =
+                com.ninmods.main.ui.PasswordEyeHelper.createPasswordField(this, "New Password");
+        etNewPassword = passBundle.editText;
+        LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) passBundle.container.getLayoutParams();
         passLp.topMargin = dp(12);
-        etNewPassword.setLayoutParams(passLp);
-        board.addView(etNewPassword);
+        passBundle.container.setLayoutParams(passLp);
+        board.addView(passBundle.container);
 
         // 6. Reset Password Button
         resetBtn = new Button(this);

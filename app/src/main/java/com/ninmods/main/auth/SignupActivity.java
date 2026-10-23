@@ -134,19 +134,23 @@ public class SignupActivity extends BaseActivity {
         etTelephone.setLayoutParams(phoneLp);
         board.addView(etTelephone);
 
-        // 7. Password Field (Min 6 characters)
-        etPassword = createInputField("Password (Min 6 chars)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) etPassword.getLayoutParams();
+        // 7. Password Field (Min 6 characters) with Eye Toggle
+        com.ninmods.main.ui.PasswordEyeHelper.PasswordFieldBundle passBundle =
+                com.ninmods.main.ui.PasswordEyeHelper.createPasswordField(this, "Password (Min 6 chars)");
+        etPassword = passBundle.editText;
+        LinearLayout.LayoutParams passLp = (LinearLayout.LayoutParams) passBundle.container.getLayoutParams();
         passLp.topMargin = dp(10);
-        etPassword.setLayoutParams(passLp);
-        board.addView(etPassword);
+        passBundle.container.setLayoutParams(passLp);
+        board.addView(passBundle.container);
 
-        // 7. Confirm Password Field
-        etConfirmPassword = createInputField("Confirm Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        LinearLayout.LayoutParams confPassLp = (LinearLayout.LayoutParams) etConfirmPassword.getLayoutParams();
+        // 8. Confirm Password Field with Eye Toggle
+        com.ninmods.main.ui.PasswordEyeHelper.PasswordFieldBundle confPassBundle =
+                com.ninmods.main.ui.PasswordEyeHelper.createPasswordField(this, "Confirm Password");
+        etConfirmPassword = confPassBundle.editText;
+        LinearLayout.LayoutParams confPassLp = (LinearLayout.LayoutParams) confPassBundle.container.getLayoutParams();
         confPassLp.topMargin = dp(10);
-        etConfirmPassword.setLayoutParams(confPassLp);
-        board.addView(etConfirmPassword);
+        confPassBundle.container.setLayoutParams(confPassLp);
+        board.addView(confPassBundle.container);
 
         // 8. Referral Code (Optional)
         etReferral = createInputField("Referral Code (Optional)", InputType.TYPE_CLASS_TEXT);

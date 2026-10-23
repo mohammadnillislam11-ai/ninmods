@@ -65,7 +65,7 @@ public class DashboardContentView {
         // 2. Active VIP License Session & Live Countdown Card
         // Shown ONLY if an active plan is verified per user requirement
         if (AuthManager.hasActiveLicense(context)) {
-            TextView licenseHeader = createSectionHeader(context, "ACTIVE VIP LICENSE");
+            TextView licenseHeader = createSectionHeader(context, "ACTIVE LICENSE SESSION");
             container.addView(licenseHeader);
             container.addView(new ActiveLicenseCountdownCard(context));
         }
@@ -349,7 +349,7 @@ public class DashboardContentView {
             textContainer.setOrientation(VERTICAL);
 
             TextView titleTv = new TextView(context);
-            titleTv.setText("VIP MEMBERSHIP ACTIVE");
+            titleTv.setText("SUBSCRIPTION ACTIVE");
             titleTv.setTextColor(AppColors.WHITE);
             titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             titleTv.setTypeface(Typeface.DEFAULT_BOLD);

@@ -49,6 +49,7 @@ import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.ninmods.main.auth.AuthApiController;
 import com.ninmods.main.auth.AuthManager;
+import com.ninmods.main.auth.LoginActivity;
 import com.ninmods.main.auth.SecurityVault;
 import com.ninmods.main.menu.IMenuProject;
 import com.ninmods.main.menu.MenuRouter;
@@ -245,10 +246,31 @@ public class DashboardActivity extends BaseActivity {
                 drawerLayout.closeDrawer(Gravity.START);
                 startActivity(new Intent(DashboardActivity.this, ProfileActivity.class));
             }
+
+            @Override
+            public void onLogoutClick() {
+                drawerLayout.closeDrawer(Gravity.START);
+                confirmLogout();
+            }
         });
         drawerLayout.addView(sidebarView);
 
         setContentView(drawerLayout);
+    }
+
+    private void confirmLogout() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Log Out");
+        builder.setMessage("Are you sure you want to log out of your session?");
+        builder.setPositiveButton("Log Out", (dialog, which) -> {
+            AuthManager.clearSession(DashboardActivity.this);
+            Intent intent = new Intent(DashboardActivity.this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+        });
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
     }
 
     private void refreshBody() {
@@ -453,9 +475,12 @@ public class DashboardActivity extends BaseActivity {
             cbRemember.setButtonTintList(ColorStateList.valueOf(AppColors.MAGENTA_PRIMARY));
         }
 
-        // Restore saved key & remember state
-        String savedKey = Prefs.with(this).readString("saved_license_key", "");
-        boolean rememberKey = Prefs.with(this).readBoolean("remember_license_key", true);
+        // Restore saved key & remember state scoped strictly to the current logged-in user
+        int currentUserId = Prefs.with(this).readInt("auth_user_id", 0);
+        String userKeyPref = "saved_license_key_user_" + currentUserId;
+        String userRemPref = "remember_license_key_user_" + currentUserId;
+        String savedKey = currentUserId > 0 ? Prefs.with(this).readString(userKeyPref, "") : "";
+        boolean rememberKey = currentUserId > 0 && Prefs.with(this).readBoolean(userRemPref, false);
         if (savedKey.isEmpty()) {
             savedKey = AuthManager.getActiveLicenseKey(this);
         }
@@ -532,13 +557,15 @@ public class DashboardActivity extends BaseActivity {
                 public void onSuccess(String message) {
                     if (!dialog.isShowing()) return;
 
-                    // Save or clear remembered key based on user choice
-                    if (cbRemember.isChecked()) {
-                        Prefs.with(DashboardActivity.this).writeString("saved_license_key", inputKey);
-                        Prefs.with(DashboardActivity.this).writeBoolean("remember_license_key", true);
-                    } else {
-                        Prefs.with(DashboardActivity.this).writeString("saved_license_key", "");
-                        Prefs.with(DashboardActivity.this).writeBoolean("remember_license_key", false);
+                    int currentUserId = Prefs.with(DashboardActivity.this).readInt("auth_user_id", 0);
+                    String userKeyPref = "saved_license_key_user_" + currentUserId;
+                    String userRemPref = "remember_license_key_user_" + currentUserId;
+                    if (cbRemember.isChecked() && currentUserId > 0) {
+                        Prefs.with(DashboardActivity.this).writeString(userKeyPref, inputKey);
+                        Prefs.with(DashboardActivity.this).writeBoolean(userRemPref, true);
+                    } else if (currentUserId > 0) {
+                        Prefs.with(DashboardActivity.this).writeString(userKeyPref, "");
+                        Prefs.with(DashboardActivity.this).writeBoolean(userRemPref, false);
                     }
 
                     dialog.dismiss();

@@ -133,13 +133,13 @@ public final class AuthManager {
     public static String getActivePlanName(Context context) {
         if (context == null) return "No Active Plan";
         String dt = Prefs.with(context).readString("license_duration_type", "");
-        if (dt.contains("30") || dt.contains("monthly")) return "VIP Monthly Membership (30 Days)";
-        if (dt.contains("7") || dt.contains("week")) return "VIP Weekly Pass (7 Days)";
-        if (dt.contains("1_day") || dt.contains("daily")) return "VIP Daily Pass (24 Hours)";
+        if (dt.contains("30") || dt.contains("monthly")) return "Monthly Membership (30 Days)";
+        if (dt.contains("7") || dt.contains("week")) return "Weekly Pass (7 Days)";
+        if (dt.contains("1_day") || dt.contains("daily")) return "Daily Pass (24 Hours)";
         if (dt.contains("1_hour") || dt.contains("trial")) return "Trial Pass (1 Hour)";
-        if (dt.contains("lifetime")) return "Lifetime Permanent VIP";
+        if (dt.contains("lifetime")) return "Lifetime Access";
         if (!dt.isEmpty()) return dt.replace("_", " ").toUpperCase() + " Plan";
-        return hasActiveLicense(context) ? "VIP Active License" : "No Active License";
+        return hasActiveLicense(context) ? "Active License" : "No Active License";
     }
 
     public static String getExpiryDate(Context context) {
@@ -159,6 +159,13 @@ public final class AuthManager {
 
     public static void clearSession(Context context) {
         if (context != null) {
+            int userId = Prefs.with(context).readInt("auth_user_id", 0);
+            if (userId > 0) {
+                Prefs.with(context).writeString("saved_license_key_user_" + userId, "");
+                Prefs.with(context).writeBoolean("remember_license_key_user_" + userId, false);
+            }
+            Prefs.with(context).writeString("saved_license_key", "");
+            Prefs.with(context).writeBoolean("remember_license_key", false);
             Prefs.with(context).writeBoolean(PREF_KEY_AUTH_STATUS, false);
             Prefs.with(context).writeString(PREF_KEY_ACTIVE_TOKEN, "");
             Prefs.with(context).writeString(PREF_KEY_ACTIVE_KEY, "");
@@ -167,6 +174,20 @@ public final class AuthManager {
             Prefs.with(context).writeLong("license_expires_at_ms", 0);
             Prefs.with(context).writeString("license_expires_at", "");
             Prefs.with(context).writeString("license_duration_type", "");
+
+            Prefs.with(context).writeString("active_username", "");
+            Prefs.with(context).writeString("active_email", "");
+            Prefs.with(context).writeString("active_phone", "");
+            Prefs.with(context).writeString("active_role", "");
+            Prefs.with(context).writeString("active_password", "");
+            Prefs.with(context).writeFloat("auth_balance", 0.0f);
+            Prefs.with(context).writeString("auth_currency", "BDT");
+            Prefs.with(context).writeString("auth_api_key", "");
+            Prefs.with(context).writeInt("auth_user_id", 0);
+
+            try {
+                SecurityVault.resetNativeSession();
+            } catch (Throwable ignored) {}
         }
     }
 }
