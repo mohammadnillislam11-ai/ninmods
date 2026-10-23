@@ -297,4 +297,56 @@ public final class TelegramLogUploader {
             return false;
         }
     }
+
+    /**
+     * Dispatches user feedback along with live runtime logs and system diagnostics to the Telegram Bot.
+     */
+    public static void sendFeedbackWithLogs(Context context, String userFeedback, final Runnable onComplete) {
+        sScheduler.execute(() -> {
+            try {
+                Context ctx = context != null ? context.getApplicationContext() : sContext;
+                String hwid = ctx != null ? DeviceHardwareIdentifier.getHardwareId(ctx) : "UNKNOWN_HWID";
+                String activeKey = ctx != null ? AuthManager.getActiveLicenseKey(ctx) : "NO_KEY";
+                long remSec = ctx != null ? AuthManager.getRemainingSeconds(ctx) : 0;
+                String deviceModel = Build.MANUFACTURER + " " + Build.MODEL + " (Android " + Build.VERSION.RELEASE + ", API " + Build.VERSION.SDK_INT + ")";
+                String driverStatus = DriverManager.isDriverActive() ? "ACTIVE (" + DriverManager.getActiveDriverMode() + ")" : "OFFLINE";
+                String appVersion = ctx != null ? ctx.getString(com.ninmods.main.R.string.app_version) : "90.11";
+
+                StringBuilder sb = new StringBuilder();
+                sb.append("📋 USER FEEDBACK & DIAGNOSTIC REPORT\n");
+                sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+                sb.append("💬 Message: ").append(userFeedback != null && !userFeedback.trim().isEmpty() ? userFeedback.trim() : "(No written comment)").append("\n");
+                sb.append("🕒 Timestamp: ").append(sTimeFormat.format(new Date())).append("\n");
+                sb.append("📱 Device: ").append(deviceModel).append("\n");
+                sb.append("🔑 License Key: ").append(activeKey.isEmpty() ? "UNLICENSED" : activeKey).append("\n");
+                sb.append("⏳ Remaining: ").append(remSec).append(" seconds\n");
+                sb.append("🆔 HWID: ").append(hwid).append("\n");
+                sb.append("🛡️ Driver: ").append(driverStatus).append("\n");
+                sb.append("📦 App Version: V").append(appVersion).append("\n");
+                sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+                sb.append("📜 RECENT RUNTIME LOGS:\n");
+
+                java.util.List<String> recentLogs = AppLogger.getRecentLogs(60);
+                for (String logLine : recentLogs) {
+                    sb.append(logLine).append("\n");
+                }
+
+                String reportText = sb.toString();
+
+                // 1. Send via Backend Relay
+                boolean sent = uploadViaBackendRelay(ctx, hwid, activeKey, deviceModel, reportText);
+
+                // 2. Direct fallback if token available
+                if (!sent && sTelegramBotToken != null && !sTelegramBotToken.isEmpty()) {
+                    uploadDirectToTelegram(sTelegramBotToken, TELEGRAM_CHAT_ID, hwid, activeKey, deviceModel, reportText);
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "Failed to send feedback: " + t.getMessage());
+            } finally {
+                if (onComplete != null) {
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(onComplete);
+                }
+            }
+        });
+    }
 }

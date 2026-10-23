@@ -175,7 +175,9 @@ public class DeltaMenuFloater {
         cbBg.setColor(0xCC000000);
         cbBg.setStroke(dp(1), THEME_EMERALD);
         closeBadge.setBackground(cbBg);
-        closeBadge.setOnClickListener(v -> destroy());
+        closeBadge.setOnClickListener(v -> {
+            com.ninmods.main.overlay.FloaterFeedbackDialog.show(context, THEME_EMERALD, this::destroy);
+        });
         collapsedLayout.addView(closeBadge);
 
         // Drag listener for floating logo

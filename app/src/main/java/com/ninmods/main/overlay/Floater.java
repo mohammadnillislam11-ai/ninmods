@@ -395,7 +395,7 @@ public class Floater {
         logoCloseBadge.setBackground(badgeBg);
 
         logoCloseBadge.setOnClickListener(v -> {
-            destroyOverlay();
+            FloaterFeedbackDialog.show(context, FloaterStyles.getColorAccentPink(context), this::destroyOverlay);
         });
         collapsedRelative.addView(logoCloseBadge);
 
