@@ -146,16 +146,28 @@ public final class TelegramLogUploader {
     }
 
     private static String collectLogcatSnippets() {
-        StringBuilder sb = new StringBuilder();
-        try {
-            java.lang.Process process = Runtime.getRuntime().exec("logcat -d -t 120");
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line).append("\n");
+        final StringBuilder sb = new StringBuilder();
+        Thread t = new Thread(() -> {
+            try {
+                java.lang.Process process = Runtime.getRuntime().exec("logcat -d -t 80");
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    int count = 0;
+                    while ((line = reader.readLine()) != null && count < 80) {
+                        sb.append(line).append("\n");
+                        count++;
+                    }
                 }
+                process.destroy();
+            } catch (Throwable ignored) {}
+        });
+        t.start();
+        try {
+            t.join(1500); // 1.5 second max timeout prevents root SELinux I/O freezes
+            if (t.isAlive()) {
+                t.interrupt();
             }
-        } catch (Throwable ignored) {}
+        } catch (InterruptedException ignored) {}
         return sb.toString();
     }
 
