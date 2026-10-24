@@ -16,8 +16,36 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <regex.h>
-#include <sys/uio.h>
 #include <sys/prctl.h>
+#include <sys/uio.h>
+#include <sys/syscall.h>
+
+#ifndef __NR_process_vm_readv
+#if defined(__aarch64__)
+#define __NR_process_vm_readv 270
+#define __NR_process_vm_writev 271
+#elif defined(__arm__)
+#define __NR_process_vm_readv 376
+#define __NR_process_vm_writev 377
+#elif defined(__x86_64__)
+#define __NR_process_vm_readv 310
+#define __NR_process_vm_writev 311
+#elif defined(__i386__)
+#define __NR_process_vm_readv 347
+#define __NR_process_vm_writev 348
+#endif
+#endif
+
+static inline ssize_t sys_process_vm_readv(pid_t pid, const struct iovec *local_iov, unsigned long liovcnt,
+                                           const struct iovec *remote_iov, unsigned long riovcnt, unsigned long flags) {
+    return syscall(__NR_process_vm_readv, pid, local_iov, liovcnt, remote_iov, riovcnt, flags);
+}
+
+static inline ssize_t sys_process_vm_writev(pid_t pid, const struct iovec *local_iov, unsigned long liovcnt,
+                                            const struct iovec *remote_iov, unsigned long riovcnt, unsigned long flags) {
+    return syscall(__NR_process_vm_writev, pid, local_iov, liovcnt, remote_iov, riovcnt, flags);
+}
+
 #include <cmath>
 #include <iostream>
 #include <string>
@@ -352,7 +380,7 @@ private:
         uintptr_t read_back = 0;
         struct iovec local_iov = { &read_back, sizeof(read_back) };
         struct iovec remote_iov = { (void*)&test_magic, sizeof(test_magic) };
-        ssize_t n = process_vm_readv(self_pid, &local_iov, 1, &remote_iov, 1, 0);
+        ssize_t n = sys_process_vm_readv(self_pid, &local_iov, 1, &remote_iov, 1, 0);
         if (n == (ssize_t)sizeof(read_back) && read_back == test_magic) {
             fd = open("/proc/self/mem", O_RDONLY);
             if (fd < 0) fd = open("/dev/null", O_RDWR);
@@ -474,7 +502,7 @@ public:
         if (active_mode == DRIVER_MODE_PROC_MEM) {
             struct iovec local_iov = { buffer, size };
             struct iovec remote_iov = { (void*)addr, size };
-            ssize_t n = process_vm_readv(this->pid, &local_iov, 1, &remote_iov, 1, 0);
+            ssize_t n = sys_process_vm_readv(this->pid, &local_iov, 1, &remote_iov, 1, 0);
             if (n == (ssize_t)size) {
                 success = true;
             } else {
@@ -539,7 +567,7 @@ public:
         if (active_mode == DRIVER_MODE_PROC_MEM) {
             struct iovec local_iov = { (void*)buffer, size };
             struct iovec remote_iov = { (void*)addr, size };
-            ssize_t n = process_vm_writev(this->pid, &local_iov, 1, &remote_iov, 1, 0);
+            ssize_t n = sys_process_vm_writev(this->pid, &local_iov, 1, &remote_iov, 1, 0);
             if (n == (ssize_t)size) {
                 success = true;
             } else {
