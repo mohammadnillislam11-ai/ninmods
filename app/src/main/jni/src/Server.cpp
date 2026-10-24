@@ -54,8 +54,8 @@ void LogWeaponData(const char* playerName, int weaponId, bool isLocal) {
 bool IsValidUserPointer64(uintptr_t ptr) {
     // 1. High 16 bits must be strictly 0x0000 (rejects instructions like 0xa902... or packed opcodes)
     if ((ptr >> 48) != 0) return false;
-    // 2. Must be in ARM64 Linux user-space memory range (above 4GB and below 128TB)
-    if (ptr < 0x0000001000000000ULL || ptr > 0x0000007FFFFFFFFFULL) return false;
+    // 2. Must be in ARM64 Linux user-space memory range (from 256MB to 128TB)
+    if (ptr < 0x10000000ULL || ptr > 0x00007FFFFFFFFFFFULL) return false;
     // 3. Must be aligned to at least 4 bytes (ARM64 heap objects and pointers are aligned)
     if ((ptr & 0x3) != 0) return false;
     return true;

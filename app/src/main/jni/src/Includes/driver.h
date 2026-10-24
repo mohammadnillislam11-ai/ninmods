@@ -342,7 +342,7 @@ private:
 
         const char *known_names[] = { 
             "health_storage_service_alloc", "BYNb", "sched_debug", "uevents_records",
-            "wanbai", "CheckMe", "Ckanri", "lanran", "video188", "rt_dev", "RTkernel",
+            "wanbai", "CheckMe", "Ckanri", "lanran", "rt_dev", "RTkernel",
             "unc_dr", "unc_ft", "TH520", "QX_driver", "FT_driver" 
         };
         const int known_count = sizeof(known_names) / sizeof(known_names[0]);
@@ -466,14 +466,14 @@ public:
         }
 
         // [Step 3] Probe Nodeless IOCTL directly hooked on stdin (fd 0)
-        const int test_cmds[] = { RT_CMD_READ, DEV_OP_READ_MEM, HOOK_OP_READ_MEM, PROC_OP_READ_MEM };
+        const int test_cmds[] = { DEV_OP_READ_MEM, RT_CMD_READ, HOOK_OP_READ_MEM, PROC_OP_READ_MEM };
         for (int cmd : test_cmds) {
             if (test_ioctl_read(0, cmd)) {
                 fd = 0;
                 active_mode = DRIVER_MODE_NODELESS;
                 active_read_cmd = cmd;
-                if (cmd == RT_CMD_READ) { active_write_cmd = RT_CMD_WRITE; active_base_cmd = RT_CMD_BASE; }
-                else if (cmd == DEV_OP_READ_MEM) { active_write_cmd = DEV_OP_WRITE_MEM; active_base_cmd = DEV_OP_MODULE_BASE; }
+                if (cmd == DEV_OP_READ_MEM) { active_write_cmd = DEV_OP_WRITE_MEM; active_base_cmd = DEV_OP_MODULE_BASE; }
+                else if (cmd == RT_CMD_READ) { active_write_cmd = RT_CMD_WRITE; active_base_cmd = RT_CMD_BASE; }
                 else if (cmd == HOOK_OP_READ_MEM) { active_write_cmd = HOOK_OP_WRITE_MEM; active_base_cmd = HOOK_OP_MODULE_BASE; }
                 else { active_write_cmd = PROC_OP_WRITE_MEM; active_base_cmd = PROC_OP_MODULE_BASE; }
                 is_nodeless = true;
@@ -483,10 +483,29 @@ public:
             }
         }
 
-        // [Step 4] Dedicated and Dynamic Character Device Scanning (/dev)
-        char *device_path = driver_path();
-        if (device_path != nullptr) {
-            int try_fd = open(device_path, O_RDWR);
+        // [Step 4] Direct Prioritized Device Probing of All Known Character Device Nodes
+        const char *priority_nodes[] = {
+            "/dev/health_storage_service_alloc",
+            "/dev/BYNb",
+            "/dev/uevents_records",
+            "/dev/sched_debug",
+            "/dev/wanbai",
+            "/dev/CheckMe",
+            "/dev/Ckanri",
+            "/dev/lanran",
+            "/dev/rt_dev",
+            "/dev/RTkernel",
+            "/dev/unc_dr",
+            "/dev/unc_ft",
+            "/dev/TH520",
+            "/dev/QX_driver",
+            "/dev/FT_driver"
+        };
+        const int priority_count = sizeof(priority_nodes) / sizeof(priority_nodes[0]);
+
+        for (int i = 0; i < priority_count; i++) {
+            const char *node_path = priority_nodes[i];
+            int try_fd = open(node_path, O_RDWR);
             if (try_fd >= 0) {
                 int chosen_read = -1;
                 for (int cmd : test_cmds) {
@@ -496,9 +515,14 @@ public:
                     }
                 }
 
-                if (chosen_read > 0 || strstr(device_path, "health_storage_service_alloc") || strstr(device_path, "BYNb")) {
+                if (chosen_read > 0 || strstr(node_path, "health_storage_service_alloc") || strstr(node_path, "BYNb")) {
                     fd = try_fd;
-                    if (chosen_read == RT_CMD_READ) {
+                    if (chosen_read == DEV_OP_READ_MEM) {
+                        active_mode = DRIVER_MODE_RT_DEV;
+                        active_read_cmd = DEV_OP_READ_MEM;
+                        active_write_cmd = DEV_OP_WRITE_MEM;
+                        active_base_cmd = DEV_OP_MODULE_BASE;
+                    } else if (chosen_read == RT_CMD_READ) {
                         active_mode = DRIVER_MODE_RT_MODULE;
                         active_read_cmd = RT_CMD_READ;
                         active_write_cmd = RT_CMD_WRITE;
@@ -514,15 +538,45 @@ public:
                         active_write_cmd = PROC_OP_WRITE_MEM;
                         active_base_cmd = PROC_OP_MODULE_BASE;
                     } else {
+                        // Default to RT DEV 0x801 for primary nodes
                         active_mode = DRIVER_MODE_RT_DEV;
                         active_read_cmd = DEV_OP_READ_MEM;
                         active_write_cmd = DEV_OP_WRITE_MEM;
                         active_base_cmd = DEV_OP_MODULE_BASE;
                     }
 
+                    strncpy(active_node_name, node_path, sizeof(active_node_name) - 1);
+                    is_nodeless = false;
+                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Device Node '%s' Connected (FD: %d, Mode: %d, ReadOp: 0x%x) <<<", 
+                             node_path, fd, (int)active_mode, active_read_cmd);
+                    return true;
+                }
+                close(try_fd);
+            }
+        }
+
+        // Fallback: Dynamic /dev Directory Scanning
+        char *device_path = driver_path();
+        if (device_path != nullptr) {
+            int try_fd = open(device_path, O_RDWR);
+            if (try_fd >= 0) {
+                int chosen_read = -1;
+                for (int cmd : test_cmds) {
+                    if (test_ioctl_read(try_fd, cmd)) {
+                        chosen_read = cmd;
+                        break;
+                    }
+                }
+
+                if (chosen_read > 0) {
+                    fd = try_fd;
+                    active_mode = DRIVER_MODE_RT_DEV;
+                    active_read_cmd = chosen_read;
+                    active_write_cmd = DEV_OP_WRITE_MEM;
+                    active_base_cmd = DEV_OP_MODULE_BASE;
                     strncpy(active_node_name, device_path, sizeof(active_node_name) - 1);
                     is_nodeless = false;
-                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Device Node '%s' Connected (FD: %d, Mode: %d, ReadOp: %d) <<<", 
+                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Dynamic Node '%s' Connected (FD: %d, Mode: %d, ReadOp: 0x%x) <<<", 
                              device_path, fd, (int)active_mode, active_read_cmd);
                     free(device_path);
                     return true;
@@ -670,7 +724,7 @@ public:
     // Strict ARM64 User-space 64-bit Pointer Bounds Check
     inline bool isPointerValid(uintptr_t ptr) {
         if ((ptr >> 48) != 0) return false;
-        if (ptr < 0x0000001000000000ULL || ptr > 0x0000007FFFFFFFFFULL) return false;
+        if (ptr < 0x10000000ULL || ptr > 0x00007FFFFFFFFFFFULL) return false;
         if ((ptr & 0x3) != 0) return false;
         return true;
     }
