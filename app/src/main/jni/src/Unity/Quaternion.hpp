@@ -7,83 +7,9 @@
 #define SMALL_float 0.0000000001
 
 
-/**
- * Attempt to include a header file if the file exists.
- * If the file does not exist, create a dummy data structure for that type.
- * If it cannot be determined if it exists, just attempt to include it.
- */
-#ifdef __has_include
-#   if __has_include("Vector3.hpp")
-#       include "Vector3.hpp"
-#   elif !defined(GMATH_VECTOR3)
-#define GMATH_VECTOR3
-        struct Vector3
-        {
-            union
-            {
-                struct
-                {
-                    float X;
-                    float Y;
-                    float Z;
-                };
-                float data[3];
-            };
-
-            inline Vector3() : X(0), Y(0), Z(0) {}
-            inline Vector3(float data[]) : X(data[0]), Y(data[1]), Z(data[2])
-                {}
-            inline Vector3(float value) : X(value), Y(value), Z(value) {}
-            inline Vector3(float x, float y) : X(x), Y(y), Z(0) {}
-            inline Vector3(float x, float y, float z) : X(x), Y(y), Z(z) {}
-
-            static inline Vector3 Cross(Vector3 lhs, Vector3 rhs)
-            {
-                float x = lhs.Y * rhs.Z - lhs.Z * rhs.Y;
-                float y = lhs.Z * rhs.X - lhs.X * rhs.Z;
-                float z = lhs.X * rhs.Y - lhs.Y * rhs.X;
-                return Vector3(x, y, z);
-            }
-
-            static inline float Dot(Vector3 lhs, Vector3 rhs)
-            {
-                return lhs.X * rhs.X + lhs.Y * rhs.Y + lhs.Z * rhs.Z;
-            }
-			
-            static inline Vector3 Normalized(Vector3 v)
-            {
-                float mag = sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z);
-                if (mag == 0)
-                    return Vector3::Zero();
-                return v / mag;
-            }
-
-            static inline Vector3 Orthogonal(Vector3 v)
-            {
-                return v.Z < v.X ?
-                    Vector3(v.Y, -v.X, 0) : Vector3(0, -v.Z, v.Y);
-            }
-
-            static inline float SqrMagnitude(Vector3 v)
-            {
-                return v.X * v.X + v.Y * v.Y + v.Z * v.Z;
-            }
-        };
-
-
-        inline Vector3 operator+(Vector3 lhs, const Vector3 rhs)
-        {
-            return Vector3(lhs.X + rhs.X, lhs.Y + rhs.Y, lhs.Z + rhs.Z);
-        }
-
-        inline Vector3 operator*(Vector3 lhs, const float rhs)
-        {
-            return Vector3(lhs.X * rhs, lhs.Y * rhs, lhs.Z * rhs);
-        }
-#   endif
-#else
-#   include "Vector3.hpp"
-#endif
+#include "Vector3.hpp"
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 
 struct Quaternion
@@ -108,6 +34,11 @@ struct Quaternion
     inline Quaternion(float data[]);
     inline Quaternion(Vector3 vector, float scalar);
     inline Quaternion(float x, float y, float z, float w);
+    inline Quaternion(const glm::quat& q) : X(q.x), Y(q.y), Z(q.z), W(q.w) {}
+
+    // GLM Interop
+    inline glm::quat toGlm() const { return glm::quat(W, X, Y, Z); }
+    inline operator glm::quat() const { return glm::quat(W, X, Y, Z); }
 
 
     /**

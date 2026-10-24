@@ -9,9 +9,6 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_SUPERUSER" />
@@ -21,6 +18,7 @@
         <package android:name="com.ninmods.loader" />
         <package android:name="com.dts.freefireth" />
         <package android:name="com.dts.freefiremax" />
+        <package android:name="com.dts.freefirein" />
     </queries>
 
     <application
@@ -42,41 +40,41 @@
 
         <activity
             android:name="com.ninmods.main.core.DashboardActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="@string/app_name" />
 
         <activity
             android:name="com.ninmods.main.core.ModeSelectActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="@string/mode_select_title" />
 
         <activity
             android:name="com.ninmods.main.auth.LoginActivity"
-            android:exported="true"
-            android:windowSoftInputMode="stateHidden|adjustPan"
+            android:exported="false"
+            android:windowSoftInputMode="stateHidden|adjustResize"
             android:label="@string/app_name" />
 
         <activity
             android:name="com.ninmods.main.auth.SignupActivity"
-            android:exported="true"
-            android:windowSoftInputMode="stateHidden|adjustPan"
+            android:exported="false"
+            android:windowSoftInputMode="stateHidden|adjustResize"
             android:label="Sign Up" />
 
         <activity
             android:name="com.ninmods.main.auth.ResetPasswordActivity"
-            android:exported="true"
-            android:windowSoftInputMode="stateHidden|adjustPan"
+            android:exported="false"
+            android:windowSoftInputMode="stateHidden|adjustResize"
             android:label="Reset Password" />
 
         <activity
             android:name="com.ninmods.main.core.DeviceInfoActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="Device Information" />
 
         <activity
             android:name="com.ninmods.main.core.ProfileActivity"
-            android:exported="true"
-            android:windowSoftInputMode="stateHidden|adjustPan"
+            android:exported="false"
+            android:windowSoftInputMode="stateHidden|adjustResize"
             android:label="Account Profile" />
 
         <service

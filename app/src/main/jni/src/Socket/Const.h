@@ -25,5 +25,7 @@
 #define TCP_HOST "127.0.0.1"
 #define BACKLOG 8
 #define PacketSize 4096
+#define SOCKET_BUFFER_SIZE (256 * 1024) // 256 KB high-throughput buffer for 120 FPS ESP
+#define SOCKET_TIMEOUT_MS 1000
 
 #endif //INJECTOR_LITE_FREEFIRE_BASE_CONST_H

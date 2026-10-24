@@ -2,18 +2,22 @@
 #define TCP_SOCKET_SERVER_H
 
 #include "Const.h"
+#include <mutex>
+#include <atomic>
 
 class SocketServer {
 public:
     int listenfd_unix;
     int listenfd_tcp;
     int acceptfd;
-    bool isCreated;
+    std::atomic<bool> isCreated;
     sockaddr_un addr_unix;
     sockaddr_in addr_tcp;
     char socket_name[108]; // 108 sun_path length max
+    mutable std::mutex m_ioMutex;
 
     SocketServer();
+    ~SocketServer();
 
     bool Create();
     bool Accept();

@@ -225,8 +225,17 @@ Vector3 lockedTargetPos;
 
 // Helper to restore all enemies to their original positions
 void RestoreAllPositions() {
-    if (BasePosMap.empty()) return;
-    for (auto const& [enemy, originalPos] : BasePosMap) {
+    std::vector<std::pair<uintptr_t, Vector3>> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(g_aimStateMutex);
+        if (BasePosMap.empty()) return;
+        snapshot.reserve(BasePosMap.size());
+        for (const auto& [enemy, originalPos] : BasePosMap) {
+            snapshot.emplace_back(enemy, originalPos);
+        }
+    }
+
+    for (const auto& [enemy, originalPos] : snapshot) {
         auto feetTF = GetPlayerPeTF(enemy);
         if (feetTF) {
             auto trVal = Read<uintptr_t>(feetTF + Offsets::TransformObj);
@@ -239,10 +248,13 @@ void RestoreAllPositions() {
             }
         }
     }
+
+    std::lock_guard<std::mutex> lock(g_aimStateMutex);
     BasePosMap.clear();
 }
 
 
+std::mutex g_aimStateMutex;
 uintptr_t currentBestTargetObj = 0;
 std::atomic<bool> keepAiming{false};
 std::thread aimThread;
@@ -254,6 +266,12 @@ D3DMatrix ViewMatrix;
 Vector3 MainCameraTransformPos = Vector3::Zero();
 
 bool speedHackEnabled = false;
+
+static float FloatFromBits(uint32_t bits) {
+    float value = 0.0f;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+}
 
 void getUTF8(char* dst, uintptr_t addr) {
     if (addr < 0x10000000) {
@@ -321,7 +339,16 @@ float FastRandomFloat() {
 void ContinuousAim(uintptr_t oneself) {
     while (keepAiming.load()) {
         if (!IsValidUserPointer64(oneself)) break;
-        if (currentBestTargetPos == Vector3::Zero()) {
+
+        Vector3 targetPos = Vector3::Zero();
+        uintptr_t targetObj = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_aimStateMutex);
+            targetPos = currentBestTargetPos;
+            targetObj = currentBestTargetObj;
+        }
+
+        if (targetPos == Vector3::Zero()) {
             usleep(5000);
             continue;
         }
@@ -347,7 +374,7 @@ void ContinuousAim(uintptr_t oneself) {
                 aimHeight = -0.35f; // Chest / Neck level
             }
 
-            Quaternion targetRot = GetRotationToTheLocation(currentBestTargetPos, aimHeight, camPos);
+            Quaternion targetRot = GetRotationToTheLocation(targetPos, aimHeight, camPos);
 
             // Write character orientation (Normal: 0x61C / MAX: 0x214)
             Write<Quaternion>(oneself + Offsets::PlayerRotation, targetRot);
@@ -376,7 +403,7 @@ void ContinuousAim(uintptr_t oneself) {
                 Vector3 rayStart = Read<Vector3>(aimingInfo + Offsets::AimingStartPos);
                 if (rayStart == Vector3::Zero()) rayStart = Read<Vector3>(aimingInfo + Offsets::AimingStartPosAlt);
                 if (rayStart != Vector3::Zero()) {
-                    Vector3 diff = currentBestTargetPos - rayStart;
+                    Vector3 diff = targetPos - rayStart;
                     float dist = Vector3::Magnitude(diff);
                     if (dist >= 0.5f && dist <= 500.0f) {
                         Vector3 dir = diff / dist;
@@ -389,15 +416,15 @@ void ContinuousAim(uintptr_t oneself) {
         }
 
         // 3. Head Collider Lock (Player_AimTargetWrite = 0x80 from ff max 5_6246536088102380429.h)
-        if ((pPlayer.aimbotlock || pPlayer.silen4a || pPlayer.aimbot) && shouldLock && IsValidUserPointer64(currentBestTargetObj)) {
-            uintptr_t headCollider = Read<uintptr_t>(currentBestTargetObj + Offsets::Player_HeadCollider);
+        if ((pPlayer.aimbotlock || pPlayer.silen4a || pPlayer.aimbot) && shouldLock && IsValidUserPointer64(targetObj)) {
+            uintptr_t headCollider = Read<uintptr_t>(targetObj + Offsets::Player_HeadCollider);
             if (IsValidUserPointer64(headCollider)) {
-                Write<uintptr_t>(currentBestTargetObj + Offsets::Player_AimTargetWrite, headCollider);
+                Write<uintptr_t>(targetObj + Offsets::Player_AimTargetWrite, headCollider);
             }
         }
 
         usleep(4000); // 250Hz smooth iteration rate
-    }  
+    }
 }
 
 float Map(float value, float inMin, float inMax, float outMin, float outMax) {
@@ -986,17 +1013,22 @@ void CreateDataList(Response& SendResponse) {
 
     bool aimActive = (pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock);
     if (aimActive && hasValidTarget) {
-        currentBestTargetPos = bestTargetPos;
-        currentBestTargetObj = bestTargetObj;
+        {
+            std::lock_guard<std::mutex> lock(g_aimStateMutex);
+            currentBestTargetPos = bestTargetPos;
+            currentBestTargetObj = bestTargetObj;
+        }
         if (!keepAiming.load()) {
             keepAiming.store(true);
-            if (aimThread.joinable()) aimThread.join();  
-            aimThread = std::thread([localPlayer]() { ContinuousAim(localPlayer); });  
+            if (aimThread.joinable()) aimThread.join();
+            aimThread = std::thread([localPlayer]() { ContinuousAim(localPlayer); });
         }
     } else if (keepAiming.load()) {
         keepAiming.store(false);
-        if (aimThread.joinable()) aimThread.join();  
-        currentBestTargetPos = Vector3::Zero();  
+        if (aimThread.joinable()) aimThread.join();
+        std::lock_guard<std::mutex> lock(g_aimStateMutex);
+        currentBestTargetPos = Vector3::Zero();
+        currentBestTargetObj = 0;
     }
 
     if (shouldLog) {
@@ -1090,10 +1122,10 @@ int main(int argc, char*argv[]){
                     pPlayer.silen4a = request.m_IsOn;
                     SendResponse.Success = true;
                 } else if (request.Mode == 58) {
-                    pPlayer.AimFov = (float)request.value;
+                    pPlayer.AimFov = FloatFromBits(static_cast<uint32_t>(request.value));
                     SendResponse.Success = true;
                 } else if (request.Mode == 59) {
-                    pPlayer.AimDistance = (float)request.value;
+                    pPlayer.AimDistance = FloatFromBits(static_cast<uint32_t>(request.value));
                     SendResponse.Success = true;
                 } else if (request.Mode == 60) {
                     speedHackEnabled = request.m_IsOn;

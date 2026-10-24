@@ -1,4 +1,6 @@
 #include "Includes/Logger.h"
+#include <cstring>
+#include <mutex>
 
 SocketClient client;
 
@@ -102,28 +104,39 @@ bool stopServer() {
     return false;
 }
 
+inline std::mutex g_ipcTransactionMutex;
+
 void SendBool(int32_t number, bool ftr) {
     if (!isConnected()) return;
+    std::lock_guard<std::mutex> lock(g_ipcTransactionMutex);
     Request request{number, ftr};
     int code = client.send((void*) &request, sizeof(request));
     if (code > 0) {
         Response response{};
-        size_t length = client.receive((void*) &response);
+        client.receive((void*) &response);
     }
+}
+
+static uint32_t FloatBits(float value) {
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
 }
 
 void SendFloat(int32_t number, float very) {
     if (!isConnected()) return;
-    Request request{number, true, static_cast<int>(very)};
+    std::lock_guard<std::mutex> lock(g_ipcTransactionMutex);
+    Request request{number, true, static_cast<int32_t>(FloatBits(very))};
     int code = client.send((void*) &request, sizeof(request));
     if (code > 0) {
         Response response{};
-        size_t length = client.receive((void*) &response);
+        client.receive((void*) &response);
     }
 }
 
 void SendInt(int32_t number, int value) {
     if (!isConnected()) return;
+    std::lock_guard<std::mutex> lock(g_ipcTransactionMutex);
     Request request{number, true, value};
     int code = client.send((void*) &request, sizeof(request));
     if (code > 0) {
@@ -135,6 +148,7 @@ void SendInt(int32_t number, int value) {
 static Response s_cachedResponse{};
 
 Response getData(int screenWidth, int screenHeight){
+    std::lock_guard<std::mutex> lock(g_ipcTransactionMutex);
     Request request{Mode::EspMode, true, 0, screenWidth, screenHeight};
     int code = client.send((void*) &request, sizeof(request));
     if (code > 0){
@@ -146,4 +160,16 @@ Response getData(int screenWidth, int screenHeight){
     s_cachedResponse.Success = false;
     s_cachedResponse.PlayerCount = 0;
     return s_cachedResponse;
+}
+
+inline void SyncBoolToDaemon(int32_t number, bool value) {
+    SendBool(number, value);
+}
+
+inline void SyncFloatToDaemon(int32_t number, float value) {
+    SendFloat(number, value);
+}
+
+inline void SyncIntToDaemon(int32_t number, int value) {
+    SendInt(number, value);
 }

@@ -15,7 +15,7 @@ public class BullMenuProject implements IMenuProject {
 
     public static final String ID = "bull";
     private static final String PREF_BRAND_NAME = "brand_title_bull";
-    private static final int THEME_COLOR = BullMenuFloater.THEME_ORANGE;
+    private static final int THEME_COLOR = 0xFFFF5722; // Deep Orange / Crimson
 
     @Override
     public String getId() {
@@ -48,16 +48,17 @@ public class BullMenuProject implements IMenuProject {
 
     @Override
     public void launch(Context context) {
-        BullMenuFloater.start(context);
+        com.ninmods.main.overlay.NativeOverlayManager.start(context, ID);
     }
 
     @Override
     public void stop(Context context) {
-        BullMenuFloater.stop();
+        com.ninmods.main.overlay.NativeOverlayManager.stop();
     }
 
     @Override
     public boolean isRunning() {
-        return BullMenuFloater.isRunning();
+        return com.ninmods.main.overlay.NativeOverlayManager.isRunning()
+                && ID.equals(com.ninmods.main.overlay.NativeOverlayManager.getActiveBrandId());
     }
 }

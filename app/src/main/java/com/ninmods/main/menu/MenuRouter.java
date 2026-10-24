@@ -127,6 +127,7 @@ public class MenuRouter {
      * Stop all tactical menu overlays across all projects.
      */
     public static synchronized void stopAllMenus(Context context) {
+        com.ninmods.main.overlay.NativeOverlayManager.stop();
         for (IMenuProject menu : REGISTRY.values()) {
             try {
                 if (menu.isRunning()) {
@@ -142,6 +143,9 @@ public class MenuRouter {
      * Check if any menu project is currently running on screen.
      */
     public static boolean isAnyMenuRunning() {
+        if (com.ninmods.main.overlay.NativeOverlayManager.isRunning()) {
+            return true;
+        }
         for (IMenuProject menu : REGISTRY.values()) {
             if (menu.isRunning()) {
                 return true;

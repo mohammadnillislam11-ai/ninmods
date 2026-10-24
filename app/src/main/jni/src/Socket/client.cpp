@@ -1,11 +1,14 @@
 #include "client.h"
 #include <signal.h>
 
-SocketClient::SocketClient(){
-    sockfd = -1;
-    created = false;
-    connected = false;
-    isTcpChannel = false;
+SocketClient::SocketClient() : sockfd(-1), created(false), connected(false), isTcpChannel(false) {
+    memset(&addr_unix, 0, sizeof(addr_unix));
+    memset(&addr_tcp, 0, sizeof(addr_tcp));
+    memset(socket_name, 0, sizeof(socket_name));
+}
+
+SocketClient::~SocketClient() {
+    Close();
 }
 
 bool SocketClient::Create() {
@@ -16,7 +19,12 @@ bool SocketClient::Create() {
 }
 
 bool SocketClient::Connect() {
-    Close();
+    std::lock_guard<std::mutex> lock(m_ioMutex);
+    if (sockfd >= 0) {
+        close(sockfd);
+        sockfd = -1;
+    }
+    connected = false;
 
     // Channel 1: Abstract UNIX domain socket (\0nin_X9K2q)
     sockfd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -30,10 +38,15 @@ bool SocketClient::Connect() {
 
         socklen_t addr_len = offsetof(struct sockaddr_un, sun_path) + 1 + name_len;
 
+        // Tune 256KB buffer for ultra-high FPS ESP data stream
+        int bufSize = SOCKET_BUFFER_SIZE;
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &bufSize, sizeof(bufSize));
+        setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &bufSize, sizeof(bufSize));
+
         if (connect(sockfd, (sockaddr *) &addr_unix, addr_len) == 0) {
             struct timeval tv;
             tv.tv_sec = 1;
-            tv.tv_usec = 0; // 1000 ms (1 second) timeout
+            tv.tv_usec = 0; // 1000 ms timeout
             setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
             setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
             connected = true;
@@ -47,7 +60,6 @@ bool SocketClient::Connect() {
     }
 
     // Channel 2 (SELinux Fallback): TCP Loopback (127.0.0.1:49221)
-    // SELinux does not restrict non-root apps with INTERNET permission from connecting to localhost TCP!
     sockfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (sockfd >= 0) {
         memset(&addr_tcp, 0, sizeof(addr_tcp));
@@ -55,13 +67,19 @@ bool SocketClient::Connect() {
         addr_tcp.sin_port = htons(TCP_PORT);
         addr_tcp.sin_addr.s_addr = inet_addr(TCP_HOST);
 
-        if (connect(sockfd, (sockaddr *) &addr_tcp, sizeof(addr_tcp)) == 0) {
-            int flag = 1;
-            setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
+        int flag = 1;
+        setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
+#ifdef TCP_QUICKACK
+        setsockopt(sockfd, IPPROTO_TCP, TCP_QUICKACK, (char*)&flag, sizeof(int));
+#endif
+        int bufSize = SOCKET_BUFFER_SIZE;
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &bufSize, sizeof(bufSize));
+        setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &bufSize, sizeof(bufSize));
 
+        if (connect(sockfd, (sockaddr *) &addr_tcp, sizeof(addr_tcp)) == 0) {
             struct timeval tv;
             tv.tv_sec = 1;
-            tv.tv_usec = 0; // 1000 ms (1 second) timeout
+            tv.tv_usec = 0; // 1000 ms timeout
             setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
             setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
             connected = true;
@@ -100,8 +118,11 @@ int SocketClient::sendData(void *inData, size_t size) {
 }
 
 bool SocketClient::send(void *inData, size_t size) {
+    std::lock_guard<std::mutex> lock(m_ioMutex);
+    if (!connected || sockfd < 0) return false;
+
     uint32_t length = htonl(size);
-    if(sendData(&length, sizeof(uint32_t)) <= 0){
+    if (sendData(&length, sizeof(uint32_t)) <= 0) {
         return false;
     }
     return sendData((void*)inData, size) > 0;
@@ -128,6 +149,9 @@ int SocketClient::recvData(void *outData, size_t size) {
 }
 
 size_t SocketClient::receive(void *outData, size_t maxSize) {
+    std::lock_guard<std::mutex> lock(m_ioMutex);
+    if (!connected || sockfd < 0) return 0;
+
     uint32_t length = 0;
     int code = recvData(&length, sizeof(uint32_t));
     if (code <= 0) return 0;

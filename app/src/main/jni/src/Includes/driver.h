@@ -178,6 +178,9 @@ private:
                         snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d %d 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, min, node);
                         system(mknod_cmd);
                     }
+                    chmod(node, 0666);
+                    symlink(node, "/dev/BYNb");
+                    chmod("/dev/BYNb", 0666);
 
                     int test_fd = open(node, O_RDWR);
                     if (test_fd >= 0) {

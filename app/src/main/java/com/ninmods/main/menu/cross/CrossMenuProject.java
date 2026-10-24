@@ -15,7 +15,7 @@ public class CrossMenuProject implements IMenuProject {
 
     public static final String ID = "cross";
     private static final String PREF_BRAND_NAME = "brand_title_cross";
-    private static final int THEME_COLOR = CrossMenuFloater.THEME_CYAN;
+    private static final int THEME_COLOR = 0xFF00E5FF; // Electric Cyan
 
     @Override
     public String getId() {
@@ -48,16 +48,17 @@ public class CrossMenuProject implements IMenuProject {
 
     @Override
     public void launch(Context context) {
-        CrossMenuFloater.start(context);
+        com.ninmods.main.overlay.NativeOverlayManager.start(context, ID);
     }
 
     @Override
     public void stop(Context context) {
-        CrossMenuFloater.stop();
+        com.ninmods.main.overlay.NativeOverlayManager.stop();
     }
 
     @Override
     public boolean isRunning() {
-        return CrossMenuFloater.isRunning();
+        return com.ninmods.main.overlay.NativeOverlayManager.isRunning()
+                && ID.equals(com.ninmods.main.overlay.NativeOverlayManager.getActiveBrandId());
     }
 }

@@ -15,7 +15,7 @@ public class DeltaMenuProject implements IMenuProject {
 
     public static final String ID = "delta";
     private static final String PREF_BRAND_NAME = "brand_title_delta";
-    private static final int THEME_COLOR = DeltaMenuFloater.THEME_EMERALD;
+    private static final int THEME_COLOR = 0xFF00E676; // Tactical Neon Emerald
 
     @Override
     public String getId() {
@@ -48,16 +48,17 @@ public class DeltaMenuProject implements IMenuProject {
 
     @Override
     public void launch(Context context) {
-        DeltaMenuFloater.start(context);
+        com.ninmods.main.overlay.NativeOverlayManager.start(context, ID);
     }
 
     @Override
     public void stop(Context context) {
-        DeltaMenuFloater.stop();
+        com.ninmods.main.overlay.NativeOverlayManager.stop();
     }
 
     @Override
     public boolean isRunning() {
-        return DeltaMenuFloater.isRunning();
+        return com.ninmods.main.overlay.NativeOverlayManager.isRunning()
+                && ID.equals(com.ninmods.main.overlay.NativeOverlayManager.getActiveBrandId());
     }
 }

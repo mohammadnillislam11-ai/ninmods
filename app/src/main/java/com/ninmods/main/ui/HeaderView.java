@@ -53,7 +53,8 @@ public class HeaderView {
 
         // 3-Line Hamburger Menu Button (opens sidebar drawer)
         HamburgerView menuBtn = new HamburgerView(context);
-        menuBtn.setLayoutParams(new LinearLayout.LayoutParams(dp(context, 44), dp(context, 44)));
+        menuBtn.setLayoutParams(new LinearLayout.LayoutParams(dp(context, 48), dp(context, 48)));
+        menuBtn.setContentDescription("Open navigation menu");
         menuBtn.setFocusable(true);
         menuBtn.setClickable(true);
         menuBtn.setOnClickListener(v -> {
@@ -79,9 +80,12 @@ public class HeaderView {
 
         // Profile Avatar Button (Right Edge - Clean icon, zero border)
         android.widget.FrameLayout profileBtn = new android.widget.FrameLayout(context);
-        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(dp(context, 38), dp(context, 38));
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(dp(context, 48), dp(context, 48));
         profileBtn.setLayoutParams(pLp);
         profileBtn.setBackgroundColor(Color.TRANSPARENT);
+        profileBtn.setContentDescription("Open profile");
+        profileBtn.setFocusable(true);
+        profileBtn.setClickable(true);
 
         android.widget.ImageView pIcon = new android.widget.ImageView(context);
         android.widget.FrameLayout.LayoutParams pIconLp = new android.widget.FrameLayout.LayoutParams(

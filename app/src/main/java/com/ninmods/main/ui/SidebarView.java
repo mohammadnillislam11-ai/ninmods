@@ -128,6 +128,8 @@ public class SidebarView {
         tvUsername.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         tvUsername.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         tvUsername.setGravity(Gravity.CENTER);
+        tvUsername.setMaxLines(1);
+        tvUsername.setEllipsize(android.text.TextUtils.TruncateAt.END);
         profileCardContent.addView(tvUsername);
 
         // Balance / Currency Pill (prominent gradient pill like in screenshot)
@@ -147,6 +149,8 @@ public class SidebarView {
         tvBalancePill.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         tvBalancePill.setGravity(Gravity.CENTER);
         tvBalancePill.setPadding(dp(context, 24), dp(context, 6), dp(context, 24), dp(context, 7));
+        tvBalancePill.setMaxLines(1);
+        tvBalancePill.setEllipsize(android.text.TextUtils.TruncateAt.END);
 
         GradientDrawable balBg = new GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,

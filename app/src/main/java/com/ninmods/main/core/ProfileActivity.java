@@ -701,16 +701,22 @@ public class ProfileActivity extends BaseActivity {
         row.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView tvLabel = new TextView(this);
-        tvLabel.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        tvLabel.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.45f));
         tvLabel.setText(label);
         tvLabel.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         tvLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvLabel.setMaxLines(2);
+        tvLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
         row.addView(tvLabel);
 
         tvVal.setText(initialValue);
         tvVal.setTextColor(valueColor);
         tvVal.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         tvVal.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        tvVal.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.55f));
+        tvVal.setGravity(Gravity.END);
+        tvVal.setMaxLines(2);
+        tvVal.setEllipsize(android.text.TextUtils.TruncateAt.END);
         row.addView(tvVal);
 
         return row;
@@ -725,16 +731,22 @@ public class ProfileActivity extends BaseActivity {
         row.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView tvLabel = new TextView(this);
-        tvLabel.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        tvLabel.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.45f));
         tvLabel.setText(label);
         tvLabel.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         tvLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvLabel.setMaxLines(2);
+        tvLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
         row.addView(tvLabel);
 
         tvVal.setText(initialValue);
         tvVal.setTextColor(valueColor);
         tvVal.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         tvVal.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        tvVal.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.55f));
+        tvVal.setGravity(Gravity.END);
+        tvVal.setMaxLines(2);
+        tvVal.setEllipsize(android.text.TextUtils.TruncateAt.END);
         row.addView(tvVal);
 
         row.setClickable(true);
@@ -763,10 +775,12 @@ public class ProfileActivity extends BaseActivity {
         row.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView tvLabel = new TextView(this);
-        tvLabel.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        tvLabel.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.45f));
         tvLabel.setText(label);
         tvLabel.setTextColor(AppColors.MAGENTA_TEXT_DIM);
         tvLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvLabel.setMaxLines(2);
+        tvLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
         row.addView(tvLabel);
 
         TextView tvVal = new TextView(this);
@@ -774,6 +788,10 @@ public class ProfileActivity extends BaseActivity {
         tvVal.setTextColor(valueColor);
         tvVal.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         tvVal.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        tvVal.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.55f));
+        tvVal.setGravity(Gravity.END);
+        tvVal.setMaxLines(2);
+        tvVal.setEllipsize(android.text.TextUtils.TruncateAt.END);
         row.addView(tvVal);
 
         return row;

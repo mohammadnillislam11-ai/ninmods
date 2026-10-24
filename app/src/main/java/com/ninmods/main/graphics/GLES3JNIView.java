@@ -34,12 +34,16 @@ public class GLES3JNIView extends GLSurfaceView implements GLSurfaceView.Rendere
 
     @Override
     public boolean onTouchEvent(android.view.MotionEvent event) {
-        return false;
+        if (event == null) return false;
+        int action = event.getActionMasked();
+        float x = event.getX();
+        float y = event.getY();
+        return nativeTouchEvent(action, x, y);
     }
 
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent event) {
-        return false;
+        return onTouchEvent(event);
     }
 
     @Override
@@ -67,4 +71,5 @@ public class GLES3JNIView extends GLSurfaceView implements GLSurfaceView.Rendere
     public static native void nativeResize(int width, int height);
     public static native void nativeStep();
     public static native void nativeShutdown();
+    public static native boolean nativeTouchEvent(int action, float x, float y);
 }

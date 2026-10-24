@@ -8,7 +8,6 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <src/Widgets/ImportWidgets.h>
-#include <src/Includes/http.h>
 #include "src/Unity/Vector3.hpp"
 #include "src/Unity/Vector2.hpp"
 #include "src/Unity/Color.hpp"
@@ -38,6 +37,8 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "imgui_impl_opengl3.h"
+#include "UI/NativeOverlayController.h"
+#include "UI/MenuRouter.h"
 
 
 // ============================================
@@ -1149,7 +1150,8 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz
 
         ImGui_ImplOpenGL3_Init("#version 300 es");
         g_ImGuiInitialized = true;
-        LOGD("GLES3 ImGui Hardware ESP initialized successfully");
+        MenuRouter::Initialize();
+        LOGD("GLES3 ImGui Hardware ESP & MenuRouter initialized successfully");
     }
 }
 
@@ -1162,6 +1164,7 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeResize(JNIEnv *env, jclass cla
         ImGuiIO& io = ImGui::GetIO();
         io.DisplaySize = ImVec2((float)width, (float)height);
     }
+    NativeOverlayController::SetScreenSize(width, height);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1174,7 +1177,16 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeStep(JNIEnv *env, jclass clazz
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
+    // 1. ESP Overlay
     RenderHardwareESP(g_ScreenWidth, g_ScreenHeight);
+
+    // 2. Pure Native ImGui Floating Overlay & Modular Brand Menus
+    bool isKernelOnline = (driver && driver->isConnected());
+    if (!isKernelOnline && driver && access("/dev/BYNb", F_OK) == 0) {
+        driver->initDriver();
+        isKernelOnline = driver->isConnected();
+    }
+    NativeOverlayController::RenderFrame(isKernelOnline);
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -1188,6 +1200,49 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeShutdown(JNIEnv *env, jclass c
         g_ImGuiInitialized = false;
         LOGD("GLES3 ImGui Hardware ESP shutdown cleanly");
     }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_graphics_GLES3JNIView_nativeTouchEvent(JNIEnv *env, jclass clazz, jint action, jfloat x, jfloat y) {
+    return (jboolean)NativeOverlayController::HandleTouchEvent(action, x, y);
+}
+
+// ========================================================
+// NATIVE BRIDGE JNI EXPORTS (com.ninmods.main.core.NativeBridge)
+// ========================================================
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_launchBrandOverlay(JNIEnv *env, jclass clazz, jstring jBrandId, jstring jHwid, jboolean isLicenseActive) {
+    const char* bId = jBrandId ? env->GetStringUTFChars(jBrandId, nullptr) : "nin";
+    const char* hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : "";
+    NativeOverlayController::Initialize(g_ScreenWidth, g_ScreenHeight, bId, hwid, (bool)isLicenseActive);
+    if (jBrandId) env->ReleaseStringUTFChars(jBrandId, bId);
+    if (jHwid) env->ReleaseStringUTFChars(jHwid, hwid);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_handleTouch(JNIEnv *env, jclass clazz, jint action, jfloat x, jfloat y) {
+    return (jboolean)NativeOverlayController::HandleTouchEvent(action, x, y);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_isMenuOpen(JNIEnv *env, jclass clazz) {
+    return (jboolean)NativeOverlayController::s_MenuOpen;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_setMenuOpen(JNIEnv *env, jclass clazz, jboolean open) {
+    NativeOverlayController::s_MenuOpen = (bool)open;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_isOverlayActive(JNIEnv *env, jclass clazz) {
+    return (jboolean)NativeOverlayController::s_Initialized;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_closeOverlay(JNIEnv *env, jclass clazz) {
+    NativeOverlayController::s_Initialized = false;
+    NativeOverlayController::s_MenuOpen = false;
 }
 
 

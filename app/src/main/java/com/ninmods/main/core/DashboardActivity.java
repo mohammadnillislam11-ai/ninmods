@@ -255,18 +255,31 @@ public class DashboardActivity extends BaseActivity {
     }
 
     private void refreshBody() {
+        final int scrollY = currentBodyView instanceof android.widget.ScrollView
+                ? currentBodyView.getScrollY()
+                : 0;
         if (currentBodyView != null) {
             mainContainer.removeView(currentBodyView);
         }
         currentBodyView = DashboardContentView.create(this, new DashboardContentView.DashboardListener() {
             @Override
             public void onBrandMenuClick(IMenuProject menu) {
-                // Persistent Digital License Check: If already verified and active, launch immediately
-                if (AuthManager.hasActiveLicense(DashboardActivity.this)) {
-                    launchMenuWithOverlayCheck(menu, "Ring 0 Driver");
+                if (menu == null) return;
+                if (!MainActivity.hasOverlayPermission(DashboardActivity.this)) {
+                    Toast.makeText(DashboardActivity.this, "Please grant Overlay Permission to display menu", Toast.LENGTH_SHORT).show();
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } catch (Exception ignored) {}
                     return;
                 }
-                showKeyVerificationDialog(menu);
+
+                // 100% Pure Native C++ Dear ImGui Pipeline:
+                // Step 1: C++ Modal Key Verification Popup (if license not active)
+                // Step 2: C++ Kernel Driver Checker Alert (if /dev/BYNb offline)
+                // Step 3: High-FPS Draggable Floating Logo & Brand Tactical Mod Menu
+                com.ninmods.main.overlay.NativeOverlayManager.start(DashboardActivity.this, menu.getId());
             }
 
             @Override
@@ -294,6 +307,18 @@ public class DashboardActivity extends BaseActivity {
             }
         });
         mainContainer.addView(currentBodyView);
+        final View refreshedBody = currentBodyView;
+        if (scrollY > 0) {
+            refreshedBody.getViewTreeObserver().addOnGlobalLayoutListener(
+                    new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                        @Override
+                        public void onGlobalLayout() {
+                            refreshedBody.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                            refreshedBody.scrollTo(0, scrollY);
+                        }
+                    }
+            );
+        }
     }
 
     private void launchGame(final String packageName, final String gameName) {

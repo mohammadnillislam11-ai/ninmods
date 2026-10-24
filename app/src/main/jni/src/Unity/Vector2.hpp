@@ -2,6 +2,8 @@
 
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <glm/glm.hpp>
+#include <glm/geometric.hpp>
 
 
 struct Vector2
@@ -24,6 +26,11 @@ struct Vector2
     inline Vector2(float data[]);
     inline Vector2(float value);
     inline Vector2(float x, float y);
+    inline Vector2(const glm::vec2& v) : X(v.x), Y(v.y) {}
+
+    // GLM Interop
+    inline glm::vec2 toGlm() const { return glm::vec2(X, Y); }
+    inline operator glm::vec2() const { return glm::vec2(X, Y); }
 
 
     /**
@@ -314,12 +321,12 @@ float Vector2::Component(Vector2 a, Vector2 b)
 
 float Vector2::Distance(Vector2 a, Vector2 b)
 {
-    return Vector2::Magnitude(a - b);
+    return glm::distance(a.toGlm(), b.toGlm());
 }
 
 float Vector2::Dot(Vector2 lhs, Vector2 rhs)
 {
-    return lhs.X * rhs.X + lhs.Y * rhs.Y;
+    return glm::dot(lhs.toGlm(), rhs.toGlm());
 }
 
 Vector2 Vector2::FromPolar(float rad, float theta)
@@ -344,7 +351,7 @@ Vector2 Vector2::LerpUnclamped(Vector2 a, Vector2 b, float t)
 
 float Vector2::Magnitude(Vector2 v)
 {
-    return sqrt(SqrMagnitude(v));
+    return glm::length(v.toGlm());
 }
 
 Vector2 Vector2::Max(Vector2 a, Vector2 b)
@@ -374,9 +381,10 @@ Vector2 Vector2::MoveTowards(Vector2 current, Vector2 target,
 Vector2 Vector2::Normalized(Vector2 v)
 {
     float mag = Magnitude(v);
-    if (mag == 0)
+    if (mag == 0.0f)
         return Vector2::Zero();
-    return v / mag;
+    glm::vec2 res = glm::normalize(v.toGlm());
+    return Vector2(res.x, res.y);
 }
 
 void Vector2::OrthoNormalize(Vector2 &normal, Vector2 &tangent)

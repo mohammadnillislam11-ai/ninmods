@@ -4,6 +4,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <glm/glm.hpp>
+#include <glm/geometric.hpp>
 
 
 struct Vector3
@@ -28,6 +30,11 @@ struct Vector3
     inline Vector3(float value);
     inline Vector3(float x, float y);
     inline Vector3(float x, float y, float z);
+    inline Vector3(const glm::vec3& v) : X(v.x), Y(v.y), Z(v.z) {}
+
+    // GLM Interop
+    inline glm::vec3 toGlm() const { return glm::vec3(X, Y, Z); }
+    inline operator glm::vec3() const { return glm::vec3(X, Y, Z); }
 
 
     /**
@@ -360,20 +367,18 @@ float Vector3::Component(Vector3 a, Vector3 b)
 
 Vector3 Vector3::Cross(Vector3 lhs, Vector3 rhs)
 {
-    float x = lhs.Y * rhs.Z - lhs.Z * rhs.Y;
-    float y = lhs.Z * rhs.X - lhs.X * rhs.Z;
-    float z = lhs.X * rhs.Y - lhs.Y * rhs.X;
-    return Vector3(x, y, z);
+    glm::vec3 res = glm::cross(lhs.toGlm(), rhs.toGlm());
+    return Vector3(res.x, res.y, res.z);
 }
 
 float Vector3::Distance(Vector3 a, Vector3 b)
 {
-    return Vector3::Magnitude(a - b);
+    return glm::distance(a.toGlm(), b.toGlm());
 }
 
 float Vector3::Dot(Vector3 lhs, Vector3 rhs)
 {
-    return lhs.X * rhs.X + lhs.Y * rhs.Y + lhs.Z * rhs.Z;
+    return glm::dot(lhs.toGlm(), rhs.toGlm());
 }
 
 Vector3 Vector3::FromSpherical(float rad, float theta, float phi)
@@ -399,7 +404,7 @@ Vector3 Vector3::LerpUnclamped(Vector3 a, Vector3 b, float t)
 
 float Vector3::Magnitude(Vector3 v)
 {
-    return sqrt(SqrMagnitude(v));
+    return glm::length(v.toGlm());
 }
 
 Vector3 Vector3::Max(Vector3 a, Vector3 b)
@@ -431,9 +436,10 @@ Vector3 Vector3::MoveTowards(Vector3 current, Vector3 target,
 Vector3 Vector3::Normalized(Vector3 v)
 {
     float mag = Magnitude(v);
-    if (mag == 0)
+    if (mag == 0.0f)
         return Vector3::Zero();
-    return v / mag;
+    glm::vec3 res = glm::normalize(v.toGlm());
+    return Vector3(res.x, res.y, res.z);
 }
 
 Vector3 Vector3::Orthogonal(Vector3 v)

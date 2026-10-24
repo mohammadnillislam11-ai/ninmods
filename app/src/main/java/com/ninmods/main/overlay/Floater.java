@@ -87,6 +87,7 @@ public class Floater {
     private LinearLayout iconTabsContainer;
     private TextView page1Title;
     private TextView page2Title;
+    private TextView kernelStatusBadge;
     private LinearLayout page1Content;
     private LinearLayout page2Content;
 
@@ -195,6 +196,43 @@ public class Floater {
         if (collapsedRelative != null) collapsedRelative.setVisibility(View.GONE);
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
         updateScreenDimensions();
+        updateKernelStatusBadge();
+    }
+
+    public void updateKernelStatusBadge() {
+        if (kernelStatusBadge == null || context == null) return;
+        mainHandler.post(() -> {
+            boolean active = DriverManager.isDriverActive();
+            String activeNode = DriverManager.getActiveDriverNode();
+            GradientDrawable badgeBg = new GradientDrawable();
+            badgeBg.setShape(GradientDrawable.RECTANGLE);
+            badgeBg.setCornerRadius(FloaterStyles.dp(context, 9));
+
+            if (active) {
+                badgeBg.setColor(0x2A00E676); // Subtle translucent neon green
+                badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFF00E676); // 1dp neon green border
+                kernelStatusBadge.setBackground(badgeBg);
+                kernelStatusBadge.setTextColor(0xFF00E676);
+                kernelStatusBadge.setText("● KERNEL ONLINE");
+            } else {
+                badgeBg.setColor(0x2AFF1744); // Subtle translucent neon red
+                badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFFFF5252); // 1dp neon red border
+                kernelStatusBadge.setBackground(badgeBg);
+                kernelStatusBadge.setTextColor(0xFFFF5252);
+                kernelStatusBadge.setText("● KERNEL OFFLINE");
+            }
+
+            kernelStatusBadge.setOnClickListener(v -> {
+                boolean curActive = DriverManager.isDriverActive();
+                String curNode = DriverManager.getActiveDriverNode();
+                String msg = curActive
+                        ? ("Kernel Driver: ONLINE\nActive Node: " + (curNode != null ? curNode : "/dev/BYNb"))
+                        : "Kernel Driver: OFFLINE\nPlease run Driver Loader app";
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show();
+                updateKernelStatusBadge();
+            });
+        });
+    }
 
         boolean isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
         // Dynamically compute expansive width so sliders have ample space, while strictly preserving original compact height
@@ -303,7 +341,8 @@ public class Floater {
                 String[] commands = new String[] {
                     "su", "-c",
                     "setenforce 0; " +
-                    "chmod 666 /dev/BYNb* /dev/mem_tool /proc/uevents_records /proc/sched_debug /sys/class/mem_tool_class/mem_tool/dev 2>/dev/null; " +
+                    "for s in /sys/class/mem_tool_class/*/dev; do if [ -e \"$s\" ]; then dname=$(echo \"$s\" | awk -F'/' '{print $(NF-1)}'); mm=$(cat \"$s\" 2>/dev/null); maj=$(echo \"$mm\" | cut -d: -f1); min=$(echo \"$mm\" | cut -d: -f2); if [ -n \"$maj\" ] && [ -n \"$min\" ]; then mknod /dev/$dname c $maj $min 2>/dev/null; chmod 666 /dev/$dname 2>/dev/null; ln -sf /dev/$dname /dev/BYNb 2>/dev/null; chmod 666 /dev/BYNb 2>/dev/null; fi; fi; done; " +
+                    "chmod 666 /dev/BYNb* /dev/mem_tool* /proc/uevents_records /proc/sched_debug /sys/class/mem_tool_class/*/dev 2>/dev/null; " +
                     "settings put global block_untrusted_touches 0; " +
                     "am compat disable BLOCK_UNTRUSTED_TOUCHES com.dts.freefireth; " +
                     "am compat disable BLOCK_UNTRUSTED_TOUCHES com.dts.freefiremax; " +
@@ -551,6 +590,18 @@ public class Floater {
         page1Title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         page1Title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         p1Header.addView(page1Title);
+
+        kernelStatusBadge = new TextView(context);
+        LinearLayout.LayoutParams ksbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, FloaterStyles.dp(context, 18));
+        ksbLp.rightMargin = FloaterStyles.dp(context, 4);
+        kernelStatusBadge.setLayoutParams(ksbLp);
+        kernelStatusBadge.setPadding(FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 1), FloaterStyles.dp(context, 6), FloaterStyles.dp(context, 1));
+        kernelStatusBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
+        kernelStatusBadge.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        kernelStatusBadge.setGravity(Gravity.CENTER);
+        p1Header.addView(kernelStatusBadge);
+        updateKernelStatusBadge();
+
         page1.addView(p1Header);
 
         View p1Div = new View(context);
@@ -680,6 +731,7 @@ public class Floater {
         activeRailIndex = index;
         highlightActiveRailTab(index);
         refreshActivePages();
+        updateKernelStatusBadge();
     }
 
     private void highlightActiveRailTab(int index) {

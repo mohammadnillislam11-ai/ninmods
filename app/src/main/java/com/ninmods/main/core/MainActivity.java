@@ -29,27 +29,21 @@ import com.ninmods.main.R;
 
 public class MainActivity extends BaseActivity {
 
-    private static final int REQUEST_OVERLAY_PERMISSION = 1001;
-    private static final int REQUEST_ALL_FILES_PERMISSION = 1002;
     private static final int REQUEST_LEGACY_STORAGE_PERMISSION = 1003;
-    private static final int REQUEST_NOTIFICATION_PERMISSION = 1004;
-    private static final int REQUEST_LOCATION_PERMISSION = 1005;
 
     // Sequential Permission States
     private static final int STEP_OVERLAY = 1;
     private static final int STEP_STORAGE = 2;
-    private static final int STEP_NOTIFICATION = 3;
-    private static final int STEP_LOCATION = 4;
-    private static final int STEP_DONE = 5;
+    private static final int STEP_DONE = 3;
 
     private int currentStep = STEP_OVERLAY;
     private boolean isNavigatingAway = false;
     private boolean hasAutoPromptedOverlay = false;
-    private boolean hasAutoPromptedStorage = false;
     private boolean isAppStarted = false;
 
     private TextView tvStatus;
     private Button btnAction;
+    private Button btnContinueWithoutStorage;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -95,7 +89,7 @@ public class MainActivity extends BaseActivity {
                     }
                 } else if (currentStep == STEP_STORAGE) {
                     if (isStorageGranted()) {
-                        currentStep = STEP_NOTIFICATION;
+                        currentStep = STEP_DONE;
                     }
                 }
                 executeCurrentStep();
@@ -106,7 +100,7 @@ public class MainActivity extends BaseActivity {
                 currentStep = STEP_STORAGE;
                 executeCurrentStep();
             } else if (currentStep == STEP_STORAGE && isStorageGranted()) {
-                currentStep = STEP_NOTIFICATION;
+                currentStep = STEP_DONE;
                 executeCurrentStep();
             }
         }
@@ -175,6 +169,22 @@ public class MainActivity extends BaseActivity {
         btnAction.setBackground(btnBg);
         layout.addView(btnAction);
 
+        btnContinueWithoutStorage = new Button(this);
+        LinearLayout.LayoutParams continueLp = new LinearLayout.LayoutParams(dp(220), dp(42));
+        continueLp.topMargin = dp(6);
+        btnContinueWithoutStorage.setLayoutParams(continueLp);
+        btnContinueWithoutStorage.setText("CONTINUE WITHOUT STORAGE");
+        btnContinueWithoutStorage.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+        btnContinueWithoutStorage.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        btnContinueWithoutStorage.setTypeface(Typeface.DEFAULT_BOLD);
+        btnContinueWithoutStorage.setBackgroundColor(Color.TRANSPARENT);
+        btnContinueWithoutStorage.setVisibility(View.GONE);
+        btnContinueWithoutStorage.setOnClickListener(v -> {
+            currentStep = STEP_DONE;
+            executeCurrentStep();
+        });
+        layout.addView(btnContinueWithoutStorage);
+
         root.addView(layout);
         setContentView(root);
     }
@@ -188,12 +198,6 @@ public class MainActivity extends BaseActivity {
                 break;
             case STEP_STORAGE:
                 handleStorageStep();
-                break;
-            case STEP_NOTIFICATION:
-                handleNotificationStep();
-                break;
-            case STEP_LOCATION:
-                handleLocationStep();
                 break;
             case STEP_DONE:
             default:
@@ -273,24 +277,19 @@ public class MainActivity extends BaseActivity {
     // Step 2: Storage Permission (All Files / Super Storage)
     private void handleStorageStep() {
         if (isStorageGranted()) {
-            currentStep = STEP_NOTIFICATION;
+            currentStep = STEP_DONE;
             executeCurrentStep();
             return;
         }
 
-        tvStatus.setText("Storage access required for game assets");
-        btnAction.setText("GRANT STORAGE ACCESS");
+        tvStatus.setText("Storage access lets the app save diagnostic logs to Downloads.");
+        btnAction.setText("ALLOW STORAGE ACCESS");
         btnAction.setVisibility(View.VISIBLE);
+        btnContinueWithoutStorage.setVisibility(View.VISIBLE);
         btnAction.setOnClickListener(v -> {
             isNavigatingAway = true;
             requestStoragePermission();
         });
-
-        // Auto prompt only once on initial entrance
-        if (!hasAutoPromptedStorage) {
-            hasAutoPromptedStorage = true;
-            requestStoragePermission();
-        }
     }
 
     private boolean isStorageGranted() {
@@ -319,48 +318,16 @@ public class MainActivity extends BaseActivity {
         }
     }
 
-    // Step 3: Notification Permission
-    private void handleNotificationStep() {
-        if (Build.VERSION.SDK_INT >= 33 && getApplicationInfo().targetSdkVersion >= 33) {
-            if (ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
-                tvStatus.setText("Requesting Notification Access...");
-                btnAction.setVisibility(View.GONE);
-                ActivityCompat.requestPermissions(this,
-                        new String[]{"android.permission.POST_NOTIFICATIONS"},
-                        REQUEST_NOTIFICATION_PERMISSION);
-                return;
-            }
-        }
-        currentStep = STEP_LOCATION;
-        executeCurrentStep();
-    }
-
-    // Step 4: Location Permission
-    private void handleLocationStep() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            tvStatus.setText("Requesting Location Access...");
-            btnAction.setVisibility(View.GONE);
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION},
-                    REQUEST_LOCATION_PERMISSION);
-            return;
-        }
-        currentStep = STEP_DONE;
-        executeCurrentStep();
-    }
-
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_LEGACY_STORAGE_PERMISSION) {
-            currentStep = STEP_NOTIFICATION;
-            executeCurrentStep();
-        } else if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
-            currentStep = STEP_LOCATION;
-            executeCurrentStep();
-        } else if (requestCode == REQUEST_LOCATION_PERMISSION) {
-            currentStep = STEP_DONE;
-            executeCurrentStep();
+            if (isStorageGranted()) {
+                currentStep = STEP_DONE;
+                executeCurrentStep();
+            } else {
+                handleStorageStep();
+            }
         }
     }
 
@@ -369,6 +336,7 @@ public class MainActivity extends BaseActivity {
         isAppStarted = true;
 
         btnAction.setVisibility(View.GONE);
+        btnContinueWithoutStorage.setVisibility(View.GONE);
 
         // Persistent Session Check (like Google account / digital token session)
         if (com.ninmods.main.auth.AuthManager.isLoggedIn(this)) {

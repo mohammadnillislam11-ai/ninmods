@@ -48,16 +48,17 @@ public class NinMenuProject implements IMenuProject {
 
     @Override
     public void launch(Context context) {
-        NinMenuFloater.start(context);
+        com.ninmods.main.overlay.NativeOverlayManager.start(context, ID);
     }
 
     @Override
     public void stop(Context context) {
-        NinMenuFloater.stop();
+        com.ninmods.main.overlay.NativeOverlayManager.stop();
     }
 
     @Override
     public boolean isRunning() {
-        return NinMenuFloater.isRunning();
+        return com.ninmods.main.overlay.NativeOverlayManager.isRunning()
+                && ID.equals(com.ninmods.main.overlay.NativeOverlayManager.getActiveBrandId());
     }
 }

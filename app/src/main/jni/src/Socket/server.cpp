@@ -1,11 +1,14 @@
 #include "server.h"
 #include <signal.h>
 
-SocketServer::SocketServer(){
-    listenfd_unix = -1;
-    listenfd_tcp = -1;
-    acceptfd = -1;
-    isCreated = false;
+SocketServer::SocketServer() : listenfd_unix(-1), listenfd_tcp(-1), acceptfd(-1), isCreated(false) {
+    memset(&addr_unix, 0, sizeof(addr_unix));
+    memset(&addr_tcp, 0, sizeof(addr_tcp));
+    memset(socket_name, 0, sizeof(socket_name));
+}
+
+SocketServer::~SocketServer() {
+    Close();
 }
 
 bool SocketServer::Create() {
@@ -31,6 +34,10 @@ bool SocketServer::Bind() {
         int opt = 1;
         setsockopt(listenfd_unix, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
+        int bufSize = SOCKET_BUFFER_SIZE;
+        setsockopt(listenfd_unix, SOL_SOCKET, SO_RCVBUF, &bufSize, sizeof(bufSize));
+        setsockopt(listenfd_unix, SOL_SOCKET, SO_SNDBUF, &bufSize, sizeof(bufSize));
+
         if (bind(listenfd_unix, (sockaddr *) &addr_unix, addr_len) == 0) {
             unix_bound = true;
         } else {
@@ -42,6 +49,10 @@ bool SocketServer::Bind() {
     if (listenfd_tcp >= 0) {
         int opt = 1;
         setsockopt(listenfd_tcp, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        int bufSize = SOCKET_BUFFER_SIZE;
+        setsockopt(listenfd_tcp, SOL_SOCKET, SO_RCVBUF, &bufSize, sizeof(bufSize));
+        setsockopt(listenfd_tcp, SOL_SOCKET, SO_SNDBUF, &bufSize, sizeof(bufSize));
 
         memset(&addr_tcp, 0, sizeof(addr_tcp));
         addr_tcp.sin_family = AF_INET;
@@ -102,10 +113,21 @@ bool SocketServer::Accept() {
 
     for (int i = 0; i < nfds; i++) {
         if (fds[i].revents & POLLIN) {
+            std::lock_guard<std::mutex> lock(m_ioMutex);
+            if (acceptfd >= 0) {
+                close(acceptfd);
+                acceptfd = -1;
+            }
             acceptfd = accept4(fds[i].fd, nullptr, nullptr, SOCK_CLOEXEC);
             if (acceptfd >= 0) {
                 int flag = 1;
                 setsockopt(acceptfd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
+#ifdef TCP_QUICKACK
+                setsockopt(acceptfd, IPPROTO_TCP, TCP_QUICKACK, (char*)&flag, sizeof(int));
+#endif
+                int bufSize = SOCKET_BUFFER_SIZE;
+                setsockopt(acceptfd, SOL_SOCKET, SO_RCVBUF, &bufSize, sizeof(bufSize));
+                setsockopt(acceptfd, SOL_SOCKET, SO_SNDBUF, &bufSize, sizeof(bufSize));
                 return true;
             }
         }
@@ -134,8 +156,11 @@ int SocketServer::sendData(void *inData, size_t size) {
 }
 
 bool SocketServer::send(void* inData, size_t size) {
+    std::lock_guard<std::mutex> lock(m_ioMutex);
+    if (acceptfd < 0) return false;
+
     uint32_t length = htonl(size);
-    if(sendData(&length, sizeof(uint32_t)) <= 0){
+    if (sendData(&length, sizeof(uint32_t)) <= 0) {
         return false;
     }
     return sendData((void*)inData, size) > 0;
@@ -162,6 +187,9 @@ int SocketServer::recvData(void *outData, size_t size) {
 }
 
 size_t SocketServer::receive(void* outData, size_t maxSize) {
+    std::lock_guard<std::mutex> lock(m_ioMutex);
+    if (acceptfd < 0) return 0;
+
     uint32_t length = 0;
     int code = recvData(&length, sizeof(uint32_t));
     if (code <= 0) return 0;
@@ -196,6 +224,7 @@ void SocketServer::CloseAccept() {
 }
 
 void SocketServer::Close() {
+    std::lock_guard<std::mutex> lock(m_ioMutex);
     CloseAccept();
     if (listenfd_unix >= 0) {
         close(listenfd_unix);

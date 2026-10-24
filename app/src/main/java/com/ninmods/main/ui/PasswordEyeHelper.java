@@ -76,11 +76,14 @@ public final class PasswordEyeHelper {
         container.addView(et);
 
         ImageView eyeBtn = new ImageView(context);
-        LinearLayout.LayoutParams eyeLp = new LinearLayout.LayoutParams(dp(context, 40), dp(context, 40));
+        LinearLayout.LayoutParams eyeLp = new LinearLayout.LayoutParams(dp(context, 48), dp(context, 48));
         eyeLp.rightMargin = dp(context, 4);
         eyeBtn.setLayoutParams(eyeLp);
         eyeBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         eyeBtn.setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 8));
+        eyeBtn.setContentDescription("Show password");
+        eyeBtn.setFocusable(true);
+        eyeBtn.setClickable(true);
         eyeBtn.setImageDrawable(createEyeIcon(context, false));
         container.addView(eyeBtn);
 
@@ -90,9 +93,11 @@ public final class PasswordEyeHelper {
             bundle.isVisible = !bundle.isVisible;
             if (bundle.isVisible) {
                 et.setTransformationMethod(HideReturnsTransformationMethod.getInstance());
+                eyeBtn.setContentDescription("Hide password");
                 eyeBtn.setImageDrawable(createEyeIcon(context, true));
             } else {
                 et.setTransformationMethod(PasswordTransformationMethod.getInstance());
+                eyeBtn.setContentDescription("Show password");
                 eyeBtn.setImageDrawable(createEyeIcon(context, false));
             }
             if (et.getText() != null) {

@@ -1,6 +1,8 @@
 #ifndef TCP_SOCKET_CLIENT_H
 #define TCP_SOCKET_CLIENT_H
 #include "Const.h"
+#include <mutex>
+#include <atomic>
 
 class SocketClient {
 public:
@@ -8,10 +10,13 @@ public:
     sockaddr_un addr_unix;
     sockaddr_in addr_tcp;
     char socket_name[108]; // 108 sun_path length max
-    bool created, connected;
-    bool isTcpChannel;
+    std::atomic<bool> created;
+    std::atomic<bool> connected;
+    std::atomic<bool> isTcpChannel;
+    mutable std::mutex m_ioMutex;
 
     SocketClient();
+    ~SocketClient();
 
     bool Create();
     bool Connect();
