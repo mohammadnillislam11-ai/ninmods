@@ -1,6 +1,12 @@
 #pragma once
 #include <cstdint>
 
+namespace Offsets {
+
+// ====================================================
+// FREE FIRE NORMAL (com.dts.freefireth)
+// Sourced from: 5_6213160554375160447.h
+// ====================================================
 namespace Normal {
 constexpr uintptr_t GameFacade = 0xA872380;
 constexpr uintptr_t GameFacade_Current = 0x8;

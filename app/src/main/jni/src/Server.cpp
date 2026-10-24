@@ -531,24 +531,24 @@ void CreateDataList(Response& SendResponse) {
             uintptr_t classPtr = Read<uintptr_t>(libAddress + fOff);
         if (!IsValidUserPointer64(classPtr)) continue;
 
-        // Static fields candidates: 0xB8 (Standard IL2CPP), 0x5C (treasure), 0x0 (Direct)
-        const uintptr_t staticOffsets[] = { 0xB8, 0x5C, 0x0 };
+        // Static fields candidates: 0xB8 (GameFacade_P2 in MAX), 0x8 (GameFacade_Current in Normal), 0x0 (Direct)
+        const uintptr_t staticOffsets[] = { Offsets::Max::GameFacade_P2, Offsets::Normal::GameFacade_Current, 0xB8, 0x8, 0x0 };
         for (uintptr_t sOff : staticOffsets) {
             uintptr_t staticFields = (sOff == 0) ? classPtr : Read<uintptr_t>(classPtr + sOff);
             if (!IsValidUserPointer64(staticFields)) continue;
 
-            // Approach 1: Bull_Team & CROSS SRC ROOT (staticFields -> BaseGame -> Match -> LocalPlayer)
+            // BaseGame -> Match -> LocalPlayer traversal
             const uintptr_t baseOffsets[] = { 0x0, 0x8 };
             for (uintptr_t bOff : baseOffsets) {
                 uintptr_t bg = Read<uintptr_t>(staticFields + bOff);
                 if (!IsValidUserPointer64(bg)) continue;
 
-                const uintptr_t matchOffsets[] = { 0x90, 0x930, 0x8 };
+                const uintptr_t matchOffsets[] = { Offsets::BaseGame_Match, 0x90, 0x8 };
                 for (uintptr_t mOff : matchOffsets) {
                     uintptr_t match = Read<uintptr_t>(bg + mOff);
                     if (!IsValidUserPointer64(match)) continue;
 
-                    const uintptr_t lpOffsets[] = { 0xD8, 0x94, 0x110, 0x88 };
+                    const uintptr_t lpOffsets[] = { Offsets::Match_LocalPlayer, 0xD8, 0x94 };
                     for (uintptr_t lpOff : lpOffsets) {
                         uintptr_t lp = Read<uintptr_t>(match + lpOff);
                         if (IsValidPlayerObject(lp)) {
@@ -565,8 +565,8 @@ void CreateDataList(Response& SendResponse) {
             }
             if (localPlayer) break;
 
-            // Approach 2: treasure 4-Step (staticFields -> LocalPlayer directly)
-            const uintptr_t directLpOffsets[] = { 0x94, 0xD8, 0x110, 0x88 };
+            // Direct LocalPlayer offset candidates
+            const uintptr_t directLpOffsets[] = { Offsets::Match_LocalPlayer, 0xD8, 0x94 };
             for (uintptr_t dOff : directLpOffsets) {
                 uintptr_t lp = Read<uintptr_t>(staticFields + dOff);
                 if (IsValidPlayerObject(lp)) {
