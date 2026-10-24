@@ -10,6 +10,7 @@ struct {
     bool SpeedHackV2 = false;
     bool undercam = false;
     bool PlayerToMe = false;
+    float AimFovScale = 1.20f;
     float gameSpeed = 1.0f;
     
     // New aim features
@@ -24,5 +25,6 @@ struct {
 
 
 struct {
+    bool Bypass = false;
     bool activar = false;
 } Actived;

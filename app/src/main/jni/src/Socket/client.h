@@ -21,7 +21,7 @@ public:
     bool send(void* inData, size_t size);
 
     int recvData(void *outData, size_t size);
-    size_t receive(void* outData);
+    size_t receive(void* outData, size_t maxSize = 0x20000);
 };
 
 #endif

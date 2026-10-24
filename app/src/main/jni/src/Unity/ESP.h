@@ -60,24 +60,30 @@ public:
     }
 
     void DrawText(Color color, const char *txt, Vector2 pos, float size) {
-        if (isValid()) {
+        if (isValid() && txt != nullptr) {
             jclass canvasView = _env->GetObjectClass(_cvsView);
             jmethodID drawtext = _env->GetMethodID(canvasView, ("DrawText"),
                                                    ("(Landroid/graphics/Canvas;IIIILjava/lang/String;FFF)V"));
+            jstring s = _env->NewStringUTF(txt);
             _env->CallVoidMethod(_cvsView, drawtext, _cvs, (int) color.a, (int) color.r,
                                  (int) color.g, (int) color.b,
-                                 _env->NewStringUTF(txt), pos.X, pos.Y, size);
+                                 s, pos.X, pos.Y, size);
+            _env->DeleteLocalRef(s);
+            _env->DeleteLocalRef(canvasView);
         }
     }
 
     void DrawText2(Color color, float stroke, const char *txt, Vector2 pos, float size) {
-        if (isValid()) {
+        if (isValid() && txt != nullptr) {
             jclass canvasView = _env->GetObjectClass(_cvsView);
             jmethodID drawtext = _env->GetMethodID(canvasView, ("DrawText"),
                                                    ("(Landroid/graphics/Canvas;IIIILjava/lang/String;FFF)V"));
+            jstring s = _env->NewStringUTF(txt);
             _env->CallVoidMethod(_cvsView, drawtext, _cvs, (int) color.a, (int) color.r,
                                  (int) color.g, (int) color.b,
-                                 _env->NewStringUTF(txt), pos.X, pos.Y, size);
+                                 s, pos.X, pos.Y, size);
+            _env->DeleteLocalRef(s);
+            _env->DeleteLocalRef(canvasView);
         }
     }
 

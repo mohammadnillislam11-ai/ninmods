@@ -127,21 +127,23 @@ void SendInt(int32_t number, int value) {
     Request request{number, true, value};
     int code = client.send((void*) &request, sizeof(request));
     if (code > 0) {
-        Response response{};
-        size_t length = client.receive((void*) &response);
+        static Response s_discardResponse{};
+        client.receive((void*) &s_discardResponse, sizeof(s_discardResponse));
     }
 }
 
+static Response s_cachedResponse{};
+
 Response getData(int screenWidth, int screenHeight){
-    Request request{Mode::EspMode, true,0, screenWidth, screenHeight};
+    Request request{Mode::EspMode, true, 0, screenWidth, screenHeight};
     int code = client.send((void*) &request, sizeof(request));
-    if(code > 0){
-        Response response{};
-        size_t length = client.receive((void*) &response);
-        if(length > 0){
-            return response;
+    if (code > 0){
+        size_t length = client.receive((void*) &s_cachedResponse, sizeof(s_cachedResponse));
+        if (length >= sizeof(bool) + sizeof(int) && s_cachedResponse.Success){
+            return s_cachedResponse;
         }
     }
-    Response response{false, 0};
-    return response;
+    s_cachedResponse.Success = false;
+    s_cachedResponse.PlayerCount = 0;
+    return s_cachedResponse;
 }

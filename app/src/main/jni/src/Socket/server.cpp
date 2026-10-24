@@ -161,14 +161,31 @@ int SocketServer::recvData(void *outData, size_t size) {
     return numReceived;
 }
 
-size_t SocketServer::receive(void* outData) {
+size_t SocketServer::receive(void* outData, size_t maxSize) {
     uint32_t length = 0;
     int code = recvData(&length, sizeof(uint32_t));
-    if(code > 0){
-        length = ntohl(length);
-        recvData(outData, static_cast<size_t>(length));
+    if (code <= 0) return 0;
+
+    length = ntohl(length);
+    if (length == 0 || length > 0x100000) { // 1MB sanity limit
+        CloseAccept();
+        return 0;
     }
-    return length;
+
+    if (maxSize > 0 && length > maxSize) {
+        recvData(outData, maxSize);
+        size_t excess = length - maxSize;
+        char drain[256];
+        while (excess > 0) {
+            size_t chunk = (excess > sizeof(drain)) ? sizeof(drain) : excess;
+            if (recvData(drain, chunk) <= 0) break;
+            excess -= chunk;
+        }
+        return maxSize;
+    }
+
+    int rec = recvData(outData, static_cast<size_t>(length));
+    return (rec > 0) ? static_cast<size_t>(rec) : 0;
 }
 
 void SocketServer::CloseAccept() {

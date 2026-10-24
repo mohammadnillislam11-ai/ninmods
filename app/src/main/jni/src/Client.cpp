@@ -955,8 +955,14 @@ Java_power_cheats_Floater_PxbftKZXivSr(JNIEnv *env, jclass type, jobject espView
     if (!SecurityVault_IsSessionValid()) {
         return; // Zero ESP drawing if no genuine verified server session
     }
+    if (env->PushLocalFrame(256) < 0) {
+        return;
+    }
     ESP localEsp = ESP(env, espView, canvas);
-    if (localEsp.isValid()) { DrawESP(localEsp); }
+    if (localEsp.isValid()) { 
+        DrawESP(localEsp); 
+    }
+    env->PopLocalFrame(nullptr);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1338,8 +1344,7 @@ Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jcla
         const char* candidate_nodes[] = {
             "/dev/BYNb",
             "/dev/mem_tool",
-            "/proc/uevents_records",
-            "/proc/sched_debug"
+            "/proc/uevents_records"
         };
 
         for (const char* node : candidate_nodes) {
