@@ -1,3 +1,6 @@
+#pragma once
+#include "Unity/Color.hpp"
+
 // Define enum types first
 enum BoxType {
     BOX_STROKE = 0,
@@ -12,7 +15,7 @@ enum LineType {
     LINE_BOTTOM = 2
 };
 
-struct {
+inline struct PlayerState {
     bool aimbot = false;
     bool fovawm = false;
     bool selectTarget = false;
@@ -37,12 +40,12 @@ struct {
 } pPlayer;
 
 
-struct {
+inline struct ActivedState {
     bool Bypass = false;
     bool activar = false;
 } Actived;
 
-struct {
+inline struct EspPlayerState {
     bool espLinha = false;
     bool espCaixa = false;
     bool espHealth = false;    // Renamed from espInfo for clarity
@@ -57,4 +60,3 @@ struct {
     BoxType boxType = BOX_STROKE;
     LineType lineType = LINE_TOP;
 } pEspPlayer;
-

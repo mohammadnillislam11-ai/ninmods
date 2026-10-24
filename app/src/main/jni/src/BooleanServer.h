@@ -1,3 +1,5 @@
+#pragma once
+
 struct {
     bool aimbot = false;
     bool fovawm = false;
