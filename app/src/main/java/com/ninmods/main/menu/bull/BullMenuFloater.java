@@ -149,10 +149,10 @@ public class BullMenuFloater {
     private void initWindowManager() {
         windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         windowParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                dp(64),
+                dp(64),
                 getLayoutType(),
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT
         );
         windowParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
@@ -483,11 +483,25 @@ public class BullMenuFloater {
     public void openMenu() {
         if (collapsedLayout != null) collapsedLayout.setVisibility(View.GONE);
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
+        try {
+            if (windowManager != null && rootFrame != null && rootFrame.isAttachedToWindow() && windowParams != null) {
+                windowParams.width = menuWidth;
+                windowParams.height = menuHeight;
+                windowManager.updateViewLayout(rootFrame, windowParams);
+            }
+        } catch (Exception ignored) {}
     }
 
     public void closeMenu() {
         if (menuLayout != null) menuLayout.setVisibility(View.GONE);
         if (collapsedLayout != null) collapsedLayout.setVisibility(View.VISIBLE);
+        try {
+            if (windowManager != null && rootFrame != null && rootFrame.isAttachedToWindow() && windowParams != null) {
+                windowParams.width = dp(64);
+                windowParams.height = dp(64);
+                windowManager.updateViewLayout(rootFrame, windowParams);
+            }
+        } catch (Exception ignored) {}
     }
 
     public void destroy() {

@@ -217,6 +217,8 @@ public class Floater {
             rootFrame.requestLayout();
             try {
                 if (windowManager != null && rootFrame.isAttachedToWindow()) {
+                    windowManagerParams.width = menuWidth;
+                    windowManagerParams.height = menuHeight;
                     if (savedMenuX >= 0 && savedMenuY >= 0 && !isLogoDragged) {
                         windowManagerParams.x = savedMenuX;
                         windowManagerParams.y = savedMenuY;
@@ -248,6 +250,9 @@ public class Floater {
             rootFrame.requestLayout();
             try {
                 if (windowManager != null && rootFrame.isAttachedToWindow()) {
+                    int logoBox = FloaterStyles.dp(context, 76);
+                    windowManagerParams.width = logoBox;
+                    windowManagerParams.height = logoBox;
                     windowManager.updateViewLayout(rootFrame, windowManagerParams);
                 }
             } catch (Exception ignored) {}
@@ -317,16 +322,14 @@ public class Floater {
 
     @SuppressLint("ClickableViewAccessibility")
     public void onCreateSystemWindow() {
-        int layoutFlag = getLayoutType();
-
+        int logoBox = FloaterStyles.dp(context, 76);
         windowManagerParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                logoBox,
+                logoBox,
                 layoutFlag,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
         windowManagerParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
-        windowManagerParams.alpha = 0.80f; // Android 12+ Untrusted Touch Filter threshold <= 0.80 prevents OS touch blocking
         windowManagerParams.gravity = Gravity.TOP | Gravity.LEFT;
         windowManagerParams.x = 40;
         windowManagerParams.y = 120;
@@ -1033,11 +1036,12 @@ public class Floater {
                     layoutFlag,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                     PixelFormat.TRANSLUCENT
             );
             windowManagerDrawViewParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
-            windowManagerDrawViewParams.alpha = 0.80f; // Android 12+ Untrusted Touch Filter compliance
             windowManagerDrawViewParams.gravity = Gravity.TOP | Gravity.START;
             windowManagerDrawViewParams.x = 0;
             windowManagerDrawViewParams.y = 0;
