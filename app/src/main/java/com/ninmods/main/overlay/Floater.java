@@ -322,6 +322,7 @@ public class Floater {
 
     @SuppressLint("ClickableViewAccessibility")
     public void onCreateSystemWindow() {
+        int layoutFlag = getLayoutType();
         int logoBox = FloaterStyles.dp(context, 76);
         windowManagerParams = new WindowManager.LayoutParams(
                 logoBox,

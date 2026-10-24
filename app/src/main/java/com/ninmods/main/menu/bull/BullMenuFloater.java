@@ -485,8 +485,8 @@ public class BullMenuFloater {
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
         try {
             if (windowManager != null && rootFrame != null && rootFrame.isAttachedToWindow() && windowParams != null) {
-                windowParams.width = menuWidth;
-                windowParams.height = menuHeight;
+                windowParams.width = WindowManager.LayoutParams.WRAP_CONTENT;
+                windowParams.height = WindowManager.LayoutParams.WRAP_CONTENT;
                 windowManager.updateViewLayout(rootFrame, windowParams);
             }
         } catch (Exception ignored) {}
