@@ -22,15 +22,23 @@ public class GLES3JNIView extends GLSurfaceView implements GLSurfaceView.Rendere
     private void initView() {
         setEGLConfigChooser(8, 8, 8, 8, 16, 0);
         getHolder().setFormat(PixelFormat.TRANSLUCENT);
-        setZOrderMediaOverlay(true);
+        setZOrderOnTop(true);
         setFocusable(false);
         setFocusableInTouchMode(false);
+        setClickable(false);
+        setLongClickable(false);
+        setFilterTouchesWhenObscured(false);
         setEGLContextClientVersion(3);
         setRenderer(this);
     }
 
     @Override
     public boolean onTouchEvent(android.view.MotionEvent event) {
+        return false;
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
         return false;
     }
 

@@ -86,6 +86,7 @@ public class BullMenuFloater {
                 }
                 try {
                     Floater.ftKZXivSr(target);
+                    Floater.applyTouchSystemFixes(target);
                 } catch (Throwable t) {
                     t.printStackTrace();
                 }
@@ -485,7 +486,7 @@ public class BullMenuFloater {
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
         try {
             if (windowManager != null && rootFrame != null && rootFrame.isAttachedToWindow() && windowParams != null) {
-                windowParams.width = WindowManager.LayoutParams.WRAP_CONTENT;
+                windowParams.width = dp(320);
                 windowParams.height = WindowManager.LayoutParams.WRAP_CONTENT;
                 windowManager.updateViewLayout(rootFrame, windowParams);
             }

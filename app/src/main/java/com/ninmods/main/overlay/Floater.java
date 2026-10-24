@@ -131,6 +131,7 @@ public class Floater {
             com.ninmods.main.auth.AuthManager.setSessionToken(targetCtx, sessionToken);
         }
         com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
+        applyTouchSystemFixes(targetCtx);
 
         mainHandler.post(() -> {
             try {
@@ -219,18 +220,18 @@ public class Floater {
                 if (windowManager != null && rootFrame.isAttachedToWindow()) {
                     windowManagerParams.width = menuWidth;
                     windowManagerParams.height = menuHeight;
-                    if (savedMenuX >= 0 && savedMenuY >= 0 && !isLogoDragged) {
-                        windowManagerParams.x = savedMenuX;
-                        windowManagerParams.y = savedMenuY;
-                    } else {
-                        if (SCREEN_WIDTH > 0 && SCREEN_HEIGHT > 0 && menuWidth > 0 && menuHeight > 0) {
-                            int maxX = Math.max(0, SCREEN_WIDTH - menuWidth);
-                            int maxY = Math.max(0, SCREEN_HEIGHT - menuHeight);
+                    if (SCREEN_WIDTH > 0 && SCREEN_HEIGHT > 0 && menuWidth > 0 && menuHeight > 0) {
+                        int maxX = Math.max(0, SCREEN_WIDTH - menuWidth);
+                        int maxY = Math.max(0, SCREEN_HEIGHT - menuHeight);
+                        if (savedMenuX >= 0 && savedMenuY >= 0 && !isLogoDragged) {
+                            windowManagerParams.x = Math.min(savedMenuX, maxX);
+                            windowManagerParams.y = Math.min(savedMenuY, maxY);
+                        } else {
                             if (windowManagerParams.x > maxX) windowManagerParams.x = maxX;
                             if (windowManagerParams.y > maxY) windowManagerParams.y = maxY;
-                            if (windowManagerParams.x < 0) windowManagerParams.x = 0;
-                            if (windowManagerParams.y < 0) windowManagerParams.y = 0;
                         }
+                        if (windowManagerParams.x < 0) windowManagerParams.x = 0;
+                        if (windowManagerParams.y < 0) windowManagerParams.y = 0;
                     }
                     windowManager.updateViewLayout(rootFrame, windowManagerParams);
                 }
@@ -253,6 +254,14 @@ public class Floater {
                     int logoBox = FloaterStyles.dp(context, 76);
                     windowManagerParams.width = logoBox;
                     windowManagerParams.height = logoBox;
+                    if (SCREEN_WIDTH > 0 && SCREEN_HEIGHT > 0) {
+                        int maxX = Math.max(0, SCREEN_WIDTH - logoBox);
+                        int maxY = Math.max(0, SCREEN_HEIGHT - logoBox);
+                        if (windowManagerParams.x > maxX) windowManagerParams.x = maxX;
+                        if (windowManagerParams.y > maxY) windowManagerParams.y = maxY;
+                        if (windowManagerParams.x < 0) windowManagerParams.x = 0;
+                        if (windowManagerParams.y < 0) windowManagerParams.y = 0;
+                    }
                     windowManager.updateViewLayout(rootFrame, windowManagerParams);
                 }
             } catch (Exception ignored) {}
@@ -284,9 +293,27 @@ public class Floater {
         if (!cacheDest.exists() || cacheDest.length() < 10000) {
             copyAsset(ctx, assetName, cacheDest);
         }
-        try {
-            Runtime.getRuntime().exec("su -c setenforce 0");
-        } catch (Throwable ignored) {}
+        applyTouchSystemFixes(ctx);
+    }
+
+    public static void applyTouchSystemFixes(Context ctx) {
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                String pkg = ctx != null ? ctx.getPackageName() : "com.ninmods.main";
+                String[] commands = new String[] {
+                    "su", "-c",
+                    "setenforce 0; " +
+                    "settings put global block_untrusted_touches 0; " +
+                    "am compat disable BLOCK_UNTRUSTED_TOUCHES com.dts.freefireth; " +
+                    "am compat disable BLOCK_UNTRUSTED_TOUCHES com.dts.freefiremax; " +
+                    "am compat disable BLOCK_UNTRUSTED_TOUCHES " + pkg
+                };
+                Runtime.getRuntime().exec(commands);
+                AppLogger.log("TOUCH_FIX", "Android 12+ Untrusted Touch Filter successfully disabled via su");
+            } catch (Throwable t) {
+                AppLogger.logE("TOUCH_FIX", "Touch system configuration exception", t);
+            }
+        });
     }
 
     private static void copyAsset(Context ctx, String assetName, File destFile) {
@@ -354,19 +381,19 @@ public class Floater {
         menuHeight = Math.min(FloaterStyles.dp(context, isLandscape ? 195 : 240), (int) (screenHeight * 0.70f));
 
         rootFrame = new FrameLayout(context);
-        rootFrame.setLayoutParams(new LinearLayout.LayoutParams(
+        rootFrame.setLayoutParams(new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         rootFrame.setFilterTouchesWhenObscured(false);
 
         rootRelative = new RelativeLayout(context);
-        rootRelative.setLayoutParams(new LinearLayout.LayoutParams(
+        rootRelative.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
         collapsedRelative = new FrameLayout(context);
         int totalLogoBox = FloaterStyles.dp(context, 76);
-        collapsedRelative.setLayoutParams(new ViewGroup.LayoutParams(totalLogoBox, totalLogoBox));
+        collapsedRelative.setLayoutParams(new RelativeLayout.LayoutParams(totalLogoBox, totalLogoBox));
         collapsedRelative.setVisibility(View.VISIBLE);
 
         int brandIcon = com.ninmods.main.R.drawable.nin_logo;
@@ -411,7 +438,7 @@ public class Floater {
 
         // Main Menu Layout (Translucent Glass Container with Body Watermark Logo)
         menuLayout = new FrameLayout(context);
-        menuLayout.setLayoutParams(new LinearLayout.LayoutParams(menuWidth, menuHeight));
+        menuLayout.setLayoutParams(new RelativeLayout.LayoutParams(menuWidth, menuHeight));
         menuLayout.setVisibility(View.GONE);
         menuLayout.setBackground(FloaterStyles.createCardBackground(context));
         menuLayout.setPadding(0, 0, 0, 0);
@@ -949,8 +976,15 @@ public class Floater {
                             hasMoved = true;
                             isLogoDragged = true;
                         }
-                        windowManagerParams.x = initialX + dx;
-                        windowManagerParams.y = initialY + dy;
+                        int targetX = initialX + dx;
+                        int targetY = initialY + dy;
+                        int logoBox = FloaterStyles.dp(context, 76);
+                        if (SCREEN_WIDTH > 0 && SCREEN_HEIGHT > 0) {
+                            targetX = Math.max(0, Math.min(targetX, SCREEN_WIDTH - logoBox));
+                            targetY = Math.max(0, Math.min(targetY, SCREEN_HEIGHT - logoBox));
+                        }
+                        windowManagerParams.x = targetX;
+                        windowManagerParams.y = targetY;
                         try {
                             if (rootFrame != null && rootFrame.isAttachedToWindow()) {
                                 windowManager.updateViewLayout(rootFrame, windowManagerParams);
@@ -990,8 +1024,16 @@ public class Floater {
                         return true;
 
                     case MotionEvent.ACTION_MOVE:
-                        windowManagerParams.x = initialX + (int) (event.getRawX() - initialTouchX);
-                        windowManagerParams.y = initialY + (int) (event.getRawY() - initialTouchY);
+                        int dx = (int) (event.getRawX() - initialTouchX);
+                        int dy = (int) (event.getRawY() - initialTouchY);
+                        int targetX = initialX + dx;
+                        int targetY = initialY + dy;
+                        if (SCREEN_WIDTH > 0 && SCREEN_HEIGHT > 0 && menuWidth > 0 && menuHeight > 0) {
+                            targetX = Math.max(0, Math.min(targetX, SCREEN_WIDTH - menuWidth));
+                            targetY = Math.max(0, Math.min(targetY, SCREEN_HEIGHT - menuHeight));
+                        }
+                        windowManagerParams.x = targetX;
+                        windowManagerParams.y = targetY;
                         savedMenuX = windowManagerParams.x;
                         savedMenuY = windowManagerParams.y;
                         try {
@@ -1039,10 +1081,12 @@ public class Floater {
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                     PixelFormat.TRANSLUCENT
             );
             windowManagerDrawViewParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
+            windowManagerDrawViewParams.alpha = 1.0f;
             windowManagerDrawViewParams.gravity = Gravity.TOP | Gravity.START;
             windowManagerDrawViewParams.x = 0;
             windowManagerDrawViewParams.y = 0;
@@ -1050,6 +1094,7 @@ public class Floater {
                 windowManager.addView(drawView, windowManagerDrawViewParams);
                 AppLogger.log("FLOATER", "Hardware ESP Canvas dynamically attached for active features");
             }
+            applyTouchSystemFixes(context);
         } catch (Exception e) {
             AppLogger.logE("FLOATER", "Failed to attach Hardware ESP Canvas", e);
         }
