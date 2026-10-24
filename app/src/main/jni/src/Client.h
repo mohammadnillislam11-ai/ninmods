@@ -49,7 +49,7 @@ struct Response {
 int startClient(){
     signal(SIGPIPE, SIG_IGN);
     NIN_LOGI("CLIENT", "startClient() connecting to daemon (Dual-Channel: UNIX \\0%s / TCP %s:%d)...", SOCKET_NAME, TCP_HOST, TCP_PORT);
-    client = SocketClient();
+    client.Close();
     if (!client.Create()) {
         NIN_LOGE("CLIENT", "SocketClient::Create failed!");
         return -1;
