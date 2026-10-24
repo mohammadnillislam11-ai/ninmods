@@ -39,6 +39,7 @@
 #include "imgui_impl_opengl3.h"
 #include "UI/NativeOverlayController.h"
 #include "UI/MenuRouter.h"
+#include "UI/Popups/LicensePopup.h"
 
 
 // ============================================
