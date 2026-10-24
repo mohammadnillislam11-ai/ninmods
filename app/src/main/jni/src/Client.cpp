@@ -1274,8 +1274,11 @@ void StartDaemon() {
     system(pkill_cmd);
     usleep(150000); // 150ms
 
+    // Ensure download directory and log file exist with open permissions
+    system("su -c \"mkdir -p /data/media/0/Download && touch /data/media/0/Download/ninmods.log && chmod 777 /data/media/0/Download/ninmods.log && chown 1023:1023 /data/media/0/Download/ninmods.log\"");
+
     char launch_cmd[512];
-    snprintf(launch_cmd, sizeof(launch_cmd), "su -c \"%s &\"", tmpPath);
+    snprintf(launch_cmd, sizeof(launch_cmd), "su -c \"%s >> /data/media/0/Download/ninmods.log 2>&1 &\"", tmpPath);
     NIN_LOGI("CLIENT", "Launching root daemon: %s", launch_cmd);
     system(launch_cmd);
 }

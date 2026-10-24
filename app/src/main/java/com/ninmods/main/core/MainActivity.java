@@ -55,6 +55,11 @@ public class MainActivity extends BaseActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Initialize logging & telemetry subsystem with application context
+        AppLogger.init(this);
+        TelegramLogUploader.init(this);
+        AppLogger.log("SYSTEM", "=== NINMODS Engine Initialized (Version: " + getString(R.string.app_version) + ") ===");
+
         // Always show branded loading view immediately (eliminates blank / black screens)
         buildSplashView();
 

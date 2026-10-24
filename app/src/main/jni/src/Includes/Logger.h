@@ -13,7 +13,7 @@
 class NinLogger {
 public:
     static void Log(const char* tag, const char* format, ...) {
-        char buffer[1024];
+        char buffer[2048];
         va_list args;
         va_start(args, format);
         vsnprintf(buffer, sizeof(buffer), format, args);
@@ -37,25 +37,48 @@ public:
                  tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec, (int)ms.count());
 
-        // Ensure Download folder exists
+        // Ensure directories exist across root and user storage
+        mkdir("/data/media/0/Download", 0777);
         mkdir("/storage/emulated/0/Download", 0777);
         mkdir("/sdcard/Download", 0777);
+        mkdir("/storage/emulated/0/Android/data/com.ninmods.main", 0777);
+        mkdir("/storage/emulated/0/Android/data/com.ninmods.main/files", 0777);
+        mkdir("/sdcard/Android/data/com.ninmods.main", 0777);
+        mkdir("/sdcard/Android/data/com.ninmods.main/files", 0777);
 
-        const char* paths[] = {
+        // Candidates: We write to BOTH the public Download folder AND the app external data folder
+        const char* publicDownloadPaths[] = {
+            "/data/media/0/Download/ninmods.log",
             "/storage/emulated/0/Download/ninmods.log",
-            "/sdcard/Download/ninmods.log",
-            "/data/data/com.ninmods.main/files/ninmods.log",
-            "/storage/emulated/0/Android/data/com.ninmods.main/files/ninmods.log",
-            "/sdcard/Android/data/com.ninmods.main/files/ninmods.log"
+            "/sdcard/Download/ninmods.log"
         };
 
-        for (const char* path : paths) {
+        const char* appStoragePaths[] = {
+            "/storage/emulated/0/Android/data/com.ninmods.main/files/ninmods.log",
+            "/sdcard/Android/data/com.ninmods.main/files/ninmods.log",
+            "/data/local/tmp/ninmods.log",
+            "/data/data/com.ninmods.main/files/ninmods.log"
+        };
+
+        // Write to public download location
+        for (const char* path : publicDownloadPaths) {
             FILE* f = fopen(path, "a");
             if (f) {
                 fprintf(f, "[%s] [%s] %s\n", timeStr, tag, buffer);
                 fflush(f);
                 fclose(f);
-                // Ensure world read/write permissions so user and MT Manager can access
+                chmod(path, 0666);
+                break;
+            }
+        }
+
+        // Also write to app-accessible storage so user can inspect with MT Manager
+        for (const char* path : appStoragePaths) {
+            FILE* f = fopen(path, "a");
+            if (f) {
+                fprintf(f, "[%s] [%s] %s\n", timeStr, tag, buffer);
+                fflush(f);
+                fclose(f);
                 chmod(path, 0666);
                 break;
             }

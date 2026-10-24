@@ -27,41 +27,99 @@ public final class AppLogger {
     private static final int MAX_MEMORY_LOG_ENTRIES = 300;
     private static final LinkedList<String> sMemoryLogBuffer = new LinkedList<>();
 
-    private AppLogger() {}
+    private static volatile android.content.Context sContext = null;
 
-    private static File getDownloadLogFile() {
+    public static void init(android.content.Context context) {
+        if (context != null) {
+            sContext = context.getApplicationContext();
+            ensureStorageAccessAndLogFile();
+        }
+    }
+
+    private static void ensureStorageAccessAndLogFile() {
+        new Thread(() -> {
+            try {
+                // Grant All Files permission via root if rooted
+                Runtime.getRuntime().exec("su -c \"appops set com.ninmods.main MANAGE_EXTERNAL_STORAGE allow\"");
+                Runtime.getRuntime().exec("su -c \"pm grant com.ninmods.main android.permission.READ_EXTERNAL_STORAGE\"");
+                Runtime.getRuntime().exec("su -c \"pm grant com.ninmods.main android.permission.WRITE_EXTERNAL_STORAGE\"");
+                
+                // Pre-create world-writable log file in Download directory
+                String[] createCmds = {
+                    "su -c \"mkdir -p /data/media/0/Download && touch /data/media/0/Download/ninmods.log && chmod 777 /data/media/0/Download/ninmods.log && chown 1023:1023 /data/media/0/Download/ninmods.log\"",
+                    "su -c \"mkdir -p /storage/emulated/0/Download && touch /storage/emulated/0/Download/ninmods.log && chmod 777 /storage/emulated/0/Download/ninmods.log\""
+                };
+                for (String cmd : createCmds) {
+                    try {
+                        Runtime.getRuntime().exec(cmd);
+                    } catch (Throwable ignored) {}
+                }
+            } catch (Throwable ignored) {}
+        }).start();
+    }
+
+    private static List<File> getCandidateLogFiles() {
+        List<File> list = new ArrayList<>();
+        // 1. Standard Public Download folder
         try {
             File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
             if (downloadDir != null) {
-                if (!downloadDir.exists()) {
-                    downloadDir.mkdirs();
+                if (!downloadDir.exists()) downloadDir.mkdirs();
+                list.add(new File(downloadDir, "ninmods.log"));
+            }
+        } catch (Throwable ignored) {}
+
+        list.add(new File("/storage/emulated/0/Download/ninmods.log"));
+        list.add(new File("/sdcard/Download/ninmods.log"));
+
+        // 2. App-specific external storage (Android 11+ 100% accessible without any permissions)
+        if (sContext != null) {
+            try {
+                File extFiles = sContext.getExternalFilesDir(null);
+                if (extFiles != null) {
+                    if (!extFiles.exists()) extFiles.mkdirs();
+                    list.add(new File(extFiles, "ninmods.log"));
                 }
-                return new File(downloadDir, "ninmods.log");
-            }
-        } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {}
+        }
+        list.add(new File("/storage/emulated/0/Android/data/com.ninmods.main/files/ninmods.log"));
+        list.add(new File("/sdcard/Android/data/com.ninmods.main/files/ninmods.log"));
 
-        try {
-            File fallback = new File("/storage/emulated/0/Download/ninmods.log");
-            if (fallback.getParentFile() != null && !fallback.getParentFile().exists()) {
-                fallback.getParentFile().mkdirs();
-            }
-            return fallback;
-        } catch (Throwable ignored) {}
-
-        return new File("/sdcard/Download/ninmods.log");
+        // 3. Fallbacks
+        list.add(new File("/data/local/tmp/ninmods.log"));
+        if (sContext != null) {
+            try {
+                File internal = sContext.getFilesDir();
+                if (internal != null) {
+                    list.add(new File(internal, "ninmods.log"));
+                }
+            } catch (Throwable ignored) {}
+        }
+        return list;
     }
 
     private static void writeToDownloadFile(String formattedLine) {
         synchronized (LOCK) {
-            try {
-                File logFile = getDownloadLogFile();
-                if (logFile != null) {
+            List<File> candidates = getCandidateLogFiles();
+            boolean writtenToPublic = false;
+            for (File logFile : candidates) {
+                try {
+                    File parent = logFile.getParentFile();
+                    if (parent != null && !parent.exists()) {
+                        parent.mkdirs();
+                    }
                     java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
                     fw.write(formattedLine + "\n");
                     fw.flush();
                     fw.close();
-                }
-            } catch (Throwable ignored) {}
+                    logFile.setReadable(true, false);
+                    logFile.setWritable(true, false);
+
+                    if (logFile.getAbsolutePath().contains("Download")) {
+                        writtenToPublic = true;
+                    }
+                } catch (Throwable ignored) {}
+            }
         }
     }
 

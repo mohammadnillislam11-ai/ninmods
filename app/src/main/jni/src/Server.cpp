@@ -528,18 +528,32 @@ void CreateDataList(Response& SendResponse) {
         0x0C21AC20ULL              // OB55 Alt
     };
 
-    // 0. Direct Dynamic Method Inspection (Mayur OB55: Current_Match = 0x75ebd88)
-    uintptr_t mayurMatchStatic = DecodeAdrpLdr(libAddress + Offsets::Mayur::Current_Match);
-    if (IsValidUserPointer64(mayurMatchStatic)) {
-        uintptr_t candMatch = Read<uintptr_t>(mayurMatchStatic);
-        if (IsValidUserPointer64(candMatch)) {
-            const uintptr_t testLpOffsets[] = { 0xD8, 0x94, 0x110, 0x88 };
-            for (uintptr_t off : testLpOffsets) {
-                uintptr_t lp = Read<uintptr_t>(candMatch + off);
-                if (IsValidPlayerObject(lp)) {
-                    localPlayer = lp;
-                    m_Match = candMatch;
-                    break;
+    // 0. Direct Dynamic Method Inspection from live dumped RVAs (Current_Match & CurrentLocalPlayer)
+    if (!localPlayer) {
+        uintptr_t mayurLpStatic = DecodeAdrpLdr(libAddress + Offsets::Mayur::GetLocalPlayer);
+        if (IsValidUserPointer64(mayurLpStatic)) {
+            uintptr_t candLp = Read<uintptr_t>(mayurLpStatic);
+            if (IsValidPlayerObject(candLp)) {
+                localPlayer = candLp;
+                NIN_LOGI("DAEMON_ESP", "Found LocalPlayer via live RVA_GameFacade_CurrentLocalPlayer (0x%lx)", (unsigned long)localPlayer);
+            }
+        }
+    }
+
+    if (!localPlayer) {
+        uintptr_t mayurMatchStatic = DecodeAdrpLdr(libAddress + Offsets::Mayur::Current_Match);
+        if (IsValidUserPointer64(mayurMatchStatic)) {
+            uintptr_t candMatch = Read<uintptr_t>(mayurMatchStatic);
+            if (IsValidUserPointer64(candMatch)) {
+                const uintptr_t testLpOffsets[] = { 0xD8, 0x94, 0x110, 0x88 };
+                for (uintptr_t off : testLpOffsets) {
+                    uintptr_t lp = Read<uintptr_t>(candMatch + off);
+                    if (IsValidPlayerObject(lp)) {
+                        localPlayer = lp;
+                        m_Match = candMatch;
+                        NIN_LOGI("DAEMON_ESP", "Found LocalPlayer via live RVA_GameFacade_CurrentMatch (0x%lx, lp: 0x%lx)", (unsigned long)m_Match, (unsigned long)localPlayer);
+                        break;
+                    }
                 }
             }
         }

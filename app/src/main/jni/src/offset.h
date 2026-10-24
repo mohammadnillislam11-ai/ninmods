@@ -260,7 +260,7 @@ namespace Offsets {
         // Player Offsets (Live dump from ninmods_offsets.h)
         constexpr uintptr_t MainCam        = 0x3E8ULL;       // Live dump OFFSET_Player_MainCameraTransform
         constexpr uintptr_t GetLocalPlayer = 0x16bad10cULL;  // Live dump RVA_GameFacade_CurrentLocalPlayer
-        constexpr uintptr_t Current_Match  = 0x16baa1c8ULL;  // Live dump RVA_GameFacade_SetCurrentGame
+        constexpr uintptr_t Current_Match  = 0x16bacd10ULL;  // Live dump RVA_GameFacade_CurrentMatch (args: 0)
         constexpr uintptr_t ListPlayer     = 0x148;
         constexpr uintptr_t m_ShortIDToPlayers = 0x148;
 
