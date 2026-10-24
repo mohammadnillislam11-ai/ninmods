@@ -197,42 +197,6 @@ public class Floater {
         if (menuLayout != null) menuLayout.setVisibility(View.VISIBLE);
         updateScreenDimensions();
         updateKernelStatusBadge();
-    }
-
-    public void updateKernelStatusBadge() {
-        if (kernelStatusBadge == null || context == null) return;
-        mainHandler.post(() -> {
-            boolean active = DriverManager.isDriverActive();
-            String activeNode = DriverManager.getActiveDriverNode();
-            GradientDrawable badgeBg = new GradientDrawable();
-            badgeBg.setShape(GradientDrawable.RECTANGLE);
-            badgeBg.setCornerRadius(FloaterStyles.dp(context, 9));
-
-            if (active) {
-                badgeBg.setColor(0x2A00E676); // Subtle translucent neon green
-                badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFF00E676); // 1dp neon green border
-                kernelStatusBadge.setBackground(badgeBg);
-                kernelStatusBadge.setTextColor(0xFF00E676);
-                kernelStatusBadge.setText("● KERNEL ONLINE");
-            } else {
-                badgeBg.setColor(0x2AFF1744); // Subtle translucent neon red
-                badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFFFF5252); // 1dp neon red border
-                kernelStatusBadge.setBackground(badgeBg);
-                kernelStatusBadge.setTextColor(0xFFFF5252);
-                kernelStatusBadge.setText("● KERNEL OFFLINE");
-            }
-
-            kernelStatusBadge.setOnClickListener(v -> {
-                boolean curActive = DriverManager.isDriverActive();
-                String curNode = DriverManager.getActiveDriverNode();
-                String msg = curActive
-                        ? ("Kernel Driver: ONLINE\nActive Node: " + (curNode != null ? curNode : "/dev/BYNb"))
-                        : "Kernel Driver: OFFLINE\nPlease run Driver Loader app";
-                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show();
-                updateKernelStatusBadge();
-            });
-        });
-    }
 
         boolean isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
         // Dynamically compute expansive width so sliders have ample space, while strictly preserving original compact height
@@ -275,6 +239,41 @@ public class Floater {
                 }
             } catch (Exception ignored) {}
         }
+    }
+
+    public void updateKernelStatusBadge() {
+        if (kernelStatusBadge == null || context == null) return;
+        mainHandler.post(() -> {
+            boolean active = DriverManager.isDriverActive();
+            String activeNode = DriverManager.getActiveDriverNode();
+            GradientDrawable badgeBg = new GradientDrawable();
+            badgeBg.setShape(GradientDrawable.RECTANGLE);
+            badgeBg.setCornerRadius(FloaterStyles.dp(context, 9));
+
+            if (active) {
+                badgeBg.setColor(0x2A00E676); // Subtle translucent neon green
+                badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFF00E676); // 1dp neon green border
+                kernelStatusBadge.setBackground(badgeBg);
+                kernelStatusBadge.setTextColor(0xFF00E676);
+                kernelStatusBadge.setText("● KERNEL ONLINE");
+            } else {
+                badgeBg.setColor(0x2AFF1744); // Subtle translucent neon red
+                badgeBg.setStroke(FloaterStyles.dp(context, 1), 0xFFFF5252); // 1dp neon red border
+                kernelStatusBadge.setBackground(badgeBg);
+                kernelStatusBadge.setTextColor(0xFFFF5252);
+                kernelStatusBadge.setText("● KERNEL OFFLINE");
+            }
+
+            kernelStatusBadge.setOnClickListener(v -> {
+                boolean curActive = DriverManager.isDriverActive();
+                String curNode = DriverManager.getActiveDriverNode();
+                String msg = curActive
+                        ? ("Kernel Driver: ONLINE\nActive Node: " + (curNode != null ? curNode : "/dev/BYNb"))
+                        : "Kernel Driver: OFFLINE\nPlease run Driver Loader app";
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show();
+                updateKernelStatusBadge();
+            });
+        });
     }
 
     public void closeMenu() {
