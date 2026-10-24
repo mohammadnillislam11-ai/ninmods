@@ -33,8 +33,7 @@ public class DriverManager {
     public static final String[] CANDIDATE_DRIVER_NODES = {
             "/dev/BYNb",
             "/dev/mem_tool",
-            "/proc/uevents_records",
-            "/proc/sched_debug"
+            "/proc/uevents_records"
     };
 
     static {
@@ -79,6 +78,12 @@ public class DriverManager {
      * Checks if any of the Ring 0 Driver character device nodes are open and accessible.
      */
     public static boolean isDriverActive() {
+        try {
+            DriverInfo info = inquireDriverInfo(null);
+            if (info != null && info.isActive) {
+                return true;
+            }
+        } catch (Throwable ignored) {}
         for (String node : CANDIDATE_DRIVER_NODES) {
             File f = new File(node);
             if (f.exists() && f.canRead()) {
@@ -92,6 +97,12 @@ public class DriverManager {
      * Returns the path of the currently active driver node.
      */
     public static String getActiveDriverNode() {
+        try {
+            DriverInfo info = inquireDriverInfo(null);
+            if (info != null && info.isActive && info.activeNode != null && !info.activeNode.equals("None")) {
+                return info.activeNode;
+            }
+        } catch (Throwable ignored) {}
         for (String node : CANDIDATE_DRIVER_NODES) {
             File f = new File(node);
             if (f.exists()) {

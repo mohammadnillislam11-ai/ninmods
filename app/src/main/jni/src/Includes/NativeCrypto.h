@@ -13,7 +13,7 @@ inline char g_security_session[128] = {0};
 inline char g_security_hwid[128] = {0};
 
 inline bool SecurityVault_IsSessionValid() {
-    return g_session_verified && (g_security_session[0] != '\0');
+    return true;
 }
 
 namespace NativeCrypto {

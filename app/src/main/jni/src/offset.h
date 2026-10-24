@@ -67,11 +67,8 @@ constexpr uintptr_t EAimAssistState = 0x668;
 constexpr uintptr_t AimTarget = 0x670;
 constexpr uintptr_t WeaponRelated = 0x680;
 constexpr uintptr_t Player_BulletInfo = 0xE60;
-}
+} // namespace Normal
 
-// ====================================================
-// FREE FIRE MAX (com.dts.freefiremax)
-// ====================================================
 namespace Max {
 constexpr uintptr_t GameFacade = 0xAD68E18;
 constexpr uintptr_t GameFacade_P2 = 0xB8;
@@ -117,7 +114,7 @@ constexpr uintptr_t Bone_LeftHand = 0x728;
 constexpr uintptr_t Bone_RightHand = 0x720;
 constexpr uintptr_t Bone_LeftAnkle = 0x6E0;
 constexpr uintptr_t Bone_RightAnkle = 0x6E8;
-}
+} // namespace Max
 
 // ====================================================
 // UNIFIED ADAPTIVE OFFSETS (Supports Both Normal & MAX)
@@ -320,5 +317,4 @@ constexpr uintptr_t WeaponId = 0x40;
 constexpr uintptr_t EnemyPosForce = 0x900;
 constexpr uintptr_t StringLen = 0x10;
 constexpr uintptr_t StringChars = 0x14;
-}
-
+} // namespace Offsets

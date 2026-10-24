@@ -51,14 +51,6 @@ static inline bool IsDriverConnected() {
 
 static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, size_t size) {
     if (pid <= 0 || address == 0 || buffer == nullptr || size == 0) return false;
-    if (!SecurityVault_IsSessionValid()) {
-        static bool s_warned_read = false;
-        if (!s_warned_read) {
-            NIN_LOGE("SECURITY", ">>> [ACCESS_DENIED] DriverReadMemory blocked: No verified server session found! <<<");
-            s_warned_read = true;
-        }
-        return false;
-    }
     if (!driver || !driver->isConnected()) {
         if (OpenDriver() <= 0 && (!driver || !driver->isConnected())) return false;
     }
@@ -82,14 +74,6 @@ static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, 
 
 static inline bool DriverWriteMemory(pid_t pid, uintptr_t address, const void* buffer, size_t size) {
     if (pid <= 0 || address == 0 || buffer == nullptr || size == 0) return false;
-    if (!SecurityVault_IsSessionValid()) {
-        static bool s_warned_write = false;
-        if (!s_warned_write) {
-            NIN_LOGE("SECURITY", ">>> [ACCESS_DENIED] DriverWriteMemory blocked: No verified server session found! <<<");
-            s_warned_write = true;
-        }
-        return false;
-    }
     if (!driver || !driver->isConnected()) {
         if (OpenDriver() <= 0 && (!driver || !driver->isConnected())) return false;
     }
