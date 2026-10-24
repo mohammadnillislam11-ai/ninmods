@@ -6,6 +6,7 @@ import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -20,8 +21,10 @@ import com.ninmods.main.graphics.GLES3JNIView;
 
 /**
  * NativeOverlayManager coordinates the 100% C++ Dear ImGui Overlay Engine.
- * Replaces legacy Java Floater overlays with direct hardware accelerated
- * EGL / OpenGL ES 3.0 surfaces and native event routing.
+ * Dynamically switches between:
+ *  1. Compact 76dp Floating Logo (draggable, non-blocking, zero screen freeze)
+ *  2. Centered Modal Dialog (for License Verification & Driver Status Alerts)
+ *  3. Responsive Tactical Brand Menu (touchable, scalable DPI, top header controls)
  */
 public class NativeOverlayManager {
     private static final String TAG = "NativeOverlayManager";
@@ -33,11 +36,51 @@ public class NativeOverlayManager {
     private GLES3JNIView mOverlayView;
     private WindowManager.LayoutParams mParams;
     private boolean mIsAttached = false;
+    private boolean mIsMenuOpen = false;
+    private boolean mIsModalOpen = false;
     private String mActiveBrandId = "nin";
+
+    // Logo coordinates and dimensions
+    private int mLogoX = 60;
+    private int mLogoY = 240;
+    private int mLogoSizePx = 180;
+    private float mDensity = 2.4f;
+
+    private final Runnable mStateSyncRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (mIsAttached && mOverlayView != null) {
+                boolean modalActive = NativeBridge.isModalPopupActive();
+                boolean nativeOpen = NativeBridge.isMenuOpen();
+
+                if (modalActive) {
+                    if (!mIsModalOpen) {
+                        openModalDialog();
+                    }
+                } else if (nativeOpen) {
+                    if (!mIsMenuOpen) {
+                        openMenu();
+                    }
+                } else {
+                    if (mIsModalOpen || mIsMenuOpen) {
+                        collapseToLogo();
+                    }
+                }
+                mMainHandler.postDelayed(this, 80);
+            }
+        }
+    };
 
     private NativeOverlayManager(Context context) {
         mContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
         mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
+        try {
+            mDensity = mContext.getResources().getDisplayMetrics().density;
+            if (mDensity < 1.5f) mDensity = 2.0f;
+            mLogoSizePx = (int) (76 * mDensity);
+        } catch (Throwable t) {
+            mLogoSizePx = 180;
+        }
     }
 
     public static synchronized NativeOverlayManager getInstance(Context context) {
@@ -45,6 +88,10 @@ public class NativeOverlayManager {
             sInstance = new NativeOverlayManager(context);
         }
         return sInstance;
+    }
+
+    public static Context getContext() {
+        return sInstance != null ? sInstance.mContext : null;
     }
 
     public static void start(Context context, String brandId) {
@@ -70,11 +117,14 @@ public class NativeOverlayManager {
         mActiveBrandId = (brandId != null && !brandId.isEmpty()) ? brandId : "nin";
         mMainHandler.post(() -> {
             try {
+                String hwid = AuthApiController.getHwid(mContext);
+                boolean hasActiveLicense = AuthManager.hasActiveLicense(mContext);
+                String activeKey = AuthManager.getActiveLicenseKey(mContext);
+                String serverUrl = AuthApiController.getServerBaseUrl(mContext);
+
                 if (mIsAttached && mOverlayView != null) {
                     AppLogger.log(TAG, "Re-routing running native overlay to brand: " + mActiveBrandId);
-                    String hwid = AuthApiController.getHwid(mContext);
-                    boolean hasActiveLicense = AuthManager.hasActiveLicense(mContext);
-                    NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense);
+                    NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense, mDensity, activeKey, serverUrl);
                     return;
                 }
 
@@ -85,40 +135,206 @@ public class NativeOverlayManager {
                     layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
                 }
 
+                // If user does not have active license, launch directly in modal dialog mode
+                int initialW = hasActiveLicense ? mLogoSizePx : (int) (380 * mDensity);
+                int initialH = hasActiveLicense ? mLogoSizePx : (int) (300 * mDensity);
+                int initialGravity = hasActiveLicense ? (Gravity.TOP | Gravity.START) : Gravity.CENTER;
+
                 mParams = new WindowManager.LayoutParams(
-                        WindowManager.LayoutParams.MATCH_PARENT,
-                        WindowManager.LayoutParams.MATCH_PARENT,
+                        initialW,
+                        initialH,
                         layoutFlag,
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
                         WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                         PixelFormat.TRANSLUCENT
                 );
                 mParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
-                mParams.gravity = Gravity.TOP | Gravity.START;
-                mParams.x = 0;
-                mParams.y = 0;
+                mParams.gravity = initialGravity;
+                mParams.x = hasActiveLicense ? mLogoX : 0;
+                mParams.y = hasActiveLicense ? mLogoY : 0;
 
-                // Launch C++ ImGui overlay state machine
-                String hwid = AuthApiController.getHwid(mContext);
-                boolean hasActiveLicense = AuthManager.hasActiveLicense(mContext);
-                NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense);
+                // Launch C++ ImGui overlay state machine with credentials
+                NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense, mDensity, activeKey, serverUrl);
 
                 mOverlayView = new GLES3JNIView(mContext);
-                mOverlayView.setOnTouchListener((v, event) -> {
-                    if (event == null) return false;
-                    int action = event.getActionMasked();
-                    float x = event.getX();
-                    float y = event.getY();
-                    return NativeBridge.handleTouch(action, x, y);
-                });
+                setupTouchListener();
 
                 mWindowManager.addView(mOverlayView, mParams);
                 mIsAttached = true;
-                AppLogger.log(TAG, "Native C++ Dear ImGui Overlay attached successfully for brand: " + mActiveBrandId);
+                mIsMenuOpen = false;
+                mIsModalOpen = !hasActiveLicense;
+
+                mMainHandler.removeCallbacks(mStateSyncRunnable);
+                mMainHandler.postDelayed(mStateSyncRunnable, 200);
+
+                AppLogger.log(TAG, "Native C++ Dear ImGui Overlay attached successfully (License active: " + hasActiveLicense + ")");
             } catch (Throwable t) {
                 AppLogger.logE(TAG, "Failed to start native overlay", t);
+            }
+        });
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private void setupTouchListener() {
+        if (mOverlayView == null) return;
+
+        mOverlayView.setOnTouchListener(new View.OnTouchListener() {
+            private int initialX, initialY;
+            private float initialTouchX, initialTouchY;
+            private boolean isDragging = false;
+            private static final int CLICK_THRESHOLD = 15; // px
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event == null) return false;
+
+                if (!mIsMenuOpen && !mIsModalOpen) {
+                    // ─────────────────────────────────────────────────────────────
+                    // LOGO MODE: Smooth dragging across screen & tap to open menu
+                    // ─────────────────────────────────────────────────────────────
+                    int action = event.getActionMasked();
+                    switch (action) {
+                        case MotionEvent.ACTION_DOWN:
+                            initialX = mParams.x;
+                            initialY = mParams.y;
+                            initialTouchX = event.getRawX();
+                            initialTouchY = event.getRawY();
+                            isDragging = false;
+                            return true;
+
+                        case MotionEvent.ACTION_MOVE:
+                            float dx = event.getRawX() - initialTouchX;
+                            float dy = event.getRawY() - initialTouchY;
+                            if (Math.abs(dx) > CLICK_THRESHOLD || Math.abs(dy) > CLICK_THRESHOLD) {
+                                isDragging = true;
+                                mParams.x = initialX + (int) dx;
+                                mParams.y = initialY + (int) dy;
+                                mLogoX = mParams.x;
+                                mLogoY = mParams.y;
+                                try {
+                                    mWindowManager.updateViewLayout(mOverlayView, mParams);
+                                } catch (Throwable ignored) {}
+                            }
+                            return true;
+
+                        case MotionEvent.ACTION_UP:
+                            if (!isDragging) {
+                                // Tap detected on floating logo: Expand menu!
+                                openMenu();
+                            }
+                            return true;
+                    }
+                    return false;
+                } else {
+                    // ─────────────────────────────────────────────────────────────
+                    // MODAL / MENU MODE: Forward touches directly to Dear ImGui
+                    // ─────────────────────────────────────────────────────────────
+                    int action = event.getActionMasked();
+                    float x = event.getX();
+                    float y = event.getY();
+                    NativeBridge.handleTouch(action, x, y);
+
+                    // Check state changes
+                    if (!NativeBridge.isModalPopupActive() && !NativeBridge.isMenuOpen()) {
+                        collapseToLogo();
+                    }
+                    return true;
+                }
+            }
+        });
+    }
+
+    public void openModalDialog() {
+        if (!mIsAttached || mOverlayView == null) return;
+
+        mMainHandler.post(() -> {
+            try {
+                mIsModalOpen = true;
+                mIsMenuOpen = false;
+
+                DisplayMetrics dm = mContext.getResources().getDisplayMetrics();
+                int screenW = dm.widthPixels;
+                int screenH = dm.heightPixels;
+                boolean isLandscape = screenW > screenH;
+
+                int dialogW = isLandscape ? (int) (screenW * 0.55f) : (int) (screenW * 0.94f);
+                int dialogH = isLandscape ? (int) (screenH * 0.78f) : (int) (screenH * 0.54f);
+
+                int maxW = (int) (460 * dm.density);
+                int maxH = (int) (380 * dm.density);
+                if (dialogW > maxW) dialogW = maxW;
+                if (dialogH > maxH) dialogH = maxH;
+
+                mParams.width = dialogW;
+                mParams.height = dialogH;
+                mParams.gravity = Gravity.CENTER;
+                mParams.x = 0;
+                mParams.y = 0;
+
+                mWindowManager.updateViewLayout(mOverlayView, mParams);
+                AppLogger.log(TAG, "Overlay resized for Modal Dialog (" + dialogW + "x" + dialogH + ")");
+            } catch (Throwable t) {
+                AppLogger.logE(TAG, "Failed to resize modal dialog", t);
+            }
+        });
+    }
+
+    public void openMenu() {
+        if (!mIsAttached || mOverlayView == null || mIsMenuOpen) return;
+
+        mMainHandler.post(() -> {
+            try {
+                NativeBridge.setMenuOpen(true);
+                mIsMenuOpen = true;
+                mIsModalOpen = false;
+
+                DisplayMetrics dm = mContext.getResources().getDisplayMetrics();
+                int screenW = dm.widthPixels;
+                int screenH = dm.heightPixels;
+                boolean isLandscape = screenW > screenH;
+
+                int menuW = isLandscape ? (int) (screenW * 0.62f) : (int) (screenW * 0.92f);
+                int menuH = isLandscape ? (int) (screenH * 0.85f) : (int) (screenH * 0.72f);
+
+                int maxW = (int) (520 * dm.density);
+                int maxH = (int) (700 * dm.density);
+                if (menuW > maxW) menuW = maxW;
+                if (menuH > maxH) menuH = maxH;
+
+                mParams.width = menuW;
+                mParams.height = menuH;
+                mParams.gravity = Gravity.CENTER;
+                mParams.x = 0;
+                mParams.y = 0;
+
+                mWindowManager.updateViewLayout(mOverlayView, mParams);
+                AppLogger.log(TAG, "Overlay expanded to tactical menu (" + menuW + "x" + menuH + ")");
+            } catch (Throwable t) {
+                AppLogger.logE(TAG, "Failed to expand menu", t);
+            }
+        });
+    }
+
+    public void collapseToLogo() {
+        if (!mIsAttached || mOverlayView == null || (!mIsMenuOpen && !mIsModalOpen)) return;
+
+        mMainHandler.post(() -> {
+            try {
+                NativeBridge.setMenuOpen(false);
+                mIsMenuOpen = false;
+                mIsModalOpen = false;
+
+                mParams.width = mLogoSizePx;
+                mParams.height = mLogoSizePx;
+                mParams.gravity = Gravity.TOP | Gravity.START;
+                mParams.x = mLogoX;
+                mParams.y = mLogoY;
+
+                mWindowManager.updateViewLayout(mOverlayView, mParams);
+                AppLogger.log(TAG, "Overlay collapsed back to 76dp floating logo");
+            } catch (Throwable t) {
+                AppLogger.logE(TAG, "Failed to collapse menu", t);
             }
         });
     }
@@ -126,6 +342,7 @@ public class NativeOverlayManager {
     private void stopInternal() {
         mMainHandler.post(() -> {
             try {
+                mMainHandler.removeCallbacks(mStateSyncRunnable);
                 if (mIsAttached && mOverlayView != null) {
                     NativeBridge.closeOverlay();
                     if (mOverlayView.isAttachedToWindow()) {
@@ -133,6 +350,8 @@ public class NativeOverlayManager {
                     }
                     mOverlayView = null;
                     mIsAttached = false;
+                    mIsMenuOpen = false;
+                    mIsModalOpen = false;
                     AppLogger.log(TAG, "Native C++ Dear ImGui Overlay stopped cleanly");
                 }
             } catch (Throwable t) {

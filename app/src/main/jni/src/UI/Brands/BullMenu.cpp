@@ -1,4 +1,5 @@
 #include "BullMenu.h"
+#include "../NativeOverlayController.h"
 #include "../../BooleanClient.h"
 #include <imgui.h>
 
@@ -6,13 +7,18 @@ void BullMenu::ApplyTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
-    style.WindowRounding = 8.0f;
-    style.ChildRounding = 6.0f;
-    style.FrameRounding = 4.0f;
-    style.WindowBorderSize = 2.0f;
+    style.WindowRounding    = 14.0f;
+    style.ChildRounding     = 10.0f;
+    style.FrameRounding     = 8.0f;
+    style.PopupRounding     = 12.0f;
+    style.ScrollbarRounding = 8.0f;
+    style.GrabRounding      = 8.0f;
+    style.TabRounding       = 8.0f;
+    style.WindowBorderSize  = 2.0f;
 
     // Bull Aggressive Gold / Crimson Palette
-    colors[ImGuiCol_WindowBg]             = GetBackgroundColor();
+    colors[ImGuiCol_WindowBg]             = ImVec4(0.12f, 0.06f, 0.04f, 0.96f);
+    colors[ImGuiCol_ChildBg]              = ImVec4(0.16f, 0.08f, 0.06f, 0.85f);
     colors[ImGuiCol_Border]               = ImVec4(1.0f, 0.70f, 0.0f, 0.85f); // Solid Gold Border
     colors[ImGuiCol_TitleBg]              = ImVec4(0.20f, 0.08f, 0.04f, 1.0f);
     colors[ImGuiCol_TitleBgActive]        = ImVec4(0.35f, 0.12f, 0.05f, 1.0f);
@@ -37,60 +43,113 @@ void BullMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
     if (!isOpen) return;
 
     ApplyTheme();
-    ImGui::SetNextWindowSize(ImVec2(340, 460), ImGuiCond_FirstUseEver);
 
-    if (ImGui::Begin("BULL VIP TACTICAL ##MainWindow", &isOpen, ImGuiWindowFlags_NoCollapse)) {
-        ImGui::TextColored(GetPrimaryColor(), "BULL VIP TACTICAL");
+    float scrW = (float)NativeOverlayController::s_ScreenWidth;
+    float scrH = (float)NativeOverlayController::s_ScreenHeight;
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(scrW, scrH));
+
+    ImGuiWindowFlags winFlags = ImGuiWindowFlags_NoTitleBar |
+                                ImGuiWindowFlags_NoResize |
+                                ImGuiWindowFlags_NoMove |
+                                ImGuiWindowFlags_NoCollapse;
+
+    if (ImGui::Begin("BULL VIP TACTICAL ##MainWindow", &isOpen, winFlags)) {
+        // Top Header
+        ImGui::TextColored(GetPrimaryColor(), "[BULL VIP TACTICAL]");
         ImGui::SameLine();
         ImGui::TextDisabled("| %s", GetSubtitle());
 
+        float rightEdge = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
+        float btnW = 34.0f * (NativeOverlayController::s_DpiScale * 0.4f);
+        if (btnW < 36.0f) btnW = 36.0f;
+
+        ImGui::SameLine(rightEdge - (btnW * 2.2f));
+        if (ImGui::Button("-##MinBtn", ImVec2(btnW, btnW * 0.85f))) {
+            isOpen = false;
+        }
+        ImGui::SameLine(rightEdge - btnW);
+        if (ImGui::Button("X##CloseBtn", ImVec2(btnW, btnW * 0.85f))) {
+            isOpen = false;
+        }
+
         if (isKernelActive) {
-            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.45f, 1.0f), "● BULL KERNEL ONLINE");
+            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.45f, 1.0f), "[ONLINE] BULL KERNEL (/dev/BYNb)");
         } else {
-            ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "● BULL KERNEL OFFLINE [PREVIEW]");
+            ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "[OFFLINE] BULL KERNEL [PREVIEW]");
         }
         ImGui::Separator();
 
         if (ImGui::BeginTabBar("BullTabBar", ImGuiTabBarFlags_None)) {
             if (ImGui::BeginTabItem("COMBAT")) {
-                ImGui::Spacing();
-                ImGui::Checkbox("Silent Aim 360", &pPlayer.silen4a);
-                ImGui::Checkbox("Aimbot Direct", &pPlayer.aimbot);
-                ImGui::Checkbox("Auto Aim Lock", &pPlayer.aimbotlock);
-                ImGui::Checkbox("Aim Magnet V2", &pPlayer.aimMagnet);
-                ImGui::Spacing();
-                ImGui::SliderFloat("FOV Radius", &pPlayer.AimFov, 20.0f, 160.0f, "%.0f deg");
-                ImGui::SliderInt("Headshot Accuracy", &pPlayer.headshotRate, 10, 100, "%d %%");
+                if (ImGui::BeginChild("CombatChild", ImVec2(0, 0), true)) {
+                    ImGui::TextColored(GetPrimaryColor(), "== BULL AGGRESSIVE AIMBOT ==");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    ImGui::Checkbox("Silent Aim 360", &pPlayer.silen4a);
+                    ImGui::Checkbox("Aimbot Direct Track", &pPlayer.aimbot);
+                    ImGui::Checkbox("Auto Aim Lock", &pPlayer.aimbotlock);
+                    ImGui::Checkbox("Aim Magnet V2", &pPlayer.aimMagnet);
+                    ImGui::Checkbox("Ignore Knocked", &pPlayer.ignoreKnocked);
+                    ImGui::Checkbox("Ignore Bots", &pPlayer.ignoreBots);
+
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::SliderFloat("FOV Circle", &pPlayer.AimFov, 20.0f, 200.0f, "%.0f deg");
+                    ImGui::SliderFloat("Lock Range", &pPlayer.AimDistance, 10.0f, 300.0f, "%.0f m");
+                    ImGui::SliderInt("Headshot Rate", &pPlayer.headshotRate, 0, 100, "%d %%");
+                }
+                ImGui::EndChild();
                 ImGui::EndTabItem();
             }
 
             if (ImGui::BeginTabItem("VISUALS")) {
-                ImGui::Spacing();
-                ImGui::Checkbox("Draw Box", &pEspPlayer.espCaixa);
-                ImGui::Checkbox("Draw Line", &pEspPlayer.espLinha);
-                ImGui::Checkbox("Draw Distance", &pEspPlayer.espDistance);
-                ImGui::Checkbox("Draw Healthbar", &pEspPlayer.espHealth);
-                ImGui::Checkbox("Draw Player Name", &pEspPlayer.espName);
-                ImGui::Checkbox("Draw Skeleton Bone", &pEspPlayer.espSkeleton);
-                ImGui::EndTabItem();
-            }
+                if (ImGui::BeginChild("VisChild", ImVec2(0, 0), true)) {
+                    ImGui::TextColored(GetPrimaryColor(), "== BULL ESP SENSORS ==");
+                    ImGui::Separator();
+                    ImGui::Spacing();
 
-            if (ImGui::BeginTabItem("MODS")) {
-                ImGui::Spacing();
-                ImGui::Checkbox("Zero Recoil", &pPlayer.NoRecoil);
-                ImGui::Checkbox("Speed Boost", &pPlayer.SpeedHackV2);
-                ImGui::Checkbox("Bypass Security", &Actived.Bypass);
-                ImGui::EndTabItem();
-            }
-
-            if (ImGui::BeginTabItem("STATUS")) {
-                ImGui::Spacing();
-                ImGui::Text("Bull Engine: Pure C++ Native ImGui");
-                ImGui::Text("Kernel Protocol: Character Device /dev/BYNb");
-                ImGui::Spacing();
-                if (ImGui::Button("CLOSE MENU", ImVec2(-1, 38))) {
-                    isOpen = false;
+                    ImGui::Checkbox("Bull Box ESP", &pEspPlayer.espCaixa);
+                    ImGui::Checkbox("Bull Tracer Line", &pEspPlayer.espLinha);
+                    ImGui::Checkbox("Enemy Distance", &pEspPlayer.espDistance);
+                    ImGui::Checkbox("Health Meter", &pEspPlayer.espHealth);
+                    ImGui::Checkbox("Skeleton Bones", &pEspPlayer.espSkeleton);
+                    ImGui::Checkbox("360 Radar Sensor", &pEspPlayer.espIden360);
+                    ImGui::Checkbox("Threat Counter HUD", &pEspPlayer.espDrawCount);
                 }
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("EXPLOITS")) {
+                if (ImGui::BeginChild("ExploitsChild", ImVec2(0, 0), true)) {
+                    ImGui::TextColored(GetPrimaryColor(), "== MEMORY MECHANICS ==");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    ImGui::Checkbox("No Recoil Stabilizer", &pPlayer.NoRecoil);
+                    ImGui::Checkbox("Bull Speed Boost", &pPlayer.SpeedHackV2);
+                    if (pPlayer.SpeedHackV2) {
+                        ImGui::SliderFloat("Multiplier", &pPlayer.gameSpeed, 1.0f, 3.5f, "%.1fx");
+                    }
+                    ImGui::Checkbox("Memory Anticheat Shield", &Actived.Bypass);
+                }
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("SYSTEM")) {
+                if (ImGui::BeginChild("SysChild", ImVec2(0, 0), true)) {
+                    ImGui::Text("Brand Engine   : BULL VIP Tactical Mod");
+                    ImGui::Text("Kernel Protocol: RT Ring-0 Device Node");
+                    ImGui::Spacing();
+                    if (ImGui::Button("COLLAPSE TO LOGO", ImVec2(-1, 42))) {
+                        isOpen = false;
+                    }
+                }
+                ImGui::EndChild();
                 ImGui::EndTabItem();
             }
 

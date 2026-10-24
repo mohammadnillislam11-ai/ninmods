@@ -85,24 +85,28 @@ inline ImU32 ToImU32(const Color& c, float alphaMultiplier = 1.0f) {
 }
 
 static void EnsureClientConnected() {
+    static std::atomic<bool> s_Connecting{false};
     static auto lastConnectAttempt = std::chrono::steady_clock::now();
-    if (!isConnected()) {
+    if (!isConnected() && !s_Connecting.load()) {
         auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastConnectAttempt).count() > 1500) {
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastConnectAttempt).count() > 3000) {
             lastConnectAttempt = now;
-            NIN_LOGI("CLIENT", "Attempting auto-reconnect to daemon...");
-            if (startClient() == 0) {
-                NIN_LOGI("CLIENT", "Auto-reconnect successful! Syncing active features...");
-                if (Actived.activar) SendBool(3, true);
-                if (pPlayer.aimbot) SendBool(5, true);
-                if (pPlayer.aimbotlock) SendBool(54, true);
-                if (pPlayer.silen4a) SendBool(57, true);
-                SendFloat(58, pPlayer.AimFov);
-                SendFloat(59, pPlayer.AimDistance);
-                SendInt(70, pPlayer.headshotRate);
-                if (pPlayer.ignoreBots) SendBool(71, true);
-                if (pPlayer.ignoreKnocked) SendBool(72, true);
-            }
+            s_Connecting.store(true);
+            std::thread([]() {
+                if (startClient() == 0) {
+                    NIN_LOGI("CLIENT", "Auto-reconnect successful! Syncing active features...");
+                    if (Actived.activar) SendBool(3, true);
+                    if (pPlayer.aimbot) SendBool(5, true);
+                    if (pPlayer.aimbotlock) SendBool(54, true);
+                    if (pPlayer.silen4a) SendBool(57, true);
+                    SendFloat(58, pPlayer.AimFov);
+                    SendFloat(59, pPlayer.AimDistance);
+                    SendInt(70, pPlayer.headshotRate);
+                    if (pPlayer.ignoreBots) SendBool(71, true);
+                    if (pPlayer.ignoreKnocked) SendBool(72, true);
+                }
+                s_Connecting.store(false);
+            }).detach();
         }
     }
 }
@@ -1134,7 +1138,7 @@ Java_com_ninmods_main_overlay_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
 // GLES3 JNI VIEW NATIVE BRIDGE (OpenGL ES 3.0 / ImGui ESP)
 // ========================================================
 extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz) {
+Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz, jfloat density) {
     if (!g_ImGuiInitialized) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -1142,16 +1146,17 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz
         io.IniFilename = nullptr;
         io.LogFilename = nullptr;
 
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.WindowBorderSize = 0.0f;
-        style.WindowPadding = ImVec2(0.0f, 0.0f);
-        style.FramePadding = ImVec2(0.0f, 0.0f);
-        style.ItemSpacing = ImVec2(0.0f, 0.0f);
+        float scale = (float)density;
+        if (scale < 1.8f) scale = 2.4f;
+        if (scale > 4.2f) scale = 4.2f;
+
+        NativeOverlayController::SetDpiScale(scale);
+        NativeOverlayController::ApplyDpiTheme();
 
         ImGui_ImplOpenGL3_Init("#version 300 es");
         g_ImGuiInitialized = true;
         MenuRouter::Initialize();
-        LOGD("GLES3 ImGui Hardware ESP & MenuRouter initialized successfully");
+        LOGD("GLES3 ImGui Hardware ESP & MenuRouter initialized with DPI scale: %.2f", scale);
     }
 }
 
@@ -1177,7 +1182,7 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeStep(JNIEnv *env, jclass clazz
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
-    // 1. ESP Overlay
+    // 1. ESP Overlay (Render if client active)
     RenderHardwareESP(g_ScreenWidth, g_ScreenHeight);
 
     // 2. Pure Native ImGui Floating Overlay & Modular Brand Menus
@@ -1211,12 +1216,63 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeTouchEvent(JNIEnv *env, jclass
 // NATIVE BRIDGE JNI EXPORTS (com.ninmods.main.core.NativeBridge)
 // ========================================================
 extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_core_NativeBridge_launchBrandOverlay(JNIEnv *env, jclass clazz, jstring jBrandId, jstring jHwid, jboolean isLicenseActive) {
+Java_com_ninmods_main_core_NativeBridge_launchBrandOverlay(JNIEnv *env, jclass clazz, jstring jBrandId, jstring jHwid, jboolean isLicenseActive, jfloat density, jstring jPrefillKey, jstring jServerUrl) {
     const char* bId = jBrandId ? env->GetStringUTFChars(jBrandId, nullptr) : "nin";
     const char* hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : "";
-    NativeOverlayController::Initialize(g_ScreenWidth, g_ScreenHeight, bId, hwid, (bool)isLicenseActive);
+    const char* prefill = jPrefillKey ? env->GetStringUTFChars(jPrefillKey, nullptr) : "";
+    const char* sUrl = jServerUrl ? env->GetStringUTFChars(jServerUrl, nullptr) : "";
+
+    NativeOverlayController::Initialize(g_ScreenWidth, g_ScreenHeight, (float)density, bId, hwid, (bool)isLicenseActive);
+    if (!isLicenseActive) {
+        LicensePopup::Open(hwid, prefill, sUrl);
+    }
+
+    // Register verify handler to call Java AuthApiController
+    LicensePopup::SetVerifyHandler([](const std::string& key, const std::string& brand) {
+        extern JavaVM* g_JavaVM;
+        if (!g_JavaVM) return;
+        JNIEnv* jEnv = nullptr;
+        bool attached = false;
+        if (g_JavaVM->GetEnv((void**)&jEnv, JNI_VERSION_1_6) != JNI_OK) {
+            if (g_JavaVM->AttachCurrentThread(&jEnv, nullptr) == JNI_OK) {
+                attached = true;
+            }
+        }
+        if (jEnv) {
+            jclass bridgeClass = jEnv->FindClass("com/ninmods/main/core/NativeBridge");
+            if (bridgeClass) {
+                jmethodID mid = jEnv->GetStaticMethodID(bridgeClass, "verifyLicenseFromNative", "(Ljava/lang/String;Ljava/lang/String;)V");
+                if (mid) {
+                    jstring jK = jEnv->NewStringUTF(key.c_str());
+                    jstring jB = jEnv->NewStringUTF(brand.c_str());
+                    jEnv->CallStaticVoidMethod(bridgeClass, mid, jK, jB);
+                    jEnv->DeleteLocalRef(jK);
+                    jEnv->DeleteLocalRef(jB);
+                }
+                jEnv->DeleteLocalRef(bridgeClass);
+            }
+            if (attached) {
+                g_JavaVM->DetachCurrentThread();
+            }
+        }
+    });
+
     if (jBrandId) env->ReleaseStringUTFChars(jBrandId, bId);
     if (jHwid) env->ReleaseStringUTFChars(jHwid, hwid);
+    if (jPrefillKey) env->ReleaseStringUTFChars(jPrefillKey, prefill);
+    if (jServerUrl) env->ReleaseStringUTFChars(jServerUrl, sUrl);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_isModalPopupActive(JNIEnv *env, jclass clazz) {
+    return (jboolean)NativeOverlayController::IsModalPopupActive();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_onLicenseResult(JNIEnv *env, jclass clazz, jboolean success, jstring jMsg) {
+    const char* msg = jMsg ? env->GetStringUTFChars(jMsg, nullptr) : "";
+    LicensePopup::SetVerificationResult((bool)success, msg);
+    if (jMsg) env->ReleaseStringUTFChars(jMsg, msg);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -1518,8 +1574,11 @@ Java_com_ninmods_main_auth_SecurityVault_nativeIsSessionValid(JNIEnv *env, jclas
     return g_session_verified ? JNI_TRUE : JNI_FALSE;
 }
 
+JavaVM* g_JavaVM = nullptr;
+
 extern "C" JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM* vm, void* reserved) {
+    g_JavaVM = vm;
     signal(SIGPIPE, SIG_IGN);
     std::thread(StartDaemon).detach();
     return JNI_VERSION_1_6;

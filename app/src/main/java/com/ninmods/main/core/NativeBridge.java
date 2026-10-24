@@ -4,6 +4,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
+import com.ninmods.main.auth.AuthApiController;
+import com.ninmods.main.auth.AuthManager;
+import com.ninmods.main.overlay.NativeOverlayManager;
+
 /**
  * Universal Native Bridge for C++ Dear ImGui Multi-Brand Engine.
  * Direct zero-copy communication with libninmods.so.
@@ -24,17 +28,23 @@ public final class NativeBridge {
 
     /**
      * Initializes and launches the native Dear ImGui multi-brand overlay.
-     * @param brandId "nin", "bull", "cross", "delta"
-     * @param hwid Device hardware identifier for license check
-     * @param isLicenseActive true if license is already confirmed active
      */
-    public static native void launchBrandOverlay(String brandId, String hwid, boolean isLicenseActive);
+    public static native void launchBrandOverlay(String brandId, String hwid, boolean isLicenseActive, float density, String prefillKey, String serverUrl);
 
     /**
      * Dispatches Android touch events directly to Dear ImGui io.MousePos / io.MouseDown.
-     * @return true if ImGui captured the touch event, false if it passed through to the background game
      */
     public static native boolean handleTouch(int action, float x, float y);
+
+    /**
+     * Checks if any modal popup (License or Driver Alert) is active.
+     */
+    public static native boolean isModalPopupActive();
+
+    /**
+     * Relays asynchronous license verification result back to C++ LicensePopup.
+     */
+    public static native void onLicenseResult(boolean success, String message);
 
     /**
      * Checks if the active brand tactical menu is currently open/expanded.
@@ -55,6 +65,38 @@ public final class NativeBridge {
      * Cleanly shuts down the native overlay.
      */
     public static native void closeOverlay();
+
+    /**
+     * Invoked directly from C++ LicensePopup modal when user clicks "VERIFY LICENSE".
+     * Routes verification through Android's secure SSL networking (AuthApiController).
+     */
+    public static void verifyLicenseFromNative(String key, String brand) {
+        Context context = NativeOverlayManager.getContext();
+        if (context == null) {
+            Log.e(TAG, "verifyLicenseFromNative: context is null");
+            onLicenseResult(false, "App context unavailable");
+            return;
+        }
+
+        Log.d(TAG, "Verifying license key from native C++ popup: " + key + " (brand: " + brand + ")");
+        AuthApiController.verifyLicenseKey(context, key, new AuthApiController.ApiCallback() {
+            @Override
+            public void onSuccess(String message) {
+                Log.d(TAG, "License successfully verified via native C++ bridge: " + message);
+                // Save session in SharedPreferences
+                try {
+                    AuthManager.saveUserLicenseSession(context, key, System.currentTimeMillis() + (30L * 86400000L), 30);
+                } catch (Throwable ignored) {}
+                onLicenseResult(true, message);
+            }
+
+            @Override
+            public void onError(String errorMessage) {
+                Log.e(TAG, "Native license verification failed: " + errorMessage);
+                onLicenseResult(false, errorMessage);
+            }
+        });
+    }
 
     /**
      * Helper to open Driver Loader for Root users from the C++ Driver Alert popup.

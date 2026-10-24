@@ -19,9 +19,11 @@ LOCAL_SRC_FILES := \
     src/UI/Brands/NinMenu.cpp \
     src/UI/Brands/BullMenu.cpp \
     src/UI/Brands/CrossMenu.cpp \
-    src/UI/Brands/DeltaMenu.cpp
+    src/UI/Brands/DeltaMenu.cpp \
+    src/Icon/TextureLoader.cpp
 
 LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH) \
     $(LOCAL_PATH)/src \
     $(LOCAL_PATH)/src/imgui \
     $(LOCAL_PATH)/src/Includes \
@@ -30,7 +32,8 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/src/Unity \
     $(LOCAL_PATH)/src/UI \
     $(LOCAL_PATH)/src/UI/Brands \
-    $(LOCAL_PATH)/src/UI/Popups
+    $(LOCAL_PATH)/src/UI/Popups \
+    $(LOCAL_PATH)/src/Icon
 
 # Added -frtti to fix the dynamic_cast error
 LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti
@@ -52,7 +55,7 @@ else
     LOCAL_MODULE    := Titoo
 endif
 LOCAL_SRC_FILES := src/Server.cpp src/Socket/server.cpp
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/src $(LOCAL_PATH)/src/Includes
+LOCAL_C_INCLUDES := $(LOCAL_PATH) $(LOCAL_PATH)/src $(LOCAL_PATH)/src/Includes
 LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti
 LOCAL_CFLAGS    := -Wno-error=format-security -fpermissive -fvisibility=hidden -fexceptions -frtti -DNDEBUG
 LOCAL_LDFLAGS   := -Wl,--exclude-libs,ALL -s -latomic

@@ -48,7 +48,11 @@ public class GLES3JNIView extends GLSurfaceView implements GLSurfaceView.Rendere
 
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-        nativeInit();
+        float density = 2.4f;
+        try {
+            density = getResources().getDisplayMetrics().density;
+        } catch (Throwable ignored) {}
+        nativeInit(density);
     }
 
     @Override
@@ -67,7 +71,7 @@ public class GLES3JNIView extends GLSurfaceView implements GLSurfaceView.Rendere
         nativeShutdown();
     }
 
-    public static native void nativeInit();
+    public static native void nativeInit(float density);
     public static native void nativeResize(int width, int height);
     public static native void nativeStep();
     public static native void nativeShutdown();
