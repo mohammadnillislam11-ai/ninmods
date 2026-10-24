@@ -512,52 +512,19 @@ void CreateDataList(Response& SendResponse) {
     time_t now = time(nullptr);
     bool shouldLog = (now - lastLogTime >= 3);
 
-    // 1. Scan candidate roots for genuine LocalPlayer and Match (Bull_Team, CROSS SRC ROOT, treasure, New_Brutal)
+    // 1. Scan candidate roots for genuine LocalPlayer and Match (Normal & MAX)
     uintptr_t GameFacade_c = 0;
     uintptr_t m_Match = 0;
     uintptr_t BaseGame = 0;
     uintptr_t localPlayer = 0;
 
     const uintptr_t facadeOffsets[] = {
-        Offsets::GameFacade,       // 0xA984D48
-        Offsets::GameFacadeAlt1,   // 0xAD6DC18
-        Offsets::GameFacadeAlt2,   // 0xAD68E18
-        Offsets::GameFacadeGlobal, // 0x0C2132B8ULL
-        0xAD74BB0,                 // Player_c
-        0xAD6FDA8,                 // Player_c Alt
-        0x0C21AC20ULL              // OB55 Alt
+        Offsets::Normal::GameFacade, // 0xA872380 (Normal Primary from 5_6213160554375160447.h)
+        Offsets::Max::GameFacade,    // 0xAD68E18 (MAX Primary from ff max 5_6246536088102380429.h)
+        Offsets::GameFacade,         // 0xA872380
+        Offsets::GameFacadeMax,      // 0xAD68E18
+        Offsets::GameFacadeAlt1      // 0xAD68E18
     };
-
-    // 0. Direct Dynamic Method Inspection from live dumped RVAs (Current_Match & CurrentLocalPlayer)
-    if (!localPlayer) {
-        uintptr_t mayurLpStatic = DecodeAdrpLdr(libAddress + Offsets::Mayur::GetLocalPlayer);
-        if (IsValidUserPointer64(mayurLpStatic)) {
-            uintptr_t candLp = Read<uintptr_t>(mayurLpStatic);
-            if (IsValidPlayerObject(candLp)) {
-                localPlayer = candLp;
-                NIN_LOGI("DAEMON_ESP", "Found LocalPlayer via live RVA_GameFacade_CurrentLocalPlayer (0x%lx)", (unsigned long)localPlayer);
-            }
-        }
-    }
-
-    if (!localPlayer) {
-        uintptr_t mayurMatchStatic = DecodeAdrpLdr(libAddress + Offsets::Mayur::Current_Match);
-        if (IsValidUserPointer64(mayurMatchStatic)) {
-            uintptr_t candMatch = Read<uintptr_t>(mayurMatchStatic);
-            if (IsValidUserPointer64(candMatch)) {
-                const uintptr_t testLpOffsets[] = { 0xD8, 0x94, 0x110, 0x88 };
-                for (uintptr_t off : testLpOffsets) {
-                    uintptr_t lp = Read<uintptr_t>(candMatch + off);
-                    if (IsValidPlayerObject(lp)) {
-                        localPlayer = lp;
-                        m_Match = candMatch;
-                        NIN_LOGI("DAEMON_ESP", "Found LocalPlayer via live RVA_GameFacade_CurrentMatch (0x%lx, lp: 0x%lx)", (unsigned long)m_Match, (unsigned long)localPlayer);
-                        break;
-                    }
-                }
-            }
-        }
-    }
 
     if (!localPlayer) {
         for (uintptr_t fOff : facadeOffsets) {
@@ -649,12 +616,12 @@ void CreateDataList(Response& SendResponse) {
         }
     }
 
-    // 4. Resolve Camera & ViewMatrix (Proven CROSS SRC ROOT, Bull_Team, treasure, Mayur)
+    // 4. Resolve Camera & ViewMatrix (FollowCamera & MainCamera)
     D3DMatrix matrix = {0};
     uintptr_t Camera = 0;
     uintptr_t IntPtrCam = 0;
 
-    // A. FollowCamera chain on localPlayer (CROSS SRC ROOT & Bull_Team)
+    // A. FollowCamera chain on localPlayer
     const uintptr_t followCamOffsets[] = {
         Offsets::FollowCamera,         // 0x698
         Offsets::FollowCameraAlt,      // 0x638
@@ -704,23 +671,21 @@ void CreateDataList(Response& SendResponse) {
         }
     }
 
-    // C. Static Camera_main Fallback (Mayur: 0xa0c9acc)
-    if (!IsValidViewMatrix(matrix)) {
-        uintptr_t staticCamAddr = DecodeAdrpLdr(libAddress + Offsets::Mayur::Camera_main);
-        if (IsValidUserPointer64(staticCamAddr)) {
-            uintptr_t cam = Read<uintptr_t>(staticCamAddr);
-            if (IsValidUserPointer64(cam)) {
-                uintptr_t ipc = Read<uintptr_t>(cam + Offsets::CameraIntPtr);
-                if (!IsValidUserPointer64(ipc)) ipc = cam;
-                const uintptr_t matrixOffsets[] = { 0x100, 0xBC, 0xDC, 0xC0, 0x90, 0x80, 0x10 };
-                for (uintptr_t mOff : matrixOffsets) {
-                    auto candMat = Read<D3DMatrix>(ipc + mOff);
-                    if (IsValidViewMatrix(candMat)) {
-                        matrix = candMat;
-                        Camera = cam;
-                        IntPtrCam = ipc;
-                        break;
-                    }
+    // C. Direct FollowCamera / MainCamera fallback from LocalPlayer
+    if (!IsValidViewMatrix(matrix) && IsValidUserPointer64(localPlayer)) {
+        uintptr_t cam = Read<uintptr_t>(localPlayer + Offsets::FollowCamera);
+        if (!IsValidUserPointer64(cam)) cam = Read<uintptr_t>(localPlayer + Offsets::MainCameraTransform);
+        if (IsValidUserPointer64(cam)) {
+            uintptr_t ipc = Read<uintptr_t>(cam + Offsets::CameraIntPtr);
+            if (!IsValidUserPointer64(ipc)) ipc = cam;
+            const uintptr_t matrixOffsets[] = { 0x100, 0xBC, 0xDC, 0xC0 };
+            for (uintptr_t mOff : matrixOffsets) {
+                auto candMat = Read<D3DMatrix>(ipc + mOff);
+                if (IsValidViewMatrix(candMat)) {
+                    matrix = candMat;
+                    Camera = cam;
+                    IntPtrCam = ipc;
+                    break;
                 }
             }
         }
@@ -741,21 +706,19 @@ void CreateDataList(Response& SendResponse) {
     ViewMatrix = matrix;
     MainCameraTransformPos = myCamPos;
 
-    // 5. Multi-Candidate Smart Dictionary Resolution (Mayur, New_Brutal, CROSS SRC ROOT, treasure)
+    // 5. Dictionary Resolution (from 5_6213160554375160447.h and ff max 5_6246536088102380429.h: 0xC0)
     uintptr_t dictionary = 0;
     int numValues = 0;
     uintptr_t valuesPtr = 0;
     bool isMonoDict = false;
 
     const uintptr_t dictOffsets[] = {
-        Offsets::BaseGameDictionary,     // 0x148 (Mayur / New_Brutal ListPlayer)
-        Offsets::BaseGameDictionaryAlt,  // 0xC0 (CROSS SRC ROOT)
-        Offsets::BaseGameDictionaryAlt2, // 0x68 (treasure)
-        Offsets::BaseGameDictionaryAlt3, // 0x60 (New_Brutal)
-        Offsets::BaseGameDictionaryAlt4, // 0x70
-        Offsets::BaseGameDictionaryAlt5, // 0x140
-        0x80,
-        0x90
+        Offsets::Match_PlayerDict,       // 0xC0 (Unified in both Normal & MAX)
+        Offsets::BaseGameDictionary,     // 0xC0
+        Offsets::BaseGameDictionaryAlt,  // 0x148
+        0x68,
+        0x60,
+        0x70
     };
 
     std::vector<uintptr_t> roots;
@@ -767,9 +730,8 @@ void CreateDataList(Response& SendResponse) {
             uintptr_t candDict = Read<uintptr_t>(root + off);
             if (!IsValidUserPointer64(candDict)) continue;
 
-            // Approach A: Mayur / New_Brutal / IL2CPP MyDictionary
-            // candDict + 0x18 = UnityArray<DictionaryEntry>* entries
-            // candDict + 0x20 = int count
+            // candDict + 0x18 = UnityArray<DictionaryEntry>* entries (Dict_Entries)
+            // candDict + 0x20 = int count (Dict_Count)
             uintptr_t entriesArray = Read<uintptr_t>(candDict + Offsets::DictionaryEntries);
             int dictCount = Read<int>(candDict + Offsets::DictionaryCount);
 
@@ -884,13 +846,14 @@ void CreateDataList(Response& SendResponse) {
             isClientBot = Read<bool>(enemyList + Offsets::IsClientBotOld);
         }
 
-        // Get Positions (using Mayur MainCam 0x3F0 and root position getPosition(enemy))
-        uintptr_t headTF = Read<uintptr_t>(enemyList + Offsets::Mayur::MainCam);
-        if (!IsValidUserPointer64(headTF)) headTF = GetPlayerHeadTF(enemyList);
+        // Get Positions from Bone transforms (Normal: 0x6B0 / MAX: 0x6A8)
+        uintptr_t headTF = GetPlayerHeadTF(enemyList);
+        if (!IsValidUserPointer64(headTF)) headTF = Read<uintptr_t>(enemyList + Offsets::Bone_Head);
+        if (!IsValidUserPointer64(headTF)) headTF = Read<uintptr_t>(enemyList + Offsets::MainCameraTransform);
         Vector3 EnemyPosition = GetNodePosition(headTF);
         Vector3 EnemyPositionPe = GetNodePosition(GetPlayerPeTF(enemyList));
 
-        // If bone reading is null, check root position (Mayur getPosition(enemy) + 1.85f)
+        // If bone reading is null, check root position (GetNodePosition fallback + 1.85f)
         if (EnemyPosition == Vector3::Zero() && EnemyPositionPe == Vector3::Zero()) {
             Vector3 rootPos = GetNodePosition(enemyList);
             if (rootPos != Vector3::Zero()) {
