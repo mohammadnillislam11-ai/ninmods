@@ -124,10 +124,11 @@ struct DriverVec3 {
 
 enum DriverMode {
     DRIVER_MODE_NONE        = 0,
-    DRIVER_MODE_RT_DEV      = 1, // Official Linux Character Device IOCTL (/dev/health_storage_service_alloc, /dev/BYNb)
-    DRIVER_MODE_SYS_CLASS   = 2, // Official Linux Sysfs Class Device (/sys/class/mem_tool_class)
-    DRIVER_MODE_PROC_DEVICES= 3, // Official Linux Kernel Device Registry (/proc/devices)
-    DRIVER_MODE_PROC_MEM    = 4  // Official Linux Process Memory Virtualization (process_vm_readv / pread64)
+    DRIVER_MODE_RT_DEV      = 1, // Official Linux Character Device IOCTL (/dev/BYNb, /dev/mem_tool)
+    DRIVER_MODE_RT_PROC     = 2, // Official Linux ProcFS IOCTL (/proc/uevents_records, /proc/sched_debug)
+    DRIVER_MODE_SYS_CLASS   = 3, // Official Linux Sysfs Class Device (/sys/class/mem_tool_class)
+    DRIVER_MODE_PROC_DEVICES= 4, // Official Linux Kernel Device Registry (/proc/devices)
+    DRIVER_MODE_PROC_MEM    = 5  // Official Linux Process Memory Virtualization (process_vm_readv / pread64)
 };
 
 class c_driver {
@@ -177,9 +178,6 @@ private:
                         snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d %d 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, min, node);
                         system(mknod_cmd);
                     }
-                    char ln_cmd[256];
-                    snprintf(ln_cmd, sizeof(ln_cmd), "ln -sf %s /dev/health_storage_service_alloc 2>/dev/null; chmod 666 /dev/health_storage_service_alloc 2>/dev/null", node);
-                    system(ln_cmd);
 
                     int test_fd = open(node, O_RDWR);
                     if (test_fd >= 0) {
@@ -206,7 +204,61 @@ private:
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // 2. Linux Official Character Device Registry (/proc/devices)
+    // 2. Linux Official Character Device Nodes (/dev/BYNb, /dev/mem_tool)
+    // ──────────────────────────────────────────────────────────────────
+    bool probe_character_nodes() {
+        const char *official_nodes[] = {
+            "/dev/BYNb",
+            "/dev/mem_tool"
+        };
+        for (const char *node : official_nodes) {
+            int test_fd = open(node, O_RDWR);
+            if (test_fd >= 0) {
+                if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                    fd = test_fd;
+                    active_mode = DRIVER_MODE_RT_DEV;
+                    active_read_cmd = DEV_OP_READ_MEM;
+                    active_write_cmd = DEV_OP_WRITE_MEM;
+                    active_base_cmd = DEV_OP_MODULE_BASE;
+                    strncpy(active_node_name, node, sizeof(active_node_name) - 1);
+                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official Character Device (%s) Connected! (FD: %d) <<<", node, fd);
+                    return true;
+                }
+                close(test_fd);
+            }
+        }
+        return false;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 3. Linux Official ProcFS Endpoints (/proc/uevents_records, /proc/sched_debug)
+    // ──────────────────────────────────────────────────────────────────
+    bool probe_proc_nodes() {
+        const char *proc_nodes[] = {
+            "/proc/uevents_records",
+            "/proc/sched_debug"
+        };
+        for (const char *node : proc_nodes) {
+            int test_fd = open(node, O_RDWR);
+            if (test_fd >= 0) {
+                if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                    fd = test_fd;
+                    active_mode = DRIVER_MODE_RT_PROC;
+                    active_read_cmd = DEV_OP_READ_MEM;
+                    active_write_cmd = DEV_OP_WRITE_MEM;
+                    active_base_cmd = DEV_OP_MODULE_BASE;
+                    strncpy(active_node_name, node, sizeof(active_node_name) - 1);
+                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official ProcFS IOCTL (%s) Connected! (FD: %d) <<<", node, fd);
+                    return true;
+                }
+                close(test_fd);
+            }
+        }
+        return false;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 4. Linux Official Character Device Registry (/proc/devices)
     // ──────────────────────────────────────────────────────────────────
     bool probe_proc_devices() {
         FILE *fp = fopen("/proc/devices", "r");
@@ -224,7 +276,7 @@ private:
             int maj = 0;
             char name[128] = {0};
             if (sscanf(line, "%d %127s", &maj, name) == 2) {
-                if (strcmp(name, "mem_tool") == 0 || strcmp(name, "BYNb") == 0 || strcmp(name, "health_storage_service_alloc") == 0) {
+                if (strcmp(name, "mem_tool") == 0 || strcmp(name, "BYNb") == 0) {
                     char node[128];
                     snprintf(node, sizeof(node), "/dev/%s", name);
                     if (access(node, F_OK) != 0) {
@@ -232,9 +284,7 @@ private:
                         snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d 0 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, node);
                         system(mknod_cmd);
                     }
-                    system("ln -sf /dev/BYNb /dev/health_storage_service_alloc 2>/dev/null; chmod 666 /dev/health_storage_service_alloc 2>/dev/null");
                     int test_fd = open(node, O_RDWR);
-                    if (test_fd < 0) test_fd = open("/dev/health_storage_service_alloc", O_RDWR);
                     if (test_fd >= 0) {
                         if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
                             fd = test_fd;
@@ -257,36 +307,7 @@ private:
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // 3. Linux Official Character Device Nodes (/dev/...)
-    // ──────────────────────────────────────────────────────────────────
-    bool probe_character_nodes() {
-        const char *official_nodes[] = {
-            "/dev/health_storage_service_alloc",
-            "/dev/BYNb",
-            "/dev/mem_tool",
-            "/dev/uevents_records"
-        };
-        for (const char *node : official_nodes) {
-            int test_fd = open(node, O_RDWR);
-            if (test_fd >= 0) {
-                if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
-                    fd = test_fd;
-                    active_mode = DRIVER_MODE_RT_DEV;
-                    active_read_cmd = DEV_OP_READ_MEM;
-                    active_write_cmd = DEV_OP_WRITE_MEM;
-                    active_base_cmd = DEV_OP_MODULE_BASE;
-                    strncpy(active_node_name, node, sizeof(active_node_name) - 1);
-                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Character Device (%s) Connected! (FD: %d) <<<", node, fd);
-                    return true;
-                }
-                close(test_fd);
-            }
-        }
-        return false;
-    }
-
-    // ──────────────────────────────────────────────────────────────────
-    // 4. Linux Official Process Virtual Memory Syscalls (process_vm_readv)
+    // 5. Linux Official Process Virtual Memory Syscalls (process_vm_readv)
     // ──────────────────────────────────────────────────────────────────
     bool probe_linux_process_vm() {
         pid_t self_pid = getpid();
@@ -331,13 +352,16 @@ public:
         // [Priority 1] Linux Official Sysfs Class: /sys/class/mem_tool_class
         if (probe_sysfs_class()) return true;
 
-        // [Priority 2] Linux Official Character Nodes in /dev
+        // [Priority 2] Linux Official Character Nodes in /dev: /dev/BYNb, /dev/mem_tool
         if (probe_character_nodes()) return true;
 
-        // [Priority 3] Linux Official /proc/devices Registry
+        // [Priority 3] Linux Official ProcFS Endpoints: /proc/uevents_records, /proc/sched_debug
+        if (probe_proc_nodes()) return true;
+
+        // [Priority 4] Linux Official /proc/devices Registry
         if (probe_proc_devices()) return true;
 
-        // [Priority 4] Linux Official Process Memory Virtualization (process_vm_readv)
+        // [Priority 5] Linux Official Process Memory Virtualization (process_vm_readv)
         if (probe_linux_process_vm()) return true;
 
         NIN_LOGE("c_driver", ">>> [DRIVER_FAIL] All Official Linux Driver Endpoints Unreachable! Ensure Loader is Active. <<<");
@@ -358,7 +382,8 @@ public:
 
     const char* getDriverModeName() const {
         switch (active_mode) {
-            case DRIVER_MODE_RT_DEV:       return "Linux RT DEV (0x801)";
+            case DRIVER_MODE_RT_DEV:       return "Linux RT DEV (/dev/BYNb)";
+            case DRIVER_MODE_RT_PROC:      return "Linux RT Proc (/proc/uevents_records)";
             case DRIVER_MODE_SYS_CLASS:   return "Linux Sysfs (mem_tool_class)";
             case DRIVER_MODE_PROC_DEVICES:return "Linux /proc/devices";
             case DRIVER_MODE_PROC_MEM:    return "Linux process_vm_readv";

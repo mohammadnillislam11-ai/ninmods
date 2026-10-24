@@ -303,8 +303,7 @@ public class Floater {
                 String[] commands = new String[] {
                     "su", "-c",
                     "setenforce 0; " +
-                    "chmod 666 /dev/health_storage_service_alloc /dev/BYNb* /dev/uevents_records 2>/dev/null; " +
-                    "ln -sf /dev/BYNb /dev/health_storage_service_alloc 2>/dev/null; " +
+                    "chmod 666 /dev/BYNb* /dev/mem_tool /proc/uevents_records /proc/sched_debug /sys/class/mem_tool_class/mem_tool/dev 2>/dev/null; " +
                     "settings put global block_untrusted_touches 0; " +
                     "am compat disable BLOCK_UNTRUSTED_TOUCHES com.dts.freefireth; " +
                     "am compat disable BLOCK_UNTRUSTED_TOUCHES com.dts.freefiremax; " +

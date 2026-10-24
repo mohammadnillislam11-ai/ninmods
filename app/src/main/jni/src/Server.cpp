@@ -155,6 +155,7 @@ uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
 
     char line[512];
     std::vector<uintptr_t> elfBases;
+    std::vector<uintptr_t> allBases;
 
     while (fgets(line, sizeof(line), fp)) {
         if (strstr(line, moduleName)) {
@@ -162,6 +163,7 @@ uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
             char perms[5] = {0};
             if (sscanf(line, "%lx-%*lx %4s %lx", &start, perms, &offset) >= 1) {
                 if (offset == 0 && perms[0] == 'r') {
+                    allBases.push_back(start);
                     if (is_elf_header(start)) {
                         elfBases.push_back(start);
                         NIN_LOGI("DAEMON", "Found ELF mapping for %s: 0x%lx (perms: %s)", moduleName, (unsigned long)start, perms);
@@ -173,8 +175,13 @@ uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
     fclose(fp);
 
     if (elfBases.empty()) {
-        NIN_LOGE("DAEMON", "No ELF headers found for %s", moduleName);
-        return 0;
+        if (!allBases.empty()) {
+            elfBases = allBases;
+            NIN_LOGI("DAEMON", "Using fallback mapped bases for %s (count: %zu)", moduleName, elfBases.size());
+        } else {
+            NIN_LOGE("DAEMON", "No ELF headers found for %s", moduleName);
+            return 0;
+        }
     }
 
     const uintptr_t testOffsets[] = {

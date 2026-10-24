@@ -1316,7 +1316,6 @@ Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jcla
                     snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (/sys/class/mem_tool_class/%s)", maj, min, ent->d_name);
                     dev_id_str = dev_buf;
                     int fd = open(node, O_RDWR);
-                    if (fd < 0) fd = open("/dev/health_storage_service_alloc", O_RDWR);
                     if (fd >= 0) {
                         perms_str = "rw-rw-rw- (FD Open OK)";
                         status_text = "ACTIVE & RESPONDING (Linux Sysfs Ring 0)";
@@ -1334,18 +1333,18 @@ Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jcla
         closedir(dir);
     }
 
-    // 2. Check official character nodes in /dev
+    // 2. Check official character & proc nodes
     if (!is_active) {
         const char* candidate_nodes[] = {
-            "/dev/health_storage_service_alloc",
             "/dev/BYNb",
             "/dev/mem_tool",
-            "/dev/uevents_records"
+            "/proc/uevents_records",
+            "/proc/sched_debug"
         };
 
         for (const char* node : candidate_nodes) {
             struct stat st;
-            if (stat(node, &st) == 0 && S_ISCHR(st.st_mode)) {
+            if (stat(node, &st) == 0 && (S_ISCHR(st.st_mode) || S_ISREG(st.st_mode))) {
                 active_node = node;
                 is_active = true;
                 maj = major(st.st_rdev);

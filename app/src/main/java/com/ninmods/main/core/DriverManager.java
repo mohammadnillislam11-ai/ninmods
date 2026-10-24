@@ -29,11 +29,12 @@ public class DriverManager {
     public static final String LOADER_ACTIVITY_NAME = "com.ninmods.loader.MainActivity";
     public static final String ACTION_DRIVER_STATE = "com.ninmods.action.DRIVER_STATE";
 
-    public static final String PRIMARY_DRIVER_NODE = "/dev/health_storage_service_alloc";
+    public static final String PRIMARY_DRIVER_NODE = "/dev/BYNb";
     public static final String[] CANDIDATE_DRIVER_NODES = {
-            "/dev/health_storage_service_alloc",
             "/dev/BYNb",
-            "/dev/uevents_records"
+            "/dev/mem_tool",
+            "/proc/uevents_records",
+            "/proc/sched_debug"
     };
 
     static {
@@ -163,7 +164,7 @@ public class DriverManager {
                     String modName = parts[0].toLowerCase();
                     if (modName.contains("5.10") || modName.contains("4.14") || modName.contains("4.19") ||
                         modName.contains("nh") || modName.contains("mem_tool") || modName.contains("bynb") ||
-                        modName.contains("health_storage") || modName.contains("driver")) {
+                        modName.contains("driver")) {
                         info.kernelModule = parts[0] + " (Size: " + (parts.length > 1 ? parts[1] + " B" : "Loaded") + ")";
                         info.isActive = true;
                         break;

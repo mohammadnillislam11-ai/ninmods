@@ -20,18 +20,18 @@ bool SocketServer::Bind() {
     bool tcp_bound = false;
 
     if (listenfd_unix >= 0) {
-        memset(socket_name, 0, sizeof(socket_name));
-        memcpy(&socket_name[0], "\0", 1);
-        strcpy(&socket_name[1], SOCKET_NAME);
-
         memset(&addr_unix, 0, sizeof(addr_unix));
         addr_unix.sun_family = AF_UNIX;
-        strncpy(addr_unix.sun_path, socket_name, sizeof(addr_unix.sun_path) - 1);
+        addr_unix.sun_path[0] = '\0';
+        size_t name_len = strlen(SOCKET_NAME);
+        if (name_len > sizeof(addr_unix.sun_path) - 2) name_len = sizeof(addr_unix.sun_path) - 2;
+        memcpy(&addr_unix.sun_path[1], SOCKET_NAME, name_len);
 
+        socklen_t addr_len = offsetof(struct sockaddr_un, sun_path) + 1 + name_len;
         int opt = 1;
         setsockopt(listenfd_unix, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-        if (bind(listenfd_unix, (sockaddr *) &addr_unix, sizeof(addr_unix)) == 0) {
+        if (bind(listenfd_unix, (sockaddr *) &addr_unix, addr_len) == 0) {
             unix_bound = true;
         } else {
             close(listenfd_unix);

@@ -21,15 +21,16 @@ bool SocketClient::Connect() {
     // Channel 1: Abstract UNIX domain socket (\0nin_X9K2q)
     sockfd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (sockfd >= 0) {
-        memset(socket_name, 0, sizeof(socket_name));
-        memcpy(&socket_name[0], "\0", 1);
-        strcpy(&socket_name[1], SOCKET_NAME);
-
         memset(&addr_unix, 0, sizeof(struct sockaddr_un));
         addr_unix.sun_family = AF_UNIX;
-        strncpy(addr_unix.sun_path, socket_name, sizeof(addr_unix.sun_path) - 1);
+        addr_unix.sun_path[0] = '\0';
+        size_t name_len = strlen(SOCKET_NAME);
+        if (name_len > sizeof(addr_unix.sun_path) - 2) name_len = sizeof(addr_unix.sun_path) - 2;
+        memcpy(&addr_unix.sun_path[1], SOCKET_NAME, name_len);
 
-        if (connect(sockfd, (sockaddr *) &addr_unix, sizeof(addr_unix)) == 0) {
+        socklen_t addr_len = offsetof(struct sockaddr_un, sun_path) + 1 + name_len;
+
+        if (connect(sockfd, (sockaddr *) &addr_unix, addr_len) == 0) {
             struct timeval tv;
             tv.tv_sec = 1;
             tv.tv_usec = 0; // 1000 ms (1 second) timeout
