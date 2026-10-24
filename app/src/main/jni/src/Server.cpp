@@ -222,6 +222,7 @@ Quaternion GetRotationToTheLocation(Vector3 Target, float Height, Vector3 MyEnem
 bool isLocked = false;
 uint64_t lockedEnemyAddress = 0;
 Vector3 lockedTargetPos;
+std::mutex g_aimStateMutex;
 
 // Helper to restore all enemies to their original positions
 void RestoreAllPositions() {
@@ -253,8 +254,6 @@ void RestoreAllPositions() {
     BasePosMap.clear();
 }
 
-
-std::mutex g_aimStateMutex;
 uintptr_t currentBestTargetObj = 0;
 std::atomic<bool> keepAiming{false};
 std::thread aimThread;
