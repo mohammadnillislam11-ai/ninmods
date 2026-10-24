@@ -71,68 +71,10 @@ static inline ssize_t sys_process_vm_writev(pid_t pid, const struct iovec *local
 #define DEV_OP_HIDE_PROCESS       0x804
 #define DEV_OP_GET_PID            0x805
 
-// [Group 2] RT Hook / Classic Breakpoint
-#define HOOK_OP_READ_MEM          601
-#define HOOK_OP_WRITE_MEM         602
-#define HOOK_OP_MODULE_BASE       603
-#define HOOK_OP_GET_PID           604
-#define HOOK_OP_HIDE_PROCESS      605
-#define HOOK_OP_UN_HOOK           606
-#define HOOK_OP_RECOVER           607
-#define HOOK_OP_HW_BREAKPOINT_CTL 608
-#define HOOK_OP_HW_BP_GET_HITS    609
-#define HOOK_OP_INIT_KEY          610
-
-// [Group 3] RT-Dev / RTModule (3495161 / 3495162 / 3495163)
-#define RT_CMD_READ               3495161
-#define RT_CMD_WRITE              3495162
-#define RT_CMD_BASE               3495163
-#define RT_CMD_GETPID             3495164
-#define RT_CMD_HIDE_PROCESS       3495165
-#define RT_CMD_UN_HOOK            3495166
-#define RT_CMD_RECOVER_PROCESS    3495167
-#define RT_CMD_GYRO               3495168
+// [Group 2] Hardware Breakpoints IOCTL
 #define RT_CMD_HWBP_ADD           3495169
 #define RT_CMD_HWBP_GET_HITS      3495170
-#define RT_CMD_HWBP_ENABLE        3495171
 #define RT_CMD_HWBP_CLEAR         3495172
-#define RT_CMD_HWBP_DISABLE       3495173
-
-// [Group 4] Alternative DEV / PROC
-#define PROC_OP_INIT_KEY          0xC00
-#define PROC_OP_READ_MEM          0xC01
-#define PROC_OP_WRITE_MEM         0xC02
-#define PROC_OP_MODULE_BASE       0xC03
-#define PROC_OP_HIDE_PROCESS      0xC04
-
-// [Group 5] Socket DGRAM IOCTL (HookRW)
-#define SOCK_OP_READ_MEM          8001
-#define SOCK_OP_WRITE_MEM         8002
-#define SOCK_OP_GET_BASE          8003
-#define SOCK_OP_GET_PID           8004
-#define SOCK_OP_PROCESS_HIDE      8005
-#define SOCK_OP_PROCESS_RESTORE   8006
-#define SOCK_OP_PROCESS_HIDE_KGSL 8007
-#define SOCK_OP_PROCESS_HIDE_CTS  8008
-
-// [Group 6] NA KPM Neo Driver (prctl 0x4E41)
-#define NA_PRCTL_MAGIC            0x4E41
-#define NA_CMD_READ_MEM           1
-#define NA_CMD_WRITE_MEM          2
-#define NA_CMD_READ_PHYS          3
-#define NA_CMD_WRITE_PHYS         4
-#define NA_CMD_GET_PID            5
-#define NA_CMD_INJECT_TOUCH       6
-#define NA_CMD_FIND_INPUT         7
-#define NA_CMD_GET_SCREEN         8
-#define NA_MAX_RW_SIZE            4096
-#define NA_MAX_PKG_NAME           256
-
-// [Group 7] LDG KPM Driver (prctl 0x20250901)
-#define LDG_PRCTL_READ_MEM        0x20250901
-#define LDG_PRCTL_WRITE_MEM       0x20260121
-#define LDG_PRCTL_GET_PID         0x20270108
-#define LDG_PRCTL_PING            0x20270120  // Returns 0x1354c28
 
 // ══════════════════════════════════════════════════════════════════════
 //  2. SHARED DATA STRUCTURES & MATH TYPES
@@ -158,34 +100,6 @@ typedef struct _MODULE_BASE_FIXED {
     uintptr_t base;
 } MODULE_BASE_FIXED, *PMODULE_BASE_FIXED;
 #pragma pack(pop)
-
-struct na_cmd {
-    uint32_t op;
-    uint32_t pid;
-    uint64_t addr;
-    uint32_t size;
-    int32_t  result;
-    int32_t  screen_w;
-    int32_t  screen_h;
-    char     pkg[NA_MAX_PKG_NAME];
-    uint8_t  data[NA_MAX_RW_SIZE];
-};
-
-struct LdgPrctlReadReq {
-    uint32_t pid;
-    uint32_t reserved;
-    uint64_t addr;
-    uint64_t buffer;
-    uint64_t size;
-};
-
-struct LdgPrctlWriteReq {
-    uint32_t pid;
-    uint32_t reserved;
-    uint64_t addr;
-    uint64_t buffer;
-    uint64_t size;
-};
 
 // Lightweight 3D Vector for Internal Lead Prediction & Aim Calculations
 struct DriverVec3 {
