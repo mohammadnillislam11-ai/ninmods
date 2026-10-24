@@ -1292,7 +1292,6 @@ Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jcla
     const char* candidate_nodes[] = {
         "/dev/health_storage_service_alloc",
         "/dev/BYNb",
-        "/dev/sched_debug",
         "/dev/uevents_records"
     };
 

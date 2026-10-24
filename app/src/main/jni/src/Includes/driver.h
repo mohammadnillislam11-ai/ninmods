@@ -341,7 +341,7 @@ private:
         if (!dir) return nullptr;
 
         const char *known_names[] = { 
-            "health_storage_service_alloc", "BYNb", "sched_debug", "uevents_records",
+            "health_storage_service_alloc", "BYNb", "uevents_records",
             "wanbai", "CheckMe", "Ckanri", "lanran", "rt_dev", "RTkernel",
             "unc_dr", "unc_ft", "TH520", "QX_driver", "FT_driver" 
         };
@@ -488,7 +488,6 @@ public:
             "/dev/health_storage_service_alloc",
             "/dev/BYNb",
             "/dev/uevents_records",
-            "/dev/sched_debug",
             "/dev/wanbai",
             "/dev/CheckMe",
             "/dev/Ckanri",

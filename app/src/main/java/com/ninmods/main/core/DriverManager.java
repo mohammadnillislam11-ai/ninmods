@@ -33,7 +33,6 @@ public class DriverManager {
     public static final String[] CANDIDATE_DRIVER_NODES = {
             "/dev/health_storage_service_alloc",
             "/dev/BYNb",
-            "/dev/sched_debug",
             "/dev/uevents_records"
     };
 
