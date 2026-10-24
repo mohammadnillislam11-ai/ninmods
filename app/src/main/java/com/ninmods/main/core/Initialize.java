@@ -1,7 +1,5 @@
 package com.ninmods.main.core;
 
-import com.ninmods.main.overlay.Floater;
-
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;

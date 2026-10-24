@@ -15,7 +15,6 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.ninmods.main.R;
-import com.ninmods.main.overlay.Floater;
 
 public class ModeSelectActivity extends BaseActivity {
     static {
