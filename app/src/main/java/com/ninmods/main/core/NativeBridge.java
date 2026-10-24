@@ -79,13 +79,14 @@ public final class NativeBridge {
         }
 
         Log.d(TAG, "Verifying license key from native C++ popup: " + key + " (brand: " + brand + ")");
-        AuthApiController.verifyLicenseKey(context, key, new AuthApiController.ApiCallback() {
+        AuthApiController.verifyLicenseKey(context, key, brand, new AuthApiController.ApiCallback() {
             @Override
             public void onSuccess(String message) {
                 Log.d(TAG, "License successfully verified via native C++ bridge: " + message);
                 // Save session in SharedPreferences
                 try {
-                    AuthManager.saveUserLicenseSession(context, key, System.currentTimeMillis() + (30L * 86400000L), 30);
+                    AuthManager.updateActiveLicense(context, key, "30_days", "", 30 * 86400);
+                    AuthManager.setActiveLicenseKey(context, key);
                 } catch (Throwable ignored) {}
                 onLicenseResult(true, message);
             }
