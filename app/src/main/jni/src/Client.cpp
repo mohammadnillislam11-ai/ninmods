@@ -1289,12 +1289,6 @@ void StartDaemon() {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jclass clazz) {
-    const char* candidate_nodes[] = {
-        "/dev/health_storage_service_alloc",
-        "/dev/BYNb",
-        "/dev/uevents_records"
-    };
-
     bool is_active = false;
     std::string active_node = "None";
     int maj = 0;
@@ -1303,31 +1297,74 @@ Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jcla
     std::string perms_str = "Inaccessible";
     std::string status_text = "Inactive";
 
-    for (const char* node : candidate_nodes) {
-        struct stat st;
-        if (stat(node, &st) == 0) {
-            active_node = node;
-            is_active = true;
-            if (S_ISCHR(st.st_mode)) {
+    // 1. Check official Linux sysfs class: /sys/class/mem_tool_class
+    DIR *dir = opendir("/sys/class/mem_tool_class");
+    if (dir) {
+        struct dirent *ent;
+        while ((ent = readdir(dir)) != nullptr) {
+            if (ent->d_name[0] == '.') continue;
+            char dev_file[256];
+            snprintf(dev_file, sizeof(dev_file), "/sys/class/mem_tool_class/%s/dev", ent->d_name);
+            FILE *fp = fopen(dev_file, "r");
+            if (fp) {
+                if (fscanf(fp, "%d:%d", &maj, &min) == 2) {
+                    char node[128];
+                    snprintf(node, sizeof(node), "/dev/%s", ent->d_name);
+                    active_node = node;
+                    is_active = true;
+                    char dev_buf[64];
+                    snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (/sys/class/mem_tool_class/%s)", maj, min, ent->d_name);
+                    dev_id_str = dev_buf;
+                    int fd = open(node, O_RDWR);
+                    if (fd < 0) fd = open("/dev/health_storage_service_alloc", O_RDWR);
+                    if (fd >= 0) {
+                        perms_str = "rw-rw-rw- (FD Open OK)";
+                        status_text = "ACTIVE & RESPONDING (Linux Sysfs Ring 0)";
+                        close(fd);
+                    } else {
+                        perms_str = "Sysfs registered (Node pending mknod)";
+                        status_text = "Driver active in kernel sysfs";
+                    }
+                    fclose(fp);
+                    break;
+                }
+                fclose(fp);
+            }
+        }
+        closedir(dir);
+    }
+
+    // 2. Check official character nodes in /dev
+    if (!is_active) {
+        const char* candidate_nodes[] = {
+            "/dev/health_storage_service_alloc",
+            "/dev/BYNb",
+            "/dev/mem_tool",
+            "/dev/uevents_records"
+        };
+
+        for (const char* node : candidate_nodes) {
+            struct stat st;
+            if (stat(node, &st) == 0 && S_ISCHR(st.st_mode)) {
+                active_node = node;
+                is_active = true;
                 maj = major(st.st_rdev);
                 min = minor(st.st_rdev);
                 char dev_buf[64];
                 snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (0x%lX)", maj, min, (unsigned long)st.st_rdev);
                 dev_id_str = dev_buf;
-            } else {
-                dev_id_str = "Character Node Attached";
-            }
 
-            int fd = open(node, O_RDWR);
-            if (fd >= 0) {
-                perms_str = "rw-rw-rw- (FD Open OK)";
-                status_text = "ACTIVE & RESPONDING (Ring 0)";
-                close(fd);
-            } else {
-                perms_str = "Node exists (Restricted permission)";
-                status_text = "Node detected, run chmod 666 in loader";
+                int fd = open(node, O_RDWR);
+                if (fd >= 0) {
+                    perms_str = "rw-rw-rw- (FD Open OK)";
+                    status_text = "ACTIVE & RESPONDING (Ring 0)";
+                    close(fd);
+                } else {
+                    perms_str = "Node exists (Restricted permission)";
+                    status_text = "Node detected, run chmod 666 in loader";
+                }
+                break;
             }
-            break;
         }
     }
 

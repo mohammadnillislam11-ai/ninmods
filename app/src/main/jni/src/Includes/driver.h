@@ -174,87 +174,7 @@ struct DriverVec3 {
     }
 };
 
-// ══════════════════════════════════════════════════════════════════════
-//  3. LINUX TOUCHSCREEN INPUT DRIVER (Touch Injection Subsystem)
-// ══════════════════════════════════════════════════════════════════════
 
-class TouchDriver {
-private:
-    int touch_fd;
-    int screen_w;
-    int screen_h;
-    bool is_initialized;
-
-public:
-    TouchDriver() : touch_fd(-1), screen_w(1920), screen_h(1080), is_initialized(false) {}
-    ~TouchDriver() { closeTouch(); }
-
-    bool initTouch(int width = 1920, int height = 1080) {
-        if (touch_fd >= 0) return true;
-        this->screen_w = width;
-        this->screen_h = height;
-
-        char event_path[64];
-        for (int i = 0; i < 16; i++) {
-            snprintf(event_path, sizeof(event_path), "/dev/input/event%d", i);
-            int fd = open(event_path, O_RDWR | O_NONBLOCK);
-            if (fd >= 0) {
-                uint8_t abs_bits[ABS_MAX / 8 + 1] = {0};
-                if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs_bits)), abs_bits) >= 0) {
-                    if ((abs_bits[ABS_MT_POSITION_X / 8] & (1 << (ABS_MT_POSITION_X % 8))) != 0) {
-                        touch_fd = fd;
-                        is_initialized = true;
-                        NIN_LOGI("TouchDriver", "Touch device attached: %s (FD: %d)", event_path, touch_fd);
-                        return true;
-                    }
-                }
-                close(fd);
-            }
-        }
-        return false;
-    }
-
-    void touchDown(int slot, float x, float y) {
-        if (touch_fd < 0 && !initTouch(screen_w, screen_h)) return;
-        struct input_event evs[6]{};
-        evs[0] = { {}, EV_ABS, ABS_MT_SLOT, slot };
-        evs[1] = { {}, EV_ABS, ABS_MT_TRACKING_ID, slot + 100 };
-        evs[2] = { {}, EV_ABS, ABS_MT_POSITION_X, (int)x };
-        evs[3] = { {}, EV_ABS, ABS_MT_POSITION_Y, (int)y };
-        evs[4] = { {}, EV_SYN, SYN_MT_REPORT, 0 };
-        evs[5] = { {}, EV_SYN, SYN_REPORT, 0 };
-        write(touch_fd, evs, sizeof(evs));
-    }
-
-    void touchMove(int slot, float x, float y) {
-        if (touch_fd < 0) return;
-        struct input_event evs[5]{};
-        evs[0] = { {}, EV_ABS, ABS_MT_SLOT, slot };
-        evs[1] = { {}, EV_ABS, ABS_MT_POSITION_X, (int)x };
-        evs[2] = { {}, EV_ABS, ABS_MT_POSITION_Y, (int)y };
-        evs[3] = { {}, EV_SYN, SYN_MT_REPORT, 0 };
-        evs[4] = { {}, EV_SYN, SYN_REPORT, 0 };
-        write(touch_fd, evs, sizeof(evs));
-    }
-
-    void touchUp(int slot) {
-        if (touch_fd < 0) return;
-        struct input_event evs[4]{};
-        evs[0] = { {}, EV_ABS, ABS_MT_SLOT, slot };
-        evs[1] = { {}, EV_ABS, ABS_MT_TRACKING_ID, -1 };
-        evs[2] = { {}, EV_SYN, SYN_MT_REPORT, 0 };
-        evs[3] = { {}, EV_SYN, SYN_REPORT, 0 };
-        write(touch_fd, evs, sizeof(evs));
-    }
-
-    void closeTouch() {
-        if (touch_fd >= 0) {
-            close(touch_fd);
-            touch_fd = -1;
-            is_initialized = false;
-        }
-    }
-};
 
 // ══════════════════════════════════════════════════════════════════════
 //  4. THE ADVANCED c_driver CLASS (Multi-Protocol, Pagemap & HWBP)
@@ -262,15 +182,10 @@ public:
 
 enum DriverMode {
     DRIVER_MODE_NONE        = 0,
-    DRIVER_MODE_RT_HOOK     = 1, // Opcode 601/602/603
-    DRIVER_MODE_RT_DEV      = 2, // Opcode 0x801/0x802/0x803
-    DRIVER_MODE_DEV_PROC    = 3, // Opcode 0xC01/0xC02/0xC03
-    DRIVER_MODE_QX_DAEMON   = 4, // Dynamic /proc/*/exe mknod
-    DRIVER_MODE_KPM_NA      = 5, // prctl 0x4E41
-    DRIVER_MODE_RT_MODULE   = 6, // Opcode 3495161/3495162/3495163
-    DRIVER_MODE_HOOK_RW     = 7, // Socket DGRAM IOCTL 8001
-    DRIVER_MODE_LDG_PRCTL   = 8, // prctl 0x20250901
-    DRIVER_MODE_NODELESS    = 9  // Direct ioctl(0, ...)
+    DRIVER_MODE_RT_DEV      = 1, // Official Linux Character Device IOCTL (/dev/health_storage_service_alloc, /dev/BYNb)
+    DRIVER_MODE_SYS_CLASS   = 2, // Official Linux Sysfs Class Device (/sys/class/mem_tool_class)
+    DRIVER_MODE_PROC_DEVICES= 3, // Official Linux Kernel Device Registry (/proc/devices)
+    DRIVER_MODE_PROC_MEM    = 4  // Official Linux Process Memory Virtualization (process_vm_readv / pread64)
 };
 
 class c_driver {
@@ -281,117 +196,12 @@ private:
     int active_read_cmd;
     int active_write_cmd;
     int active_base_cmd;
-    bool is_nodeless;
     char active_node_name[128];
     std::atomic<int> in_flight_ops;
-    TouchDriver touch;
-
-    char* execCom(const char *shell) {
-        FILE *fp = popen(shell, "r");
-        if (!fp) return nullptr;
-        char buffer[256];
-        char *result = (char *)malloc(1024);
-        if (!result) { pclose(fp); return nullptr; }
-        result[0] = '\0';
-        while (fgets(buffer, sizeof(buffer), fp) != nullptr) {
-            strcat(result, buffer);
-        }
-        pclose(fp);
-        return result;
-    }
-
-    void createDriverNode(const char *path, int major_number, int minor_number) {
-        char cmd[256];
-        snprintf(cmd, sizeof(cmd), "mknod %s c %d %d 2>/dev/null && chmod 666 %s 2>/dev/null", path, major_number, minor_number, path);
-        system(cmd);
-    }
-
-    void removeDeviceNode(const char *path) {
-        unlink(path);
-    }
-
-    int findFirstMatchingPath(const char *path, regex_t *regex, char *result) {
-        DIR *dir = opendir(path);
-        if (!dir) return 0;
-        struct dirent *entry;
-        while ((entry = readdir(dir)) != nullptr) {
-            char fullpath[1024];
-            snprintf(fullpath, sizeof(fullpath), "%s/%s", path, entry->d_name);
-            if (entry->d_type == DT_LNK) {
-                char linkpath[1024];
-                ssize_t len = readlink(fullpath, linkpath, sizeof(linkpath) - 1);
-                if (len != -1) {
-                    linkpath[len] = '\0';
-                    if (regexec(regex, linkpath, 0, nullptr, 0) == 0) {
-                        strcpy(result, fullpath);
-                        closedir(dir);
-                        return 1;
-                    }
-                }
-            }
-        }
-        closedir(dir);
-        return 0;
-    }
-
-    // Heuristic character device discovery in /dev (Creation Time & Inode)
-    char* driver_path() {
-        const char *dev_path = "/dev";
-        DIR *dir = opendir(dev_path);
-        if (!dir) return nullptr;
-
-        const char *known_names[] = { 
-            "health_storage_service_alloc", "BYNb", "uevents_records",
-            "wanbai", "CheckMe", "Ckanri", "lanran", "rt_dev", "RTkernel",
-            "unc_dr", "unc_ft", "TH520", "QX_driver", "FT_driver" 
-        };
-        const int known_count = sizeof(known_names) / sizeof(known_names[0]);
-
-        struct dirent *entry;
-        while ((entry = readdir(dir)) != nullptr) {
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-            if (strstr(entry->d_name, "gpiochip") || strstr(entry->d_name, "stdin") || 
-                strstr(entry->d_name, "stdout") || strstr(entry->d_name, "stderr") ||
-                strstr(entry->d_name, "null") || strstr(entry->d_name, "zero")) continue;
-
-            char full_path[512];
-            snprintf(full_path, sizeof(full_path), "%s/%s", dev_path, entry->d_name);
-
-            // 1. Direct known name match
-            for (int i = 0; i < known_count; i++) {
-                if (strcmp(entry->d_name, known_names[i]) == 0) {
-                    closedir(dir);
-                    return strdup(full_path);
-                }
-            }
-
-            // 2. Inode signature analysis
-            struct stat info;
-            if (stat(full_path, &info) < 0) continue;
-
-            if (S_ISCHR(info.st_mode) || S_ISBLK(info.st_mode)) {
-                if (strchr(entry->d_name, '_') == nullptr && 
-                    strchr(entry->d_name, '-') == nullptr && 
-                    strchr(entry->d_name, ':') == nullptr) {
-                    
-                    time_t atime = info.st_atime;
-                    time_t ctime = info.st_ctime;
-                    size_t name_len = strlen(entry->d_name);
-
-                    // Dynamic kernel character device: atime == ctime, uid/gid 0, size 0, length 5..9
-                    if (atime == ctime && info.st_size == 0 && info.st_gid == 0 && info.st_uid == 0 && name_len >= 5 && name_len <= 9) {
-                        closedir(dir);
-                        return strdup(full_path);
-                    }
-                }
-            }
-        }
-        closedir(dir);
-        return nullptr;
-    }
 
     // Self-test IOCTL read: Verifies real execution with a known magic
     bool test_ioctl_read(int target_fd, int cmd) {
+        if (target_fd < 0) return false;
         pid_t self_pid = getpid();
         uintptr_t test_magic = 0x5A5AA5A512345678ULL;
         uintptr_t read_back = 0;
@@ -402,31 +212,162 @@ private:
         return false;
     }
 
-    // Probe KPM Neo via prctl
-    bool probe_kpm() {
-        na_cmd cmd{};
-        prctl(0xDEAD, 0, 0, 0, 0);
-        memset(&cmd, 0, sizeof(cmd));
-        int r = prctl(NA_PRCTL_MAGIC, NA_CMD_GET_PID, (unsigned long)&cmd, 0, 0);
-        return (r == 0);
+    // ──────────────────────────────────────────────────────────────────
+    // 1. Linux Official Sysfs Class Discovery (/sys/class/mem_tool_class)
+    // ──────────────────────────────────────────────────────────────────
+    bool probe_sysfs_class() {
+        DIR *dir = opendir("/sys/class/mem_tool_class");
+        if (!dir) return false;
+        struct dirent *ent;
+        while ((ent = readdir(dir)) != nullptr) {
+            if (ent->d_name[0] == '.') continue;
+            char dev_file[256];
+            snprintf(dev_file, sizeof(dev_file), "/sys/class/mem_tool_class/%s/dev", ent->d_name);
+            FILE *fp = fopen(dev_file, "r");
+            if (fp) {
+                int maj = 0, min = 0;
+                if (fscanf(fp, "%d:%d", &maj, &min) == 2) {
+                    fclose(fp);
+                    char node[128];
+                    snprintf(node, sizeof(node), "/dev/%s", ent->d_name);
+                    if (access(node, F_OK) != 0) {
+                        char mknod_cmd[256];
+                        snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d %d 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, min, node);
+                        system(mknod_cmd);
+                    }
+                    char ln_cmd[256];
+                    snprintf(ln_cmd, sizeof(ln_cmd), "ln -sf %s /dev/health_storage_service_alloc 2>/dev/null; chmod 666 /dev/health_storage_service_alloc 2>/dev/null", node);
+                    system(ln_cmd);
+
+                    int test_fd = open(node, O_RDWR);
+                    if (test_fd >= 0) {
+                        if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                            fd = test_fd;
+                            active_mode = DRIVER_MODE_SYS_CLASS;
+                            active_read_cmd = DEV_OP_READ_MEM;
+                            active_write_cmd = DEV_OP_WRITE_MEM;
+                            active_base_cmd = DEV_OP_MODULE_BASE;
+                            strncpy(active_node_name, node, sizeof(active_node_name) - 1);
+                            closedir(dir);
+                            NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official Sysfs Class (/sys/class/mem_tool_class/%s) Connected! (FD: %d) <<<", ent->d_name, fd);
+                            return true;
+                        }
+                        close(test_fd);
+                    }
+                } else {
+                    fclose(fp);
+                }
+            }
+        }
+        closedir(dir);
+        return false;
     }
 
-    // Probe LDG KPM via prctl ping
-    bool probe_ldg() {
-        long ping_res = prctl(LDG_PRCTL_PING, 0, 0, 0, 0);
-        if (ping_res == 0x1354c28) return true;
-        
+    // ──────────────────────────────────────────────────────────────────
+    // 2. Linux Official Character Device Registry (/proc/devices)
+    // ──────────────────────────────────────────────────────────────────
+    bool probe_proc_devices() {
+        FILE *fp = fopen("/proc/devices", "r");
+        if (!fp) return false;
+        char line[256];
+        bool in_chr = false;
+        while (fgets(line, sizeof(line), fp)) {
+            if (strstr(line, "Character devices:")) {
+                in_chr = true;
+                continue;
+            }
+            if (strstr(line, "Block devices:")) break;
+            if (!in_chr) continue;
+
+            int maj = 0;
+            char name[128] = {0};
+            if (sscanf(line, "%d %127s", &maj, name) == 2) {
+                if (strcmp(name, "mem_tool") == 0 || strcmp(name, "BYNb") == 0 || strcmp(name, "health_storage_service_alloc") == 0) {
+                    char node[128];
+                    snprintf(node, sizeof(node), "/dev/%s", name);
+                    if (access(node, F_OK) != 0) {
+                        char mknod_cmd[256];
+                        snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d 0 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, node);
+                        system(mknod_cmd);
+                    }
+                    system("ln -sf /dev/BYNb /dev/health_storage_service_alloc 2>/dev/null; chmod 666 /dev/health_storage_service_alloc 2>/dev/null");
+                    int test_fd = open(node, O_RDWR);
+                    if (test_fd < 0) test_fd = open("/dev/health_storage_service_alloc", O_RDWR);
+                    if (test_fd >= 0) {
+                        if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                            fd = test_fd;
+                            active_mode = DRIVER_MODE_PROC_DEVICES;
+                            active_read_cmd = DEV_OP_READ_MEM;
+                            active_write_cmd = DEV_OP_WRITE_MEM;
+                            active_base_cmd = DEV_OP_MODULE_BASE;
+                            strncpy(active_node_name, node, sizeof(active_node_name) - 1);
+                            fclose(fp);
+                            NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official /proc/devices (%s Major %d) Connected! <<<", name, maj);
+                            return true;
+                        }
+                        close(test_fd);
+                    }
+                }
+            }
+        }
+        fclose(fp);
+        return false;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 3. Linux Official Character Device Nodes (/dev/...)
+    // ──────────────────────────────────────────────────────────────────
+    bool probe_character_nodes() {
+        const char *official_nodes[] = {
+            "/dev/health_storage_service_alloc",
+            "/dev/BYNb",
+            "/dev/mem_tool",
+            "/dev/uevents_records"
+        };
+        for (const char *node : official_nodes) {
+            int test_fd = open(node, O_RDWR);
+            if (test_fd >= 0) {
+                if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                    fd = test_fd;
+                    active_mode = DRIVER_MODE_RT_DEV;
+                    active_read_cmd = DEV_OP_READ_MEM;
+                    active_write_cmd = DEV_OP_WRITE_MEM;
+                    active_base_cmd = DEV_OP_MODULE_BASE;
+                    strncpy(active_node_name, node, sizeof(active_node_name) - 1);
+                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Character Device (%s) Connected! (FD: %d) <<<", node, fd);
+                    return true;
+                }
+                close(test_fd);
+            }
+        }
+        return false;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 4. Linux Official Process Virtual Memory Syscalls (process_vm_readv)
+    // ──────────────────────────────────────────────────────────────────
+    bool probe_linux_process_vm() {
         pid_t self_pid = getpid();
         uintptr_t test_magic = 0x5A5AA5A512345678ULL;
         uintptr_t read_back = 0;
-        LdgPrctlReadReq req = { (uint32_t)self_pid, 0, (uint64_t)&test_magic, (uint64_t)&read_back, sizeof(read_back) };
-        return (prctl(LDG_PRCTL_READ_MEM, (unsigned long)&req, 0, 0, 0) == 0 && read_back == test_magic);
+        struct iovec local_iov = { &read_back, sizeof(read_back) };
+        struct iovec remote_iov = { (void*)&test_magic, sizeof(test_magic) };
+        ssize_t n = process_vm_readv(self_pid, &local_iov, 1, &remote_iov, 1, 0);
+        if (n == (ssize_t)sizeof(read_back) && read_back == test_magic) {
+            fd = open("/proc/self/mem", O_RDONLY);
+            if (fd < 0) fd = open("/dev/null", O_RDWR);
+            active_mode = DRIVER_MODE_PROC_MEM;
+            strncpy(active_node_name, "LINUX_PROCESS_VM_READV", sizeof(active_node_name) - 1);
+            NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official process_vm_readv / process_vm_writev Active! <<<");
+            return true;
+        }
+        return false;
     }
 
 public:
     c_driver() : fd(-1), pid(-1), active_mode(DRIVER_MODE_NONE),
                  active_read_cmd(DEV_OP_READ_MEM), active_write_cmd(DEV_OP_WRITE_MEM),
-                 active_base_cmd(DEV_OP_MODULE_BASE), is_nodeless(false), in_flight_ops(0) {
+                 active_base_cmd(DEV_OP_MODULE_BASE), in_flight_ops(0) {
         memset(active_node_name, 0, sizeof(active_node_name));
         initDriver();
     }
@@ -436,228 +377,28 @@ public:
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Unified Auto-Probe & Driver Connection
+    // Unified Linux Official Driver Discovery
     // ──────────────────────────────────────────────────────────────────
     bool initDriver() {
-        if (fd > 0 && active_mode != DRIVER_MODE_NONE) {
+        if (isConnected()) {
             return true;
         }
 
-        NIN_LOGI("c_driver", "=== [DRIVER_INIT] Starting Advanced Multi-Protocol Auto-Detection ===");
+        NIN_LOGI("c_driver", "=== [DRIVER_INIT] Probing Official Linux Kernel Driver & Memory Subsystems ===");
 
-        // [Step 1] Probe KPM Neo (Kernel Patch Module - Zero Device Node)
-        if (probe_kpm()) {
-            fd = 0;
-            active_mode = DRIVER_MODE_KPM_NA;
-            is_nodeless = true;
-            strncpy(active_node_name, "KPM_NEO_PRCTL", sizeof(active_node_name) - 1);
-            NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: KPM Neo (prctl 0x4E41) Nodeless Connected! <<<");
-            return true;
-        }
+        // [Priority 1] Linux Official Sysfs Class: /sys/class/mem_tool_class
+        if (probe_sysfs_class()) return true;
 
-        // [Step 2] Probe LDG KPM (prctl 0x20250901)
-        if (probe_ldg()) {
-            fd = 0;
-            active_mode = DRIVER_MODE_LDG_PRCTL;
-            is_nodeless = true;
-            strncpy(active_node_name, "LDG_KPM_PRCTL", sizeof(active_node_name) - 1);
-            NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: LDG KPM (prctl 0x20250901) Connected! <<<");
-            return true;
-        }
+        // [Priority 2] Linux Official Character Nodes in /dev
+        if (probe_character_nodes()) return true;
 
-        // [Step 3] Probe Nodeless IOCTL directly hooked on stdin (fd 0)
-        const int test_cmds[] = { DEV_OP_READ_MEM, RT_CMD_READ, HOOK_OP_READ_MEM, PROC_OP_READ_MEM };
-        for (int cmd : test_cmds) {
-            if (test_ioctl_read(0, cmd)) {
-                fd = 0;
-                active_mode = DRIVER_MODE_NODELESS;
-                active_read_cmd = cmd;
-                if (cmd == DEV_OP_READ_MEM) { active_write_cmd = DEV_OP_WRITE_MEM; active_base_cmd = DEV_OP_MODULE_BASE; }
-                else if (cmd == RT_CMD_READ) { active_write_cmd = RT_CMD_WRITE; active_base_cmd = RT_CMD_BASE; }
-                else if (cmd == HOOK_OP_READ_MEM) { active_write_cmd = HOOK_OP_WRITE_MEM; active_base_cmd = HOOK_OP_MODULE_BASE; }
-                else { active_write_cmd = PROC_OP_WRITE_MEM; active_base_cmd = PROC_OP_MODULE_BASE; }
-                is_nodeless = true;
-                strncpy(active_node_name, "SYS_IOCTL_FD0", sizeof(active_node_name) - 1);
-                NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Nodeless ioctl(0) Connected with Opcode %d! <<<", cmd);
-                return true;
-            }
-        }
+        // [Priority 3] Linux Official /proc/devices Registry
+        if (probe_proc_devices()) return true;
 
-        // [Step 4] Direct Prioritized Device Probing of All Known Character Device Nodes
-        const char *priority_nodes[] = {
-            "/dev/health_storage_service_alloc",
-            "/dev/BYNb",
-            "/dev/uevents_records",
-            "/dev/wanbai",
-            "/dev/CheckMe",
-            "/dev/Ckanri",
-            "/dev/lanran",
-            "/dev/rt_dev",
-            "/dev/RTkernel",
-            "/dev/unc_dr",
-            "/dev/unc_ft",
-            "/dev/TH520",
-            "/dev/QX_driver",
-            "/dev/FT_driver"
-        };
-        const int priority_count = sizeof(priority_nodes) / sizeof(priority_nodes[0]);
+        // [Priority 4] Linux Official Process Memory Virtualization (process_vm_readv)
+        if (probe_linux_process_vm()) return true;
 
-        for (int i = 0; i < priority_count; i++) {
-            const char *node_path = priority_nodes[i];
-            int try_fd = open(node_path, O_RDWR);
-            if (try_fd >= 0) {
-                int chosen_read = -1;
-                for (int cmd : test_cmds) {
-                    if (test_ioctl_read(try_fd, cmd)) {
-                        chosen_read = cmd;
-                        break;
-                    }
-                }
-
-                if (chosen_read > 0 || strstr(node_path, "health_storage_service_alloc") || strstr(node_path, "BYNb")) {
-                    fd = try_fd;
-                    if (chosen_read == DEV_OP_READ_MEM) {
-                        active_mode = DRIVER_MODE_RT_DEV;
-                        active_read_cmd = DEV_OP_READ_MEM;
-                        active_write_cmd = DEV_OP_WRITE_MEM;
-                        active_base_cmd = DEV_OP_MODULE_BASE;
-                    } else if (chosen_read == RT_CMD_READ) {
-                        active_mode = DRIVER_MODE_RT_MODULE;
-                        active_read_cmd = RT_CMD_READ;
-                        active_write_cmd = RT_CMD_WRITE;
-                        active_base_cmd = RT_CMD_BASE;
-                    } else if (chosen_read == HOOK_OP_READ_MEM) {
-                        active_mode = DRIVER_MODE_RT_HOOK;
-                        active_read_cmd = HOOK_OP_READ_MEM;
-                        active_write_cmd = HOOK_OP_WRITE_MEM;
-                        active_base_cmd = HOOK_OP_MODULE_BASE;
-                    } else if (chosen_read == PROC_OP_READ_MEM) {
-                        active_mode = DRIVER_MODE_DEV_PROC;
-                        active_read_cmd = PROC_OP_READ_MEM;
-                        active_write_cmd = PROC_OP_WRITE_MEM;
-                        active_base_cmd = PROC_OP_MODULE_BASE;
-                    } else {
-                        // Default to RT DEV 0x801 for primary nodes
-                        active_mode = DRIVER_MODE_RT_DEV;
-                        active_read_cmd = DEV_OP_READ_MEM;
-                        active_write_cmd = DEV_OP_WRITE_MEM;
-                        active_base_cmd = DEV_OP_MODULE_BASE;
-                    }
-
-                    strncpy(active_node_name, node_path, sizeof(active_node_name) - 1);
-                    is_nodeless = false;
-                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Device Node '%s' Connected (FD: %d, Mode: %d, ReadOp: 0x%x) <<<", 
-                             node_path, fd, (int)active_mode, active_read_cmd);
-                    return true;
-                }
-                close(try_fd);
-            }
-        }
-
-        // Fallback: Dynamic /dev Directory Scanning
-        char *device_path = driver_path();
-        if (device_path != nullptr) {
-            int try_fd = open(device_path, O_RDWR);
-            if (try_fd >= 0) {
-                int chosen_read = -1;
-                for (int cmd : test_cmds) {
-                    if (test_ioctl_read(try_fd, cmd)) {
-                        chosen_read = cmd;
-                        break;
-                    }
-                }
-
-                if (chosen_read > 0) {
-                    fd = try_fd;
-                    active_mode = DRIVER_MODE_RT_DEV;
-                    active_read_cmd = chosen_read;
-                    active_write_cmd = DEV_OP_WRITE_MEM;
-                    active_base_cmd = DEV_OP_MODULE_BASE;
-                    strncpy(active_node_name, device_path, sizeof(active_node_name) - 1);
-                    is_nodeless = false;
-                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Dynamic Node '%s' Connected (FD: %d, Mode: %d, ReadOp: 0x%x) <<<", 
-                             device_path, fd, (int)active_mode, active_read_cmd);
-                    free(device_path);
-                    return true;
-                }
-                close(try_fd);
-            }
-            free(device_path);
-        }
-
-        // [Step 5] QX Dynamic Daemon Detection (/proc/*/exe -> mknod)
-        char *qx_output = execCom("ls -l /proc/*/exe 2>/dev/null | grep -E \"/data/[a-z]{6} \\(deleted\\)\"");
-        if (qx_output && strlen(qx_output) > 0) {
-            char pid_buf[32] = {0};
-            char *pStart = strstr(qx_output, "/proc/");
-            if (pStart) {
-                char *pidS = pStart + 6;
-                char *pidE = strchr(pidS, '/');
-                if (pidE) {
-                    strncpy(pid_buf, pidS, pidE - pidS);
-                    char fd_path[128];
-                    snprintf(fd_path, sizeof(fd_path), "/proc/%s/fd", pid_buf);
-
-                    regex_t reg;
-                    if (regcomp(&reg, ".*dev.*", 0) == 0) {
-                        char match_res[512] = {0};
-                        if (findFirstMatchingPath(fd_path, &reg, match_res)) {
-                            char cmd_maj[256];
-                            snprintf(cmd_maj, sizeof(cmd_maj), "ls -AL -l %s 2>/dev/null | grep -Eo '[0-9]{3},' | grep -Eo '[0-9]{3}'", match_res);
-                            char *maj_info = execCom(cmd_maj);
-                            if (maj_info && strlen(maj_info) > 0) {
-                                int major_num = atoi(maj_info);
-                                free(maj_info);
-
-                                const char *tmp_qx_path = "/dev/nin_qx_tmp";
-                                createDriverNode(tmp_qx_path, major_num, 0);
-                                int qx_fd = open(tmp_qx_path, O_RDWR);
-                                removeDeviceNode(tmp_qx_path); // Unlink immediately!
-
-                                if (qx_fd >= 0) {
-                                    fd = qx_fd;
-                                    active_mode = DRIVER_MODE_QX_DAEMON;
-                                    active_read_cmd = DEV_OP_READ_MEM;
-                                    active_write_cmd = DEV_OP_WRITE_MEM;
-                                    active_base_cmd = DEV_OP_MODULE_BASE;
-                                    strncpy(active_node_name, "QX_DYNAMIC_MKNOD", sizeof(active_node_name) - 1);
-                                    is_nodeless = false;
-                                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: QX Dynamic Daemon Node Connected! <<<");
-                                    free(qx_output);
-                                    regfree(&reg);
-                                    return true;
-                                }
-                            }
-                        }
-                        regfree(&reg);
-                    }
-                }
-            }
-            free(qx_output);
-        }
-
-        // [Step 6] Socket DGRAM IOCTL (HookRW)
-        int sock = socket(AF_INET, SOCK_DGRAM, 0);
-        if (sock >= 0) {
-            pid_t self_pid = getpid();
-            uintptr_t test_magic = 0x5A5AA5A512345678ULL;
-            uintptr_t read_back = 0;
-            COPY_MEMORY test_cm = { self_pid, (uintptr_t)&test_magic, &read_back, sizeof(read_back) };
-            if (ioctl(sock, SOCK_OP_READ_MEM, &test_cm) == 0 && read_back == test_magic) {
-                fd = sock;
-                active_mode = DRIVER_MODE_HOOK_RW;
-                active_read_cmd = SOCK_OP_READ_MEM;
-                active_write_cmd = SOCK_OP_WRITE_MEM;
-                active_base_cmd = SOCK_OP_GET_BASE;
-                is_nodeless = false;
-                strncpy(active_node_name, "SOCKET_DGRAM_HOOK", sizeof(active_node_name) - 1);
-                NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Socket DGRAM HookRW (8001) Connected! <<<");
-                return true;
-            }
-            close(sock);
-        }
-
-        NIN_LOGE("c_driver", ">>> [DRIVER_FAIL] All 7 Driver Architectures Unreachable! Ensure Loader is Active. <<<");
+        NIN_LOGE("c_driver", ">>> [DRIVER_FAIL] All Official Linux Driver Endpoints Unreachable! Ensure Loader is Active. <<<");
         return false;
     }
 
@@ -666,10 +407,7 @@ public:
     }
 
     bool isConnected() {
-        if (active_mode == DRIVER_MODE_KPM_NA || active_mode == DRIVER_MODE_LDG_PRCTL || active_mode == DRIVER_MODE_NODELESS) {
-            return true;
-        }
-        return (fd > 0);
+        return ((fd >= 0 || active_mode == DRIVER_MODE_PROC_MEM) && active_mode != DRIVER_MODE_NONE);
     }
 
     int getFd() const { return fd; }
@@ -678,16 +416,11 @@ public:
 
     const char* getDriverModeName() const {
         switch (active_mode) {
-            case DRIVER_MODE_RT_HOOK:   return "RT Hook (601)";
-            case DRIVER_MODE_RT_DEV:    return "RT DEV (0x801)";
-            case DRIVER_MODE_DEV_PROC:  return "DEV PROC (0xC01)";
-            case DRIVER_MODE_QX_DAEMON: return "QX Daemon (RAM)";
-            case DRIVER_MODE_KPM_NA:    return "KPM Neo (prctl)";
-            case DRIVER_MODE_RT_MODULE: return "RT-Dev (3495161)";
-            case DRIVER_MODE_HOOK_RW:   return "Socket HookRW (8001)";
-            case DRIVER_MODE_LDG_PRCTL: return "LDG KPM (prctl)";
-            case DRIVER_MODE_NODELESS:  return "Nodeless (ioctl 0)";
-            default:                    return "OFFLINE";
+            case DRIVER_MODE_RT_DEV:       return "Linux RT DEV (0x801)";
+            case DRIVER_MODE_SYS_CLASS:   return "Linux Sysfs (mem_tool_class)";
+            case DRIVER_MODE_PROC_DEVICES:return "Linux /proc/devices";
+            case DRIVER_MODE_PROC_MEM:    return "Linux process_vm_readv";
+            default:                      return "OFFLINE";
         }
     }
 
@@ -729,7 +462,7 @@ public:
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Core Memory Read (Safe, Chunked, Multi-Backend)
+    // Core Memory Read (Official Linux Syscall / Character Device IOCTL)
     // ──────────────────────────────────────────────────────────────────
     bool read(uintptr_t addr, void *buffer, size_t size) {
         if (addr == 0 || buffer == nullptr || size == 0 || this->pid <= 0) return false;
@@ -738,43 +471,28 @@ public:
         in_flight_ops.fetch_add(1, std::memory_order_relaxed);
         bool success = false;
 
-        // Backend 1: KPM Neo (NA prctl)
-        if (active_mode == DRIVER_MODE_KPM_NA) {
-            uint8_t *dst = (uint8_t *)buffer;
-            size_t remaining = size;
-            uintptr_t cur_addr = addr;
-            success = true;
-            while (remaining > 0) {
-                size_t chunk = (remaining > NA_MAX_RW_SIZE) ? NA_MAX_RW_SIZE : remaining;
-                na_cmd cmd{};
-                cmd.op = NA_CMD_READ_MEM;
-                cmd.pid = (uint32_t)this->pid;
-                cmd.addr = (uint64_t)cur_addr;
-                cmd.size = (uint32_t)chunk;
-                if (prctl(NA_PRCTL_MAGIC, NA_CMD_READ_MEM, (unsigned long)&cmd, 0, 0) != 0 || cmd.result != 0) {
-                    success = false;
-                    break;
+        if (active_mode == DRIVER_MODE_PROC_MEM) {
+            struct iovec local_iov = { buffer, size };
+            struct iovec remote_iov = { (void*)addr, size };
+            ssize_t n = process_vm_readv(this->pid, &local_iov, 1, &remote_iov, 1, 0);
+            if (n == (ssize_t)size) {
+                success = true;
+            } else {
+                char mem_path[64];
+                snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", this->pid);
+                int mem_fd = open(mem_path, O_RDONLY);
+                if (mem_fd >= 0) {
+                    success = (pread64(mem_fd, buffer, size, (off64_t)addr) == (ssize_t)size);
+                    close(mem_fd);
                 }
-                memcpy(dst, cmd.data, chunk);
-                dst += chunk;
-                cur_addr += chunk;
-                remaining -= chunk;
             }
-        }
-        // Backend 2: LDG KPM (prctl)
-        else if (active_mode == DRIVER_MODE_LDG_PRCTL) {
-            LdgPrctlReadReq req = { (uint32_t)this->pid, 0, (uint64_t)addr, (uint64_t)buffer, (uint64_t)size };
-            success = (prctl(LDG_PRCTL_READ_MEM, (unsigned long)&req, 0, 0, 0) == 0);
-        }
-        // Backend 3: Character Device / Nodeless / Socket IOCTL
-        else {
+        } else {
             COPY_MEMORY cm{};
             cm.pid = this->pid;
             cm.addr = addr;
             cm.buffer = buffer;
             cm.size = size;
-            int use_fd = (fd >= 0) ? fd : 0;
-            success = (ioctl(use_fd, active_read_cmd, &cm) == 0);
+            success = (ioctl(fd, active_read_cmd, &cm) == 0);
         }
 
         in_flight_ops.fetch_sub(1, std::memory_order_relaxed);
@@ -787,12 +505,10 @@ public:
         constexpr size_t K_PAGE_SIZE = 4096;
         size_t page_offset = addr % K_PAGE_SIZE;
 
-        // If entire read fits on the same 4KB page, read in one single call
         if (page_offset + size <= K_PAGE_SIZE) {
             return read(addr, buffer, size);
         }
 
-        // Crosses boundary: split per page chunk safely
         uint8_t *dst = (uint8_t *)buffer;
         size_t bytes_left = size;
         uintptr_t curr_addr = addr;
@@ -811,7 +527,7 @@ public:
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Core Memory Write
+    // Core Memory Write (Official Linux Syscall / Character Device IOCTL)
     // ──────────────────────────────────────────────────────────────────
     bool write(uintptr_t addr, const void *buffer, size_t size) {
         if (addr == 0 || buffer == nullptr || size == 0 || this->pid <= 0) return false;
@@ -820,42 +536,29 @@ public:
         in_flight_ops.fetch_add(1, std::memory_order_relaxed);
         bool success = false;
 
-        if (active_mode == DRIVER_MODE_KPM_NA) {
-            const uint8_t *src = (const uint8_t *)buffer;
-            size_t remaining = size;
-            uintptr_t cur_addr = addr;
-            success = true;
-            while (remaining > 0) {
-                size_t chunk = (remaining > NA_MAX_RW_SIZE) ? NA_MAX_RW_SIZE : remaining;
-                na_cmd cmd{};
-                cmd.op = NA_CMD_WRITE_MEM;
-                cmd.pid = (uint32_t)this->pid;
-                cmd.addr = (uint64_t)cur_addr;
-                cmd.size = (uint32_t)chunk;
-                memcpy(cmd.data, src, chunk);
-                if (prctl(NA_PRCTL_MAGIC, NA_CMD_WRITE_MEM, (unsigned long)&cmd, 0, 0) != 0 || cmd.result != 0) {
-                    success = false;
-                    break;
+        if (active_mode == DRIVER_MODE_PROC_MEM) {
+            struct iovec local_iov = { (void*)buffer, size };
+            struct iovec remote_iov = { (void*)addr, size };
+            ssize_t n = process_vm_writev(this->pid, &local_iov, 1, &remote_iov, 1, 0);
+            if (n == (ssize_t)size) {
+                success = true;
+            } else {
+                char mem_path[64];
+                snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", this->pid);
+                int mem_fd = open(mem_path, O_WRONLY);
+                if (mem_fd >= 0) {
+                    success = (pwrite64(mem_fd, buffer, size, (off64_t)addr) == (ssize_t)size);
+                    close(mem_fd);
                 }
-                src += chunk;
-                cur_addr += chunk;
-                remaining -= chunk;
             }
-        }
-        else if (active_mode == DRIVER_MODE_LDG_PRCTL) {
-            LdgPrctlWriteReq req = { (uint32_t)this->pid, 0, (uint64_t)addr, (uint64_t)buffer, (uint64_t)size };
-            success = (prctl(LDG_PRCTL_WRITE_MEM, (unsigned long)&req, 0, 0, 0) == 0);
-        }
-        else {
+        } else {
             COPY_MEMORY cm{};
             cm.pid = this->pid;
             cm.addr = addr;
             cm.buffer = const_cast<void*>(buffer);
             cm.size = size;
-            int use_fd = (fd >= 0) ? fd : 0;
-            success = (ioctl(use_fd, active_write_cmd, &cm) == 0);
+            success = (ioctl(fd, active_write_cmd, &cm) == 0);
         }
-
         in_flight_ops.fetch_sub(1, std::memory_order_relaxed);
         return success;
     }
@@ -906,15 +609,14 @@ public:
         if (!name || this->pid <= 0) return 0;
         if (!isConnected() && !initDriver()) return 0;
 
-        if (active_mode != DRIVER_MODE_KPM_NA && active_mode != DRIVER_MODE_LDG_PRCTL) {
+        if (active_mode != DRIVER_MODE_PROC_MEM && fd >= 0) {
             MODULE_BASE mb{};
             char buf[128] = {0};
             strncpy(buf, name, sizeof(buf) - 1);
             mb.pid = this->pid;
             mb.name = buf;
             mb.base = 0;
-            int use_fd = (fd >= 0) ? fd : 0;
-            if (ioctl(use_fd, active_base_cmd, &mb) == 0 && mb.base > 0) {
+            if (ioctl(fd, active_base_cmd, &mb) == 0 && mb.base > 0) {
                 return mb.base;
             }
         }
@@ -957,72 +659,38 @@ public:
     // Hardware Breakpoints Control
     // ──────────────────────────────────────────────────────────────────
     bool addHardwareBreakpoint(uintptr_t addr) {
-        if (!isConnected() || addr == 0) return false;
-        int use_fd = (fd >= 0) ? fd : 0;
-        if (active_mode == DRIVER_MODE_RT_MODULE) {
-            return (ioctl(use_fd, RT_CMD_HWBP_ADD, &addr) == 0);
-        } else if (active_mode == DRIVER_MODE_RT_HOOK) {
-            return (ioctl(use_fd, HOOK_OP_HW_BREAKPOINT_CTL, &addr) == 0);
-        }
-        return false;
+        if (!isConnected() || addr == 0 || fd < 0) return false;
+        return (ioctl(fd, RT_CMD_HWBP_ADD, &addr) == 0);
     }
 
     bool clearHardwareBreakpoints() {
-        if (!isConnected()) return false;
-        int use_fd = (fd >= 0) ? fd : 0;
-        if (active_mode == DRIVER_MODE_RT_MODULE) {
-            return (ioctl(use_fd, RT_CMD_HWBP_CLEAR, 0) == 0);
-        }
-        return false;
+        if (!isConnected() || fd < 0) return false;
+        return (ioctl(fd, RT_CMD_HWBP_CLEAR, 0) == 0);
     }
 
     int getHardwareBreakpointHits() {
-        if (!isConnected()) return 0;
+        if (!isConnected() || fd < 0) return 0;
         int hits = 0;
-        int use_fd = (fd >= 0) ? fd : 0;
-        if (active_mode == DRIVER_MODE_RT_MODULE) {
-            ioctl(use_fd, RT_CMD_HWBP_GET_HITS, &hits);
-        } else if (active_mode == DRIVER_MODE_RT_HOOK) {
-            ioctl(use_fd, HOOK_OP_HW_BP_GET_HITS, &hits);
-        }
+        ioctl(fd, RT_CMD_HWBP_GET_HITS, &hits);
         return hits;
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Stealth & Process Hiding (Adreno KGSL & CTS SafetyNet bypass)
+    // Process Hiding via Kernel IOCTL
     // ──────────────────────────────────────────────────────────────────
     void hide_process(int flags = 0) {
-        if (!isConnected()) return;
-        int use_fd = (fd >= 0) ? fd : 0;
-        if (active_mode == DRIVER_MODE_RT_HOOK) {
-            ioctl(use_fd, HOOK_OP_HIDE_PROCESS);
-        } else if (active_mode == DRIVER_MODE_RT_DEV || active_mode == DRIVER_MODE_DEV_PROC || active_mode == DRIVER_MODE_QX_DAEMON) {
-            ioctl(use_fd, DEV_OP_HIDE_PROCESS);
-        } else if (active_mode == DRIVER_MODE_RT_MODULE) {
-            ioctl(use_fd, RT_CMD_HIDE_PROCESS);
-        } else if (active_mode == DRIVER_MODE_HOOK_RW) {
-            if (flags & 1) {
-                ioctl(use_fd, SOCK_OP_PROCESS_HIDE_KGSL); // Adreno GPU Driver stealth
-            }
-            if (flags & 2) {
-                ioctl(use_fd, SOCK_OP_PROCESS_HIDE_CTS);  // SafetyNet / CTS stealth
-            }
-            ioctl(use_fd, SOCK_OP_PROCESS_HIDE);
-        }
+        if (!isConnected() || fd < 0) return;
+        ioctl(fd, DEV_OP_HIDE_PROCESS);
     }
-
-    // Touch injection wrapper
-    TouchDriver& getTouch() { return touch; }
 
     void closeDriver() {
         int old_fd = fd;
         fd = -1;
         active_mode = DRIVER_MODE_NONE;
-        touch.closeTouch();
         while (in_flight_ops.load(std::memory_order_relaxed) > 0) {
             usleep(100);
         }
-        if (old_fd > 0) {
+        if (old_fd >= 0) {
             close(old_fd);
         }
     }

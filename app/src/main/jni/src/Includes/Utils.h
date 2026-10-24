@@ -536,7 +536,7 @@ bool ReadBytes(uintptr_t address, void* buffer, size_t size) {
 // Initialize the Kernel Driver connection
 bool InitMemoryAccess(pid_t pid) {
     target_pid = pid;
-    return (OpenDriver() > 0);
+    return IsDriverConnected();
 }
 
 // Cleanup Kernel Driver connection

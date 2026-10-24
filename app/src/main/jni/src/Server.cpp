@@ -92,6 +92,9 @@ bool IsValidPlayerObject(uintptr_t player) {
 bool is_elf_header(uintptr_t addr) {
     if (addr == 0 || !IsDriverConnected()) return false;
     unsigned char magic[4] = {0};
+    if (DriverReadMemory(target_pid, addr, magic, 4)) {
+        return (magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F');
+    }
     magic[0] = Read<uint8_t>(addr);
     magic[1] = Read<uint8_t>(addr + 1);
     magic[2] = Read<uint8_t>(addr + 2);
@@ -1038,7 +1041,7 @@ int main(int argc, char*argv[]){
                             lastAttachAttempt = nowScan;
                             if (target_pid <= 0) target_pid = FindGamePid();
                             if (target_pid > 0) {
-                                if (OpenDriver() >= 0 && IsDriverConnected()) {
+                                if (IsDriverConnected()) {
                                     if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
                                     if (libAddress > 0) {
                                         NIN_LOGI("DAEMON", "Game attached via c_driver: PID=%d, DriverFD=%d (%s), libil2cpp=0x%lx",
