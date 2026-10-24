@@ -175,13 +175,11 @@ uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
     }
 
     const uintptr_t testOffsets[] = {
-        Offsets::GameFacade,       // 0xA984D48
-        Offsets::GameFacadeAlt1,   // 0xAD6DC18
-        Offsets::GameFacadeAlt2,   // 0xAD68E18
-        Offsets::GameFacadeGlobal, // 0x0C2132B8ULL
-        0xAD74BB0,                 // Player_c
-        0xAD6FDA8,                 // Player_c Alt
-        0x0C21AC20ULL              // OB55 Alt
+        Offsets::Normal::GameFacade, // 0xA872380 (Normal Primary from 5_6213160554375160447.h)
+        Offsets::Max::GameFacade,    // 0xAD68E18 (MAX Primary from ff max 5_6246536088102380429.h)
+        Offsets::GameFacade,         // 0xA872380
+        Offsets::GameFacadeMax,      // 0xAD68E18
+        Offsets::GameFacadeAlt1      // 0xAD68E18
     };
 
     // Test each candidate ELF base against our GameFacade offsets to find the live loaded library
@@ -196,7 +194,7 @@ uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
         }
     }
 
-    // Fallback: If not yet initialized, prefer elf2 (the 2nd mapping, as proven in CROSS SRC ROOT)
+    // Fallback: If not yet initialized, prefer elf2 if present
     if (elfBases.size() >= 2) {
         NIN_LOGI("DAEMON", "Defaulting to elf2 base: 0x%lx (out of %d ELF mappings)", (unsigned long)elfBases[1], (int)elfBases.size());
         return elfBases[1];
@@ -324,7 +322,7 @@ void ContinuousAim(uintptr_t oneself) {
 
         bool shouldLock = pPlayer.aimbotlock || (mIsFiring > 0);
 
-        // 1. Camera LookRotation Aimbot & ViewRotation (matches Kernel & Scarecrow)
+        // 1. Camera LookRotation Aimbot & ViewRotation
         if ((pPlayer.aimbot || pPlayer.aimbotlock) && shouldLock) {
             Vector3 camPos = MainCameraTransformPos;
             if (camPos == Vector3::Zero()) {
@@ -333,7 +331,7 @@ void ContinuousAim(uintptr_t oneself) {
             }
             if (camPos == Vector3::Zero()) camPos = GetNodePosition(oneself) + Vector3(0, 1.85f, 0);
 
-            // Dynamic bone height adjustment (Bull_Team & Scarecrow)
+            // Dynamic bone height adjustment
             float aimHeight = 0.0f;
             if (!pPlayer.silentAimHead && (rand() % 100) >= pPlayer.headshotRate) {
                 aimHeight = -0.35f; // Chest / Neck level
@@ -341,14 +339,14 @@ void ContinuousAim(uintptr_t oneself) {
 
             Quaternion targetRot = GetRotationToTheLocation(currentBestTargetPos, aimHeight, camPos);
 
-            // Write character orientation (0x61C / 0x5BC)
+            // Write character orientation (Normal: 0x61C / MAX: 0x214)
             Write<Quaternion>(oneself + Offsets::PlayerRotation, targetRot);
             Write<Quaternion>(oneself + Offsets::PlayerRotationOld, targetRot);
 
-            // Write primary camera view rotation (Scarecrow 0x214)
+            // Write primary camera view rotation (MAX: 0x214)
             Write<Quaternion>(oneself + Offsets::Player_ViewRotation, targetRot);
 
-            // Increment aim rotation counter to register in Unity engine (0x810 & 0x79C)
+            // Increment aim rotation counter to register in Unity engine (0x810)
             int rotCount = Read<int>(oneself + Offsets::CallSetAimRotationCount);
             if (rotCount >= 0) {
                 Write<int>(oneself + Offsets::CallSetAimRotationCount, rotCount + 1);
@@ -359,7 +357,7 @@ void ContinuousAim(uintptr_t oneself) {
             }
         }
 
-        // 2. Silent Bullet Ray Redirection (matches Kernel sAim2 & sAim4)
+        // 2. Silent Bullet Ray Redirection (BulletInfo: Normal 0xE60 / MAX 0xE58)
         if (pPlayer.silen4a && shouldLock) {
             uint64_t aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfo);
             if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfoAlt);
@@ -380,7 +378,7 @@ void ContinuousAim(uintptr_t oneself) {
             }
         }
 
-        // 3. Instant Head Collider Lock (Scarecrow AimTargetWrite)
+        // 3. Head Collider Lock (Player_AimTargetWrite = 0x80 from ff max 5_6246536088102380429.h)
         if ((pPlayer.aimbotlock || pPlayer.silen4a || pPlayer.aimbot) && shouldLock && IsValidUserPointer64(currentBestTargetObj)) {
             uintptr_t headCollider = Read<uintptr_t>(currentBestTargetObj + Offsets::Player_HeadCollider);
             if (IsValidUserPointer64(headCollider)) {
@@ -598,7 +596,7 @@ void CreateDataList(Response& SendResponse) {
         }
     }
 
-    // Scarecrow NoReload / PlayerAttributes (Triggered strictly when pPlayer.NoRecoil is enabled)
+    // PlayerAttributes / NoReload (Triggered strictly when pPlayer.NoRecoil is enabled)
     if (IsValidUserPointer64(localPlayer)) {
         uintptr_t attrs = Read<uintptr_t>(localPlayer + Offsets::PlayerAttributes);
         if (IsValidUserPointer64(attrs)) {
@@ -652,9 +650,9 @@ void CreateDataList(Response& SendResponse) {
         if (IsValidViewMatrix(matrix)) break;
     }
 
-    // B. Static GameFacade / treasure Direct ViewMatrix (staticClass + 0xBC / 0x100)
+    // B. Static GameFacade Direct ViewMatrix (staticClass + 0xBC / 0x100)
     if (!IsValidViewMatrix(matrix) && IsValidUserPointer64(GameFacade_c)) {
-        const uintptr_t staticOffsets[] = { 0xB8, 0x5C, 0x0 };
+        const uintptr_t staticOffsets[] = { Offsets::Max::GameFacade_P2, Offsets::Normal::GameFacade_Current, 0x0 };
         for (uintptr_t sOff : staticOffsets) {
             uintptr_t staticFields = (sOff == 0) ? GameFacade_c : Read<uintptr_t>(GameFacade_c + sOff);
             if (!IsValidUserPointer64(staticFields)) continue;
@@ -749,7 +747,7 @@ void CreateDataList(Response& SendResponse) {
                 }
             }
 
-            // Approach B: treasure direct Dictionary format (count at 0x18, items at 0x10)
+            // Direct Dictionary format (Dict_Count at 0x18 / Dict_EntryValue at 0x10)
             if (numValues == 0) {
                 int count = Read<int>(candDict + 0x18);
                 if (count > 0 && count <= 120) {
@@ -920,7 +918,7 @@ void CreateDataList(Response& SendResponse) {
             if (data->PlayerName[0] == '\0') strcpy(data->PlayerName, "Enemy");
         }
 
-        // Silent Aim & Aimbot evaluation (Matches Kernel & Scarecrow)
+        // Silent Aim & Aimbot evaluation
         bool aimActive = (pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock);
         float screenDist = sqrt(pow(LocationHeadBox.X - g_screenWidth/2, 2) + pow(LocationHeadBox.Y - g_screenHeight/2, 2));
         if (aimActive && isWithinFOV(LocationHeadBox, fovRadius) && distanceToEnemy <= pPlayer.AimDistance) {
