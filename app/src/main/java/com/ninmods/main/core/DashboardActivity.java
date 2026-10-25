@@ -143,22 +143,21 @@ public class DashboardActivity extends BaseActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
-        drawerLayout.setScrimColor(Color.parseColor("#80000000")); // Clean 50% dark dim scrim behind open drawer
+        // Clean high-performance 55% dark dim scrim behind open drawer (Zero-lag hardware acceleration)
+        drawerLayout.setScrimColor(Color.parseColor("#990B0411"));
 
-        // Hardware-accelerated full screen blur behind the sidebar when opened
+        // Smooth Drawer Listener without heavy per-frame blur calculations
         drawerLayout.addDrawerListener(new DrawerLayout.DrawerListener() {
             @Override
             public void onDrawerSlide(View drawerView, float slideOffset) {
-                if (slideOffset > 0.05f) {
-                    com.ninmods.main.ui.BlurHelper.applyViewBlur(mainContainer, slideOffset * 22f);
-                } else {
-                    com.ninmods.main.ui.BlurHelper.clearViewBlur(mainContainer);
-                }
+                // Per-frame blur removed: Continuous shader recreation on slide caused noticeable frame drops and lag.
+                // Standard hardware scrim provides instant, fluid 60/120 FPS drawer animation.
             }
 
             @Override
             public void onDrawerOpened(View drawerView) {
-                com.ninmods.main.ui.BlurHelper.applyViewBlur(mainContainer, 22f);
+                // Subtle static blur applied only once after drawer has fully opened
+                com.ninmods.main.ui.BlurHelper.applyViewBlur(mainContainer, 12f);
             }
 
             @Override

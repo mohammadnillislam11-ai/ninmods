@@ -44,4 +44,23 @@
     <color name="floater_badge_close">#E53935</color>
     <color name="floater_icon_active">#FFFFFF</color>
     <color name="floater_icon_inactive">#8870758F</color>
+
+    <!-- Floating Tactical Menu XML Colors (100% Centralized XML Architecture) -->
+    <color name="menu_card_bg">#F2180826</color>
+    <color name="menu_card_border">#44F76BF7</color>
+    <color name="menu_header_bg">#FF220B33</color>
+    <color name="menu_tabbar_bg">#FF160624</color>
+    <color name="menu_tab_active_text">#F76BF7</color>
+    <color name="menu_tab_active_bg">#FF421557</color>
+    <color name="menu_tab_inactive_text">#D99ED9</color>
+    <color name="menu_telemetry_bg">#FF1C0A29</color>
+    <color name="menu_telemetry_border">#33F76BF7</color>
+    <color name="menu_telemetry_text">#FCEEFC</color>
+    <color name="menu_switch_track_on">#E637E6</color>
+    <color name="menu_switch_track_off">#381445</color>
+    <color name="menu_switch_thumb_on">#FFFFFF</color>
+    <color name="menu_switch_thumb_off">#D99ED9</color>
+    <color name="menu_seekbar_progress">#E637E6</color>
+    <color name="menu_seekbar_thumb">#F76BF7</color>
+    <color name="menu_seekbar_label">#F5D6F5</color>
 </resources>

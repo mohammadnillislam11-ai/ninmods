@@ -1419,7 +1419,8 @@ Java_com_ninmods_main_core_NativeBridge_getFeatureState(JNIEnv *env, jclass claz
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isKernelDriverConnected(JNIEnv *env, jclass clazz) {
     if (driver && driver->isConnected() && driver->getFd() >= 0) return JNI_TRUE;
-    if (access("/dev/BYNb", F_OK) == 0) {
+    if (access("/dev/BYNb", F_OK) == 0 || access("/dev/mem_tool", F_OK) == 0 ||
+        access("/proc/uevents_records", F_OK) == 0 || access("/sys/class/mem_tool_class", F_OK) == 0) {
         if (driver) driver->initDriver();
         if (driver && driver->isConnected() && driver->getFd() >= 0) return JNI_TRUE;
     }
@@ -1430,6 +1431,13 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env, jclass clazz) {
     char buf[512];
     bool connected = (driver && driver->isConnected() && driver->getFd() >= 0);
+    if (!connected && driver) {
+        if (access("/dev/BYNb", F_OK) == 0 || access("/dev/mem_tool", F_OK) == 0 ||
+            access("/proc/uevents_records", F_OK) == 0 || access("/sys/class/mem_tool_class", F_OK) == 0) {
+            driver->initDriver();
+            connected = (driver->isConnected() && driver->getFd() >= 0);
+        }
+    }
     const char* node = (connected && strlen(driver->getNodeName()) > 0) ? driver->getNodeName() : "/dev/BYNb (DISCONNECTED)";
     const char* mode = connected ? driver->getDriverModeName() : "OFFLINE";
     int fd = connected ? driver->getFd() : -1;

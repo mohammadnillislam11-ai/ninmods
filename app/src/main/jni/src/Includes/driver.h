@@ -116,8 +116,6 @@ struct DriverVec3 {
     }
 };
 
-
-
 // ══════════════════════════════════════════════════════════════════════
 //  4. THE ADVANCED c_driver CLASS (Multi-Protocol, Pagemap & HWBP)
 // ══════════════════════════════════════════════════════════════════════
@@ -560,7 +558,7 @@ public:
                                    float distance, float bulletSpeed = 600.0f, float gravity = 9.8f) {
         if (bulletSpeed <= 0.0f) bulletSpeed = 600.0f;
         float travelTime = distance / bulletSpeed;
-        
+
         // Horizontal lead prediction
         DriverVec3 predicted = targetPos + (targetVelocity * travelTime);
 

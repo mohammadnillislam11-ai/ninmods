@@ -106,6 +106,14 @@ public class FloatingMenuView {
         return (int) (dpVal * mDensity + 0.5f);
     }
 
+    private int getColorRes(int resId) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return mContext.getColor(resId);
+        } else {
+            return mContext.getResources().getColor(resId);
+        }
+    }
+
     /**
      * Exact WindowManager setup (Android-ModMenu-SemiJni-main)
      */
@@ -289,11 +297,12 @@ public class FloatingMenuView {
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(menuWidth, menuHeight);
         expanded.setLayoutParams(cardLp);
 
-        // Zero Border: Pure deep dark translucent background with smooth rounded corners
+        // Luxury Card Background matching the App's Pink/Magenta theme with delicate glass border (100% XML Driven)
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setShape(GradientDrawable.RECTANGLE);
         cardBg.setCornerRadius(dp(10));
-        cardBg.setColor(Color.parseColor("#F20A0E18"));
+        cardBg.setColor(getColorRes(R.color.menu_card_bg));
+        cardBg.setStroke(dp(1), getColorRes(R.color.menu_card_border));
         expanded.setBackground(cardBg);
 
         // 1. Draggable Header Bar with Eagle Banner from OLD
@@ -373,7 +382,7 @@ public class FloatingMenuView {
 
         GradientDrawable headerBg = new GradientDrawable();
         headerBg.setShape(GradientDrawable.RECTANGLE);
-        headerBg.setColor(Color.parseColor("#FF0E131F"));
+        headerBg.setColor(getColorRes(R.color.menu_header_bg));
         headerBg.setCornerRadii(new float[]{dp(10), dp(10), dp(10), dp(10), 0, 0, 0, 0});
         header.setBackground(headerBg);
 
@@ -394,25 +403,21 @@ public class FloatingMenuView {
         }
         header.addView(bannerView);
 
-        // Pinned Close [X] Button on Top-Right Corner
-        TextView closeBtn = new TextView(mContext);
-        closeBtn.setText("X");
-        closeBtn.setTextColor(Color.WHITE);
-        closeBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        closeBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        closeBtn.setGravity(Gravity.CENTER);
+        // Pinned Close Icon Button on Top-Right Corner (100% Transparent Background, Zero Border)
+        ImageView closeBtn = new ImageView(mContext);
+        closeBtn.setImageResource(R.drawable.ic_header_close);
+        closeBtn.setColorFilter(Color.WHITE);
+        closeBtn.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        closeBtn.setBackground(null);
+        closeBtn.setBackgroundColor(Color.TRANSPARENT);
+        closeBtn.setPadding(dp(5), dp(5), dp(5), dp(5));
 
-        int btnSize = dp(24);
+        int btnSize = dp(28);
         RelativeLayout.LayoutParams closeLp = new RelativeLayout.LayoutParams(btnSize, btnSize);
         closeLp.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
         closeLp.addRule(RelativeLayout.CENTER_VERTICAL);
+        closeLp.setMargins(0, 0, dp(4), 0);
         closeBtn.setLayoutParams(closeLp);
-
-        GradientDrawable closeBg = new GradientDrawable();
-        closeBg.setShape(GradientDrawable.RECTANGLE);
-        closeBg.setCornerRadius(dp(5));
-        closeBg.setColor(Color.parseColor("#C62828"));
-        closeBtn.setBackground(closeBg);
 
         closeBtn.setOnClickListener(v -> collapseToLogo());
         header.addView(closeBtn);
@@ -432,7 +437,7 @@ public class FloatingMenuView {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(30)
         ));
-        tabBar.setBackgroundColor(Color.parseColor("#FF0B0F18"));
+        tabBar.setBackgroundColor(getColorRes(R.color.menu_tabbar_bg));
 
         mTabButtons = new TextView[4];
         String[] titles = new String[]{"VISUALS", "AIMBOT", "COMBAT", "SYSTEM"};
@@ -466,13 +471,13 @@ public class FloatingMenuView {
     private void updateTabStyles(int activeIndex) {
         for (int i = 0; i < 4; i++) {
             if (i == activeIndex) {
-                mTabButtons[i].setTextColor(Color.parseColor("#00E5FF"));
+                mTabButtons[i].setTextColor(getColorRes(R.color.menu_tab_active_text));
                 GradientDrawable activeBg = new GradientDrawable();
                 activeBg.setShape(GradientDrawable.RECTANGLE);
-                activeBg.setColor(Color.parseColor("#FF131C2D"));
+                activeBg.setColor(getColorRes(R.color.menu_tab_active_bg));
                 mTabButtons[i].setBackground(activeBg);
             } else {
-                mTabButtons[i].setTextColor(Color.parseColor("#8A98A8"));
+                mTabButtons[i].setTextColor(getColorRes(R.color.menu_tab_inactive_text));
                 mTabButtons[i].setBackgroundColor(Color.TRANSPARENT);
             }
         }
@@ -545,16 +550,17 @@ public class FloatingMenuView {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        // Dark clean card background matching overall theme
+        // Dark clean card background matching overall theme (100% XML Driven)
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setShape(GradientDrawable.RECTANGLE);
         cardBg.setCornerRadius(dp(6));
-        cardBg.setColor(Color.parseColor("#FF0E121B"));
+        cardBg.setColor(getColorRes(R.color.menu_telemetry_bg));
+        cardBg.setStroke(dp(1), getColorRes(R.color.menu_telemetry_border));
         telemetryCard.setBackground(cardBg);
 
-        // Unified monospace telemetry view with single clean slate color (#A0B0C0)
+        // Unified monospace telemetry view with readable theme color
         mEngineStatusView = new TextView(mContext);
-        mEngineStatusView.setTextColor(Color.parseColor("#A0B0C0"));
+        mEngineStatusView.setTextColor(getColorRes(R.color.menu_telemetry_text));
         mEngineStatusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
         mEngineStatusView.setTypeface(Typeface.MONOSPACE);
         mEngineStatusView.setLineSpacing(dp(2), 1.0f);
@@ -570,7 +576,7 @@ public class FloatingMenuView {
     }
 
     // =========================================================================
-    // SWITCH & SEEKBAR CREATION (Compact & Responsive)
+    // SWITCH & SEEKBAR CREATION (100% XML Color Driven)
     // =========================================================================
 
     private View createSwitch(final String featName, final int featId) {
@@ -583,7 +589,7 @@ public class FloatingMenuView {
         switchView.setLayoutParams(lp);
 
         switchView.setText(featName);
-        switchView.setTextColor(Color.WHITE);
+        switchView.setTextColor(getColorRes(R.color.menu_telemetry_text));
         switchView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
         switchView.setTypeface(Typeface.DEFAULT_BOLD);
         switchView.setPadding(dp(2), dp(4), dp(2), dp(4));
@@ -594,8 +600,8 @@ public class FloatingMenuView {
                         new int[]{}
                 },
                 new int[]{
-                        Color.parseColor("#00E5FF"), // ON: Neon Cyan
-                        Color.parseColor("#78909C")  // OFF: Slate Grey
+                        getColorRes(R.color.menu_switch_thumb_on),
+                        getColorRes(R.color.menu_switch_thumb_off)
                 }
         );
 
@@ -605,8 +611,8 @@ public class FloatingMenuView {
                         new int[]{}
                 },
                 new int[]{
-                        Color.parseColor("#4D00E5FF"), // ON track: Translucent Cyan
-                        Color.parseColor("#263238")    // OFF track: Dark Slate
+                        getColorRes(R.color.menu_switch_track_on),
+                        getColorRes(R.color.menu_switch_track_off)
                 }
         );
 
@@ -638,7 +644,7 @@ public class FloatingMenuView {
 
         final TextView label = new TextView(mContext);
         label.setText(featName + ": " + defaultVal + " " + unit);
-        label.setTextColor(Color.parseColor("#B0BEC5"));
+        label.setTextColor(getColorRes(R.color.menu_seekbar_label));
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         label.setTypeface(Typeface.DEFAULT_BOLD);
         label.setPadding(dp(2), dp(2), dp(2), 0);
@@ -652,10 +658,11 @@ public class FloatingMenuView {
         seekBar.setMax(max - min);
         seekBar.setProgress(defaultVal - min);
 
-        ColorStateList cyanTint = ColorStateList.valueOf(Color.parseColor("#00E5FF"));
+        ColorStateList pinkProgress = ColorStateList.valueOf(getColorRes(R.color.menu_seekbar_progress));
+        ColorStateList pinkThumb = ColorStateList.valueOf(getColorRes(R.color.menu_seekbar_thumb));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            seekBar.setProgressTintList(cyanTint);
-            seekBar.setThumbTintList(cyanTint);
+            seekBar.setProgressTintList(pinkProgress);
+            seekBar.setThumbTintList(pinkThumb);
         }
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
