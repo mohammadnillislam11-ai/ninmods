@@ -135,20 +135,44 @@ public class NativeOverlayManager {
                     layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
                 }
 
-                // If user does not have active license, launch directly in modal dialog mode
-                int initialW = hasActiveLicense ? mLogoSizePx : (int) (380 * mDensity);
-                int initialH = hasActiveLicense ? mLogoSizePx : (int) (300 * mDensity);
-                int initialGravity = hasActiveLicense ? (Gravity.TOP | Gravity.START) : Gravity.CENTER;
+                DisplayMetrics dm = mContext.getResources().getDisplayMetrics();
+                int screenW = dm.widthPixels;
+                int screenH = dm.heightPixels;
+                boolean isLandscape = screenW > screenH;
+
+                int initialW = mLogoSizePx;
+                int initialH = mLogoSizePx;
+                int initialGravity = Gravity.TOP | Gravity.START;
+
+                if (!hasActiveLicense) {
+                    mIsModalOpen = true;
+                    int dialogW = isLandscape ? (int) (screenW * 0.65f) : (int) (screenW * 0.95f);
+                    int dialogH = isLandscape ? (int) (screenH * 0.85f) : (int) (screenH * 0.60f);
+                    int maxW = (int) (480 * mDensity);
+                    int maxH = (int) (440 * mDensity);
+                    if (dialogW > maxW) dialogW = maxW;
+                    if (dialogH > maxH) dialogH = maxH;
+                    initialW = dialogW;
+                    initialH = dialogH;
+                    initialGravity = Gravity.CENTER;
+                }
+
+                int flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
+                if (hasActiveLicense) {
+                    flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+                }
 
                 mParams = new WindowManager.LayoutParams(
                         initialW,
                         initialH,
                         layoutFlag,
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                        WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                        flags,
                         PixelFormat.TRANSLUCENT
                 );
+                if (!hasActiveLicense) {
+                    mParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+                }
                 mParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
                 mParams.gravity = initialGravity;
                 mParams.x = hasActiveLicense ? mLogoX : 0;
@@ -258,11 +282,11 @@ public class NativeOverlayManager {
                 int screenH = dm.heightPixels;
                 boolean isLandscape = screenW > screenH;
 
-                int dialogW = isLandscape ? (int) (screenW * 0.55f) : (int) (screenW * 0.94f);
-                int dialogH = isLandscape ? (int) (screenH * 0.78f) : (int) (screenH * 0.54f);
+                int dialogW = isLandscape ? (int) (screenW * 0.65f) : (int) (screenW * 0.95f);
+                int dialogH = isLandscape ? (int) (screenH * 0.85f) : (int) (screenH * 0.60f);
 
-                int maxW = (int) (460 * dm.density);
-                int maxH = (int) (380 * dm.density);
+                int maxW = (int) (480 * dm.density);
+                int maxH = (int) (440 * dm.density);
                 if (dialogW > maxW) dialogW = maxW;
                 if (dialogH > maxH) dialogH = maxH;
 
@@ -271,6 +295,8 @@ public class NativeOverlayManager {
                 mParams.gravity = Gravity.CENTER;
                 mParams.x = 0;
                 mParams.y = 0;
+                mParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+                mParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
 
                 mWindowManager.updateViewLayout(mOverlayView, mParams);
                 AppLogger.log(TAG, "Overlay resized for Modal Dialog (" + dialogW + "x" + dialogH + ")");
@@ -307,6 +333,7 @@ public class NativeOverlayManager {
                 mParams.gravity = Gravity.CENTER;
                 mParams.x = 0;
                 mParams.y = 0;
+                mParams.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
 
                 mWindowManager.updateViewLayout(mOverlayView, mParams);
                 AppLogger.log(TAG, "Overlay expanded to tactical menu (" + menuW + "x" + menuH + ")");
@@ -330,6 +357,7 @@ public class NativeOverlayManager {
                 mParams.gravity = Gravity.TOP | Gravity.START;
                 mParams.x = mLogoX;
                 mParams.y = mLogoY;
+                mParams.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
 
                 mWindowManager.updateViewLayout(mOverlayView, mParams);
                 AppLogger.log(TAG, "Overlay collapsed back to 76dp floating logo");

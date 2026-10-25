@@ -41,11 +41,9 @@ public:
         float scrW = ImGui::GetIO().DisplaySize.x > 0 ? ImGui::GetIO().DisplaySize.x : 1080.0f;
         float scrH = ImGui::GetIO().DisplaySize.y > 0 ? ImGui::GetIO().DisplaySize.y : 1920.0f;
 
-        float popupW = std::min(scrW * 0.94f, 440.0f);
-        float popupH = std::min(scrH * 0.72f, 320.0f);
-
-        ImGui::SetNextWindowSize(ImVec2(popupW, popupH), ImGuiCond_Always);
-        ImGui::SetNextWindowPos(ImVec2((scrW - popupW) * 0.5f, (scrH - popupH) * 0.5f), ImGuiCond_Always);
+        // Fill the entire modal dialog SurfaceView created by NativeOverlayManager
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(scrW, scrH));
 
         ImGuiWindowFlags winFlags = ImGuiWindowFlags_NoTitleBar |
                                     ImGuiWindowFlags_NoResize |

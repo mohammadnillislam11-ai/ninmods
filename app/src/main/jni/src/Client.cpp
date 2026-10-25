@@ -1302,6 +1302,18 @@ Java_com_ninmods_main_core_NativeBridge_closeOverlay(JNIEnv *env, jclass clazz) 
     NativeOverlayController::s_MenuOpen = false;
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_setKeyFromJava(JNIEnv *env, jclass clazz, jstring jKey) {
+    if (jKey) {
+        const char* key = env->GetStringUTFChars(jKey, nullptr);
+        if (key) {
+            strncpy(LicensePopup::s_KeyBuffer, key, sizeof(LicensePopup::s_KeyBuffer) - 1);
+            LicensePopup::s_StatusMessage[0] = '\0';
+            env->ReleaseStringUTFChars(jKey, key);
+        }
+    }
+}
+
 
 
 extern "C" JNIEXPORT jstring JNICALL

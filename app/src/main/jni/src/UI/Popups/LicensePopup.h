@@ -5,13 +5,70 @@
 #include <functional>
 #include <cstring>
 #include <algorithm>
+#include <jni.h>
 #include "../../Icon/TextureLoader.h"
 #include "../../Includes/Logger.h"
+
+// JNI Helpers to interface with Android NativeBridge
+inline std::string GetClipboardTextNative() {
+    extern JavaVM* g_JavaVM;
+    if (!g_JavaVM) return "";
+    JNIEnv* jEnv = nullptr;
+    bool attached = false;
+    if (g_JavaVM->GetEnv((void**)&jEnv, JNI_VERSION_1_6) != JNI_OK) {
+        if (g_JavaVM->AttachCurrentThread(&jEnv, nullptr) == JNI_OK) attached = true;
+    }
+    std::string result = "";
+    if (jEnv) {
+        jclass bridgeClass = jEnv->FindClass("com/ninmods/main/core/NativeBridge");
+        if (bridgeClass) {
+            jmethodID mid = jEnv->GetStaticMethodID(bridgeClass, "getClipboardText", "()Ljava/lang/String;");
+            if (mid) {
+                jstring jStr = (jstring)jEnv->CallStaticObjectMethod(bridgeClass, mid);
+                if (jStr) {
+                    const char* chars = jEnv->GetStringUTFChars(jStr, nullptr);
+                    if (chars) {
+                        result = chars;
+                        jEnv->ReleaseStringUTFChars(jStr, chars);
+                    }
+                    jEnv->DeleteLocalRef(jStr);
+                }
+            }
+            jEnv->DeleteLocalRef(bridgeClass);
+        }
+        if (attached) g_JavaVM->DetachCurrentThread();
+    }
+    return result;
+}
+
+inline void ShowKeyInputDialogNative(const std::string& currentKey) {
+    extern JavaVM* g_JavaVM;
+    if (!g_JavaVM) return;
+    JNIEnv* jEnv = nullptr;
+    bool attached = false;
+    if (g_JavaVM->GetEnv((void**)&jEnv, JNI_VERSION_1_6) != JNI_OK) {
+        if (g_JavaVM->AttachCurrentThread(&jEnv, nullptr) == JNI_OK) attached = true;
+    }
+    if (jEnv) {
+        jclass bridgeClass = jEnv->FindClass("com/ninmods/main/core/NativeBridge");
+        if (bridgeClass) {
+            jmethodID mid = jEnv->GetStaticMethodID(bridgeClass, "showKeyInputDialog", "(Ljava/lang/String;)V");
+            if (mid) {
+                jstring jK = jEnv->NewStringUTF(currentKey.c_str());
+                jEnv->CallStaticVoidMethod(bridgeClass, mid, jK);
+                jEnv->DeleteLocalRef(jK);
+            }
+            jEnv->DeleteLocalRef(bridgeClass);
+        }
+        if (attached) g_JavaVM->DetachCurrentThread();
+    }
+}
 
 /**
  * C++ Dear ImGui Native License Key Verification Modal Popup.
  * Matches NINMODS authentic tactical aesthetic with pinned Eagle Banner,
- * high-visibility text input, status indicators, and smooth verification.
+ * high-visibility text input, one-tap clipboard paste, native soft keyboard input,
+ * status indicators, and smooth verification.
  */
 class LicensePopup {
 public:
@@ -32,6 +89,12 @@ public:
         if (!serverUrl.empty()) s_ServerUrl = serverUrl;
         if (!prefillKey.empty() && s_KeyBuffer[0] == '\0') {
             strncpy(s_KeyBuffer, prefillKey.c_str(), sizeof(s_KeyBuffer) - 1);
+        } else if (s_KeyBuffer[0] == '\0') {
+            // Auto-check clipboard for valid key (>=6 chars, no newlines)
+            std::string clip = GetClipboardTextNative();
+            if (clip.length() >= 6 && clip.length() < 64 && clip.find('\n') == std::string::npos && clip.find(' ') == std::string::npos) {
+                strncpy(s_KeyBuffer, clip.c_str(), sizeof(s_KeyBuffer) - 1);
+            }
         }
     }
 
@@ -73,11 +136,9 @@ public:
         float scrW = ImGui::GetIO().DisplaySize.x > 0 ? ImGui::GetIO().DisplaySize.x : 1080.0f;
         float scrH = ImGui::GetIO().DisplaySize.y > 0 ? ImGui::GetIO().DisplaySize.y : 1920.0f;
 
-        float popupW = std::min(scrW * 0.94f, 440.0f);
-        float popupH = std::min(scrH * 0.72f, 320.0f);
-
-        ImGui::SetNextWindowSize(ImVec2(popupW, popupH), ImGuiCond_Always);
-        ImGui::SetNextWindowPos(ImVec2((scrW - popupW) * 0.5f, (scrH - popupH) * 0.5f), ImGuiCond_Always);
+        // Fill the entire modal dialog SurfaceView created by NativeOverlayManager
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(scrW, scrH));
 
         ImGuiWindowFlags winFlags = ImGuiWindowFlags_NoTitleBar |
                                     ImGuiWindowFlags_NoResize |
@@ -87,8 +148,8 @@ public:
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.5f);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.04f, 0.06f, 0.96f));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(themeColor.x, themeColor.y, themeColor.z, 0.75f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.04f, 0.06f, 0.98f));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(themeColor.x, themeColor.y, themeColor.z, 0.85f));
 
         if (ImGui::Begin("##NINMODS_LICENSE_MODAL", &s_IsOpen, winFlags)) {
             ImVec2 winPos = ImGui::GetWindowPos();
@@ -130,22 +191,55 @@ public:
             drawList->AddLine(ImVec2(closeBtnPos.x + 18.0f, closeBtnPos.y + 6.0f), ImVec2(closeBtnPos.x + 6.0f, closeBtnPos.y + 18.0f), IM_COL32(255, 255, 255, 250), 2.0f);
 
             // 3. Modal Body
-            ImGui::SetCursorPosY(headerH + 12.0f);
+            ImGui::SetCursorPosY(headerH + 10.0f);
             ImGui::TextColored(themeColor, "VIP SUBSCRIPTION KEY REQUIRED");
             ImGui::Spacing();
             ImGui::TextDisabled("Enter or paste your key to activate mod features:");
             ImGui::Spacing();
 
-            // Input field with dark cyber frame
+            // Input field with dark cyber frame (Tapping on it also opens native keyboard dialog)
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 8.0f));
             ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.16f, 0.24f, 0.85f));
             ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.35f, 0.50f, 0.70f, 0.60f));
             ImGui::PushItemWidth(-1);
             ImGui::InputTextWithHint("##KeyInput", "Paste license key here...", s_KeyBuffer, sizeof(s_KeyBuffer));
+            if (ImGui::IsItemClicked()) {
+                ShowKeyInputDialogNative(s_KeyBuffer);
+            }
             ImGui::PopItemWidth();
             ImGui::PopStyleColor(2);
             ImGui::PopStyleVar(2);
+
+            ImGui::Spacing();
+
+            // Action Row 1: Direct One-Tap Paste & Soft Keyboard Buttons
+            float availW = ImGui::GetContentRegionAvail().x;
+            float btnHalfW = (availW - 8.0f) * 0.5f;
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+
+            // 1. One-Tap Paste from Clipboard
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.45f, 0.80f, 0.80f));
+            if (ImGui::Button("[PASTE KEY]", ImVec2(btnHalfW, 36))) {
+                std::string clip = GetClipboardTextNative();
+                if (!clip.empty()) {
+                    strncpy(s_KeyBuffer, clip.c_str(), sizeof(s_KeyBuffer) - 1);
+                    s_StatusMessage[0] = '\0';
+                } else {
+                    strncpy(s_StatusMessage, "Clipboard is empty.", sizeof(s_StatusMessage) - 1);
+                }
+            }
+            ImGui::PopStyleColor();
+
+            ImGui::SameLine();
+
+            // 2. Open Native Android Virtual Keyboard Dialog
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.30f, 0.45f, 0.80f));
+            if (ImGui::Button("[TYPE KEYBOARD]", ImVec2(btnHalfW, 36))) {
+                ShowKeyInputDialogNative(s_KeyBuffer);
+            }
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar();
 
             // Status message
             if (s_StatusMessage[0] != '\0') {
@@ -157,15 +251,18 @@ public:
             ImGui::Separator();
             ImGui::Spacing();
 
-            // Actions row
+            // Action Row 2: Verify & Close
             if (s_IsVerifying) {
                 ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "Verifying subscription with server...");
             } else {
+                float verifyW = availW * 0.65f;
+                float closeW = availW - verifyW - 8.0f;
+
                 ImGui::PushStyleColor(ImGuiCol_Button, themeColor);
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(themeColor.x * 1.15f, themeColor.y * 1.15f, themeColor.z * 1.15f, 1.0f));
                 ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
 
-                if (ImGui::Button("VERIFY LICENSE", ImVec2(160, 38))) {
+                if (ImGui::Button("VERIFY LICENSE", ImVec2(verifyW, 38))) {
                     if (strlen(s_KeyBuffer) < 4) {
                         strncpy(s_StatusMessage, "Please enter a valid key.", sizeof(s_StatusMessage) - 1);
                     } else {
@@ -188,7 +285,7 @@ public:
                 ImGui::PopStyleColor(2);
 
                 ImGui::SameLine();
-                if (ImGui::Button("CLOSE", ImVec2(90, 38))) {
+                if (ImGui::Button("CLOSE", ImVec2(closeW, 38))) {
                     s_IsOpen = false;
                 }
             }

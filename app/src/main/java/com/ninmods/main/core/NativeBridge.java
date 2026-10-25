@@ -2,7 +2,16 @@ package com.ninmods.main.core;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.ClipboardManager;
+import android.content.ClipData;
+import android.graphics.Color;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.view.WindowManager;
+import android.widget.EditText;
+import android.app.AlertDialog;
 
 import com.ninmods.main.auth.AuthApiController;
 import com.ninmods.main.auth.AuthManager;
@@ -113,5 +122,82 @@ public final class NativeBridge {
         } catch (Throwable t) {
             Log.e(TAG, "Failed to launch Driver Loader", t);
         }
+    }
+
+    /**
+     * Updates key directly in C++ LicensePopup from Java (clipboard or dialog).
+     */
+    public static native void setKeyFromJava(String key);
+
+    /**
+     * Reads primary clip text from Android ClipboardManager.
+     */
+    public static String getClipboardText() {
+        Context context = NativeOverlayManager.getContext();
+        if (context == null) return "";
+        try {
+            ClipboardManager cm = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null && cm.hasPrimaryClip()) {
+                ClipData clip = cm.getPrimaryClip();
+                if (clip != null && clip.getItemCount() > 0) {
+                    CharSequence text = clip.getItemAt(0).getText();
+                    if (text != null) return text.toString().trim();
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to read clipboard", t);
+        }
+        return "";
+    }
+
+    /**
+     * Shows a 100% reliable native Android AlertDialog with virtual keyboard for typing license keys.
+     */
+    public static void showKeyInputDialog(String currentKey) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            Context context = NativeOverlayManager.getContext();
+            if (context == null) return;
+
+            final EditText input = new EditText(context);
+            input.setTextColor(Color.WHITE);
+            input.setHintTextColor(Color.GRAY);
+            input.setHint("Paste or enter license key...");
+            if (currentKey != null && !currentKey.isEmpty()) {
+                input.setText(currentKey);
+                input.setSelection(input.getText().length());
+            }
+            input.setSingleLine(true);
+            input.setPadding(40, 30, 40, 30);
+
+            AlertDialog dialog = new AlertDialog.Builder(context, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("NINMODS VIP LICENSE")
+                .setMessage("Enter or paste your subscription key:")
+                .setView(input)
+                .setPositiveButton("VERIFY", (d, which) -> {
+                    String key = input.getText().toString().trim();
+                    if (!key.isEmpty()) {
+                        setKeyFromJava(key);
+                        verifyLicenseFromNative(key, NativeOverlayManager.getActiveBrandId());
+                    }
+                })
+                .setNeutralButton("PASTE", (d, which) -> {
+                    String clip = getClipboardText();
+                    if (!clip.isEmpty()) {
+                        input.setText(clip);
+                        input.setSelection(input.getText().length());
+                        setKeyFromJava(clip);
+                    }
+                })
+                .setNegativeButton("CANCEL", null)
+                .create();
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+            } else {
+                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_PHONE);
+            }
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+            dialog.show();
+        });
     }
 }
