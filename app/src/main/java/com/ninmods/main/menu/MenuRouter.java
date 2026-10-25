@@ -28,11 +28,9 @@ public class MenuRouter {
     private static final Map<String, IMenuProject> REGISTRY = new LinkedHashMap<>();
 
     static {
-        // Register all 4 tactical menu projects in defined order (1 row of 4 software items)
+        // Register exclusively NINMODS tactical menu project (single active brand isolation)
         register(new NinMenuProject());
-        register(new BullMenuProject());
-        register(new CrossMenuProject());
-        register(new DeltaMenuProject());
+        // Other sub-brands (Bull, Cross, Delta) are dormant and reserved for future white-label modules
     }
 
     private static synchronized void register(IMenuProject menu) {

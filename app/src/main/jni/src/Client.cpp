@@ -1171,7 +1171,8 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz
         customFontCfg.OversampleV = 3;
         customFontCfg.PixelSnapH = true;
 
-        float fontSize = 24.0f;
+        float targetDpi = (scale >= 1.2f) ? scale : 2.4f;
+        float fontSize = std::round(16.0f * targetDpi);
 
         io.Fonts->AddFontFromMemoryTTF(
             const_cast<std::uint8_t*>(Custom),
@@ -1226,16 +1227,11 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeStep(JNIEnv *env, jclass clazz
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
-    // 1. ESP Overlay (Render if client active)
+    // 1. ESP Overlay (Pure Hardware ESP drawing loop: Boxes, Skeletons, Lines, Distance, Health)
     RenderHardwareESP(g_ScreenWidth, g_ScreenHeight);
 
-    // 2. Pure Native ImGui Floating Overlay & Modular Brand Menus
-    bool isKernelOnline = (driver && driver->isConnected());
-    if (!isKernelOnline && driver && access("/dev/BYNb", F_OK) == 0) {
-        driver->initDriver();
-        isKernelOnline = driver->isConnected();
-    }
-    NativeOverlayController::RenderFrame(isKernelOnline);
+    // Floating Menu and Logo are 100% managed by Android Native WindowManager (FloatingMenuView.java)
+    // exactly matching Android-ModMenu-SemiJni-main. Zero DPI issues, pure native touch sliding.
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -1345,15 +1341,89 @@ Java_com_ninmods_main_core_NativeBridge_closeOverlay(JNIEnv *env, jclass clazz) 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_core_NativeBridge_setKeyFromJava(JNIEnv *env, jclass clazz, jstring jKey) {
-    if (jKey) {
-        const char* key = env->GetStringUTFChars(jKey, nullptr);
-        if (key) {
-            strncpy(LicensePopup::s_KeyBuffer, key, sizeof(LicensePopup::s_KeyBuffer) - 1);
-            LicensePopup::s_StatusMessage[0] = '\0';
-            env->ReleaseStringUTFChars(jKey, key);
-        }
+Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env, jclass clazz, jint featId, jboolean state) {
+    bool bState = (bool)state;
+    switch (featId) {
+        // ESP Features
+        case 1: 
+            Actived.activar = bState; 
+            if (isConnected()) SendBool(3, bState);
+            break;
+        case 2: pEspPlayer.espCaixa = bState; break;
+        case 3: pEspPlayer.espSkeleton = bState; break;
+        case 4: pEspPlayer.espLinha = bState; break;
+        case 5: pEspPlayer.espHealth = bState; break;
+        case 6: pEspPlayer.espName = bState; break;
+        case 7: pEspPlayer.espDistance = bState; break;
+        case 8: pEspPlayer.espDrawCount = bState; break;
+        case 9: pEspPlayer.espIden360 = bState; break;
+
+        // Aimbot Features
+        case 20: pPlayer.aimbot = bState; break;
+        case 21: pPlayer.aimbotlock = bState; break;
+        case 22: pPlayer.silen4a = bState; break;
+        case 23: pPlayer.aimMagnet = bState; break;
+        case 24: pPlayer.ignoreKnocked = bState; break;
+        case 25: pPlayer.ignoreBots = bState; break;
+        case 26: pPlayer.silentAimHead = bState; break;
+
+        // Combat / Memory Features
+        case 40: pPlayer.NoRecoil = bState; break;
+        case 41: pPlayer.SpeedHackV2 = bState; break;
+        case 42: pPlayer.PlayerToMe = bState; break;
+        case 43: pPlayer.undercam = bState; break;
+        default: break;
     }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env, jclass clazz, jint featId, jfloat value) {
+    float fVal = (float)value;
+    switch (featId) {
+        case 100: pPlayer.AimFov = fVal; break;
+        case 101: pPlayer.AimDistance = fVal; break;
+        case 102: pPlayer.gameSpeed = fVal; break;
+        default: break;
+    }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_getFeatureState(JNIEnv *env, jclass clazz, jint featId) {
+    switch (featId) {
+        case 1: return (jboolean)Actived.activar;
+        case 2: return (jboolean)pEspPlayer.espCaixa;
+        case 3: return (jboolean)pEspPlayer.espSkeleton;
+        case 4: return (jboolean)pEspPlayer.espLinha;
+        case 5: return (jboolean)pEspPlayer.espHealth;
+        case 6: return (jboolean)pEspPlayer.espName;
+        case 7: return (jboolean)pEspPlayer.espDistance;
+        case 8: return (jboolean)pEspPlayer.espDrawCount;
+        case 9: return (jboolean)pEspPlayer.espIden360;
+
+        case 20: return (jboolean)pPlayer.aimbot;
+        case 21: return (jboolean)pPlayer.aimbotlock;
+        case 22: return (jboolean)pPlayer.silen4a;
+        case 23: return (jboolean)pPlayer.aimMagnet;
+        case 24: return (jboolean)pPlayer.ignoreKnocked;
+        case 25: return (jboolean)pPlayer.ignoreBots;
+        case 26: return (jboolean)pPlayer.silentAimHead;
+
+        case 40: return (jboolean)pPlayer.NoRecoil;
+        case 41: return (jboolean)pPlayer.SpeedHackV2;
+        case 42: return (jboolean)pPlayer.PlayerToMe;
+        case 43: return (jboolean)pPlayer.undercam;
+        default: return JNI_FALSE;
+    }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_isKernelDriverConnected(JNIEnv *env, jclass clazz) {
+    if (driver && driver->isConnected()) return JNI_TRUE;
+    if (access("/dev/BYNb", F_OK) == 0) {
+        if (driver) driver->initDriver();
+        if (driver && driver->isConnected()) return JNI_TRUE;
+    }
+    return JNI_FALSE;
 }
 
 

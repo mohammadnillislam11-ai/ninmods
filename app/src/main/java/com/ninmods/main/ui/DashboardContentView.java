@@ -114,11 +114,11 @@ public class DashboardContentView {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
-        gridRow.setOrientation(LinearLayout.HORIZONTAL);
-        gridRow.setGravity(Gravity.CENTER_VERTICAL);
-        gridRow.setWeightSum(4.0f);
-
         List<IMenuProject> menus = MenuRouter.getRegisteredMenus();
+        gridRow.setOrientation(LinearLayout.HORIZONTAL);
+        gridRow.setGravity(Gravity.CENTER);
+        gridRow.setWeightSum(menus.size() > 0 ? (float) menus.size() : 1.0f);
+
         for (final IMenuProject menu : menus) {
             gridRow.addView(createBrandLogoButton(context, menu, listener));
         }

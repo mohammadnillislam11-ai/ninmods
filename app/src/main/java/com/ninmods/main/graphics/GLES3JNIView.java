@@ -43,7 +43,7 @@ public class GLES3JNIView extends GLSurfaceView implements GLSurfaceView.Rendere
 
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent event) {
-        return onTouchEvent(event);
+        return super.dispatchTouchEvent(event);
     }
 
     @Override

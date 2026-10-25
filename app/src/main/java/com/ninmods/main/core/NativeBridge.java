@@ -76,6 +76,14 @@ public final class NativeBridge {
     public static native void closeOverlay();
 
     /**
+     * Direct Semi-JNI switch & hack control for Android Floating Window.
+     */
+    public static native void setFeatureState(int featId, boolean state);
+    public static native void setFeatureFloat(int featId, float value);
+    public static native boolean getFeatureState(int featId);
+    public static native boolean isKernelDriverConnected();
+
+    /**
      * Invoked directly from C++ LicensePopup modal when user clicks "VERIFY LICENSE".
      * Routes verification through Android's secure SSL networking (AuthApiController).
      */

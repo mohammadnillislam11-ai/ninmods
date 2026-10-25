@@ -22,7 +22,11 @@ inline bool Toggle(const char* label, bool* state) {
     const ImGuiID id = window->GetID(label);
     ImVec2 label_size = ImGui::CalcTextSize(label, NULL, true);
 
-    const float toggle_height = 25.0f, toggle_width = 46.0f, radius = 12.5f, vertical_margin = 4.0f;
+    const float font_h = label_size.y > 0.0f ? label_size.y : ImGui::GetFontSize();
+    const float toggle_height = ImMax(24.0f, font_h * 1.05f);
+    const float toggle_width = toggle_height * 1.84f;
+    const float radius = toggle_height * 0.5f;
+    const float vertical_margin = 4.0f;
     const float total_widget_height = ImMax(toggle_height, label_size.y) + vertical_margin * 2.0f;
     const float total_width = ImGui::GetContentRegionAvail().x;
     const ImRect bb(window->DC.CursorPos, ImVec2(window->DC.CursorPos.x + total_width, window->DC.CursorPos.y + total_widget_height));
@@ -88,7 +92,9 @@ inline bool SelectOptionRow(const char* label, bool selected) {
     const ImGuiID id = window->GetID(label);
     ImVec2 label_size = ImGui::CalcTextSize(label, NULL, true);
 
-    const float widget_height = 25.0f, vertical_margin = 3.0f;
+    const float font_h = label_size.y > 0.0f ? label_size.y : ImGui::GetFontSize();
+    const float widget_height = ImMax(25.0f, font_h * 1.05f);
+    const float vertical_margin = 3.0f;
     const float total_widget_height = ImMax(widget_height, label_size.y) + vertical_margin * 2.0f;
     const float total_width = ImGui::GetContentRegionAvail().x;
     const ImRect bb(window->DC.CursorPos, ImVec2(window->DC.CursorPos.x + total_width, window->DC.CursorPos.y + total_widget_height));
@@ -105,7 +111,7 @@ inline bool SelectOptionRow(const char* label, bool selected) {
     ImU32 text_col = ImGui::GetColorU32(ImGuiCol_Text);
     window->DrawList->AddText(text_pos, text_col, label);
 
-    const float box_size = 22.0f;
+    const float box_size = ImMax(22.0f, font_h * 0.90f);
     ImVec2 b_min(bb.Max.x - box_size - 4.0f, centered_y + (widget_height - box_size) * 0.5f);
     ImVec2 b_max(b_min.x + box_size, b_min.y + box_size);
 
@@ -116,11 +122,12 @@ inline bool SelectOptionRow(const char* label, bool selected) {
     window->DrawList->AddRect(b_min, b_max, brd_col, 5.0f, 0, 1.2f);
 
     if (selected) {
-        ImVec2 p1(b_min.x + 5.0f, b_min.y + 11.0f);
-        ImVec2 p2(b_min.x + 9.0f, b_min.y + 15.5f);
-        ImVec2 p3(b_min.x + 16.5f, b_min.y + 6.5f);
-        window->DrawList->AddLine(p1, p2, IM_COL32(255, 255, 255, 255), 2.2f);
-        window->DrawList->AddLine(p2, p3, IM_COL32(255, 255, 255, 255), 2.2f);
+        float b_scale = box_size / 22.0f;
+        ImVec2 p1(b_min.x + 5.0f * b_scale, b_min.y + 11.0f * b_scale);
+        ImVec2 p2(b_min.x + 9.0f * b_scale, b_min.y + 15.5f * b_scale);
+        ImVec2 p3(b_min.x + 16.5f * b_scale, b_min.y + 6.5f * b_scale);
+        window->DrawList->AddLine(p1, p2, IM_COL32(255, 255, 255, 255), 2.2f * b_scale);
+        window->DrawList->AddLine(p2, p3, IM_COL32(255, 255, 255, 255), 2.2f * b_scale);
     }
     return pressed;
 }
@@ -133,7 +140,8 @@ inline bool MobileSliderFloat(const char* label, float* v, float v_min, float v_
     ImGuiContext& g = *GImGui;
     const ImGuiStyle& style = g.Style;
     const ImGuiID id = window->GetID(label);
-    const float avail_w = ImGui::GetContentRegionAvail().x, widget_h = 28.0f;
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float widget_h = ImMax(28.0f, ImGui::GetFontSize() * 1.20f);
     const ImVec2 pos = window->DC.CursorPos;
     const ImRect bb(pos, ImVec2(pos.x + avail_w, pos.y + widget_h));
 
@@ -144,7 +152,9 @@ inline bool MobileSliderFloat(const char* label, float* v, float v_min, float v_
     bool hovered = false, held = false;
     ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_PressedOnClick);
 
-    const float thumb_radius = 9.0f, track_h = 6.0f, track_pad_x = thumb_radius + 2.0f;
+    const float thumb_radius = ImMax(9.0f, widget_h * 0.32f);
+    const float track_h = ImMax(6.0f, widget_h * 0.22f);
+    const float track_pad_x = thumb_radius + 2.0f;
     const float track_x0 = bb.Min.x + track_pad_x, track_x1 = bb.Max.x - track_pad_x;
     const float track_w  = track_x1 - track_x0, track_y = bb.Min.y + widget_h * 0.5f;
 

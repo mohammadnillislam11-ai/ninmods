@@ -53,10 +53,15 @@ void NinMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
         ImVec2 mousePos = ImGui::GetIO().MousePos;
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        float headerH = 48.0f;
-        ImVec2 closeBtnPos(winPos.x + winSize.x - 38.0f, winPos.y + (headerH - 26.0f) * 0.5f);
-        bool overClose = (mousePos.x >= closeBtnPos.x && mousePos.x <= closeBtnPos.x + 28.0f &&
-                          mousePos.y >= closeBtnPos.y && mousePos.y <= closeBtnPos.y + 28.0f);
+        float dpi = NativeOverlayController::s_DpiScale > 0.0f ? NativeOverlayController::s_DpiScale : 2.4f;
+        float dpiFactor = dpi / 2.4f;
+        float headerH = 50.0f * dpiFactor;
+        float btnSz = 30.0f * dpiFactor;
+        float btnMargin = 10.0f * dpiFactor;
+
+        ImVec2 closeBtnPos(winPos.x + winSize.x - btnSz - btnMargin, winPos.y + (headerH - btnSz) * 0.5f);
+        bool overClose = (mousePos.x >= closeBtnPos.x && mousePos.x <= closeBtnPos.x + btnSz &&
+                          mousePos.y >= closeBtnPos.y && mousePos.y <= closeBtnPos.y + btnSz);
 
         if (ImGui::IsMouseClicked(0) && overClose) {
             isOpen = false;
@@ -70,110 +75,108 @@ void NinMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
         if (g_EagleLogoTexture == 0) LoadEagleLogoTexture();
         if (g_EagleLogoTexture != 0) {
             float aspect = (g_EagleLogoHeight > 0) ? ((float)g_EagleLogoWidth / (float)g_EagleLogoHeight) : 2.5f;
-            float hLogoH = 88.0f;
+            float hLogoH = (headerH - 4.0f) * 1.6f;
             float hLogoW = hLogoH * aspect;
             float hLogoX = winPos.x + (winSize.x - hLogoW) * 0.5f;
-            float hLogoY = winPos.y + headerH - hLogoH + 4.0f;
+            float hLogoY = winPos.y + (headerH - hLogoH) * 0.5f;
             drawList->PushClipRectFullScreen();
             drawList->AddImage((ImTextureID)(uintptr_t)g_EagleLogoTexture, ImVec2(hLogoX, hLogoY), ImVec2(hLogoX + hLogoW, hLogoY + hLogoH), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255));
             drawList->PopClipRect();
         } else {
-            drawList->AddText(ImVec2(winPos.x + 16.0f, winPos.y + 12.0f), IM_COL32(255, 255, 255, 240), "[NINMODS]");
+            drawList->AddText(ImVec2(winPos.x + 16.0f * dpiFactor, winPos.y + (headerH - ImGui::GetFontSize()) * 0.5f), IM_COL32(255, 255, 255, 240), "[NINMODS]");
         }
 
         // 3. Pinned Close [X] Button on Header
-        drawList->AddRectFilled(closeBtnPos, ImVec2(closeBtnPos.x + 26.0f, closeBtnPos.y + 26.0f), overClose ? IM_COL32(220, 50, 60, 220) : IM_COL32(50, 65, 88, 160), 6.0f);
-        drawList->AddLine(ImVec2(closeBtnPos.x + 7.0f, closeBtnPos.y + 7.0f), ImVec2(closeBtnPos.x + 19.0f, closeBtnPos.y + 19.0f), IM_COL32(255, 255, 255, 250), 2.2f);
-        drawList->AddLine(ImVec2(closeBtnPos.x + 19.0f, closeBtnPos.y + 7.0f), ImVec2(closeBtnPos.x + 7.0f, closeBtnPos.y + 19.0f), IM_COL32(255, 255, 255, 250), 2.2f);
+        drawList->AddRectFilled(closeBtnPos, ImVec2(closeBtnPos.x + btnSz, closeBtnPos.y + btnSz), overClose ? IM_COL32(220, 50, 60, 220) : IM_COL32(50, 65, 88, 160), 6.0f * dpiFactor);
+        float pad = 7.0f * dpiFactor;
+        drawList->AddLine(ImVec2(closeBtnPos.x + pad, closeBtnPos.y + pad), ImVec2(closeBtnPos.x + btnSz - pad, closeBtnPos.y + btnSz - pad), IM_COL32(255, 255, 255, 250), 2.2f * dpiFactor);
+        drawList->AddLine(ImVec2(closeBtnPos.x + btnSz - pad, closeBtnPos.y + pad), ImVec2(closeBtnPos.x + pad, closeBtnPos.y + btnSz - pad), IM_COL32(255, 255, 255, 250), 2.2f * dpiFactor);
 
-        // 4. Body Watermark Logo Background (Soft 180 opacity)
-        if (g_NinLogoTexture == 0) LoadNinLogoTexture();
-        if (g_NinLogoTexture != 0) {
-            float bodyW = winSize.x, bodyH = winSize.y - headerH;
-            float aspect = (g_NinLogoHeight > 0) ? ((float)g_NinLogoWidth / (float)g_NinLogoHeight) : 1.0f;
-            float logoW = bodyW * 0.85f, logoH = logoW / aspect;
-            float logoX = winPos.x + (bodyW - logoW) * 0.5f, logoY = winPos.y + headerH + (bodyH - logoH) * 0.5f;
-
-            drawList->PushClipRect(ImVec2(winPos.x, winPos.y + headerH), ImVec2(winPos.x + winSize.x, winPos.y + winSize.y), true);
-            drawList->AddImage((ImTextureID)(uintptr_t)g_NinLogoTexture, ImVec2(logoX, logoY), ImVec2(logoX + logoW, logoY + logoH), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 180));
-            drawList->PopClipRect();
-        }
-
-        // 5. Real-Time Driver Badge
+        // 4. Real-Time Driver Status Badge
         ImGui::SetCursorPosY(headerH + 6.0f);
         if (isKernelActive) {
-            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.45f, 1.0f), "  [ONLINE] KERNEL (/dev/BYNb)");
+            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.45f, 1.0f), " [ONLINE] KERNEL (/dev/BYNb)");
         } else {
-            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "  [OFFLINE] KERNEL [PREVIEW MODE]");
+            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), " [OFFLINE] KERNEL [PREVIEW MODE]");
         }
         ImGui::Separator();
+        ImGui::Spacing();
 
-        // 6. Scrollable Features Area with Custom Animated Pill Toggles & Mobile Sliders
-        if (ImGui::BeginChild("NinMenuScrollArea", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
-            // [ESP FEATURES]
-            ImGui::Spacing();
-            ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "=== ESP VISUALS ===");
-            ImGui::Spacing();
-
-            Toggle("ESP MASTER SWITCH", &Actived.activar);
-            Toggle("ESP BOX & LINE", &pEspPlayer.espCaixa);
-            Toggle("ESP SKELETON (BONES)", &pEspPlayer.espSkeleton);
-            Toggle("ESP DISTANCE IN METERS", &pEspPlayer.espDistance);
-            Toggle("ESP HEALTH BAR", &pEspPlayer.espHealth);
-            Toggle("ESP PLAYER NAME", &pEspPlayer.espName);
-            Toggle("360 THREAT RADAR", &pEspPlayer.espIden360);
-            Toggle("LIVE THREAT COUNTER HUD", &pEspPlayer.espDrawCount);
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // [AIMBOT FEATURES]
-            ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "=== AIMBOT & TARGETING ===");
-            ImGui::Spacing();
-
-            Toggle("AIMBOT AUTO LOCK", &pPlayer.aimbot);
-            Toggle("AIMBOT STICKY TARGET", &pPlayer.aimbotlock);
-            Toggle("SILENT AIM (MAGIC BULLET)", &pPlayer.silen4a);
-            Toggle("AIM MAGNET V2", &pPlayer.aimMagnet);
-            Toggle("IGNORE KNOCKED PLAYERS", &pPlayer.ignoreKnocked);
-            Toggle("IGNORE BOTS / AI", &pPlayer.ignoreBots);
-
-            ImGui::Spacing();
-            ImGui::Text("AIM FOV ANGLE: %.0f deg", pPlayer.AimFov);
-            MobileSliderFloat("##AimFovSlider", &pPlayer.AimFov, 10.0f, 180.0f);
-
-            ImGui::Spacing();
-            ImGui::Text("MAX TARGET DISTANCE: %.0f M", pPlayer.AimDistance);
-            MobileSliderFloat("##AimDistSlider", &pPlayer.AimDistance, 10.0f, 350.0f);
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // [COMBAT & EXPLOITS]
-            ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "=== COMBAT & SPEED ===");
-            ImGui::Spacing();
-
-            Toggle("NO RECOIL (100% STABLE)", &pPlayer.NoRecoil);
-            Toggle("SPEED MOVEMENT (2X)", &pPlayer.SpeedHackV2);
-            Toggle("ANTICHEAT REALTIME BYPASS", &Actived.Bypass);
-            Toggle("UNDERGROUND CAMERA", &pPlayer.undercam);
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // [SYSTEM]
-            ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "=== SYSTEM & CONTROL ===");
-            ImGui::Spacing();
-
-            if (ImGui::Button("COLLAPSE TO FLOATING LOGO", ImVec2(-1, 38))) {
-                isOpen = false;
+        // 5. Categorized Tactical Tabs (Compact, Clean & Organized)
+        if (ImGui::BeginTabBar("NinTabBar", ImGuiTabBarFlags_None)) {
+            // --- TAB 1: VISUALS (ESP) ---
+            if (ImGui::BeginTabItem("VISUALS")) {
+                if (ImGui::BeginChild("VisChild", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
+                    ImGui::Spacing();
+                    Toggle("ESP MASTER SWITCH", &Actived.activar);
+                    Toggle("ESP BOX & LINE", &pEspPlayer.espCaixa);
+                    Toggle("ESP SKELETON (BONES)", &pEspPlayer.espSkeleton);
+                    Toggle("ESP DISTANCE IN METERS", &pEspPlayer.espDistance);
+                    Toggle("ESP HEALTH BAR", &pEspPlayer.espHealth);
+                    Toggle("ESP PLAYER NAME", &pEspPlayer.espName);
+                    Toggle("360 THREAT RADAR", &pEspPlayer.espIden360);
+                    Toggle("LIVE THREAT COUNTER HUD", &pEspPlayer.espDrawCount);
+                    ImGui::Spacing();
+                }
+                ImGui::EndChild();
+                ImGui::EndTabItem();
             }
-            ImGui::Spacing();
+
+            // --- TAB 2: AIMBOT ---
+            if (ImGui::BeginTabItem("AIMBOT")) {
+                if (ImGui::BeginChild("AimChild", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
+                    ImGui::Spacing();
+                    Toggle("AIMBOT AUTO LOCK", &pPlayer.aimbot);
+                    Toggle("AIMBOT STICKY TARGET", &pPlayer.aimbotlock);
+                    Toggle("SILENT AIM (MAGIC BULLET)", &pPlayer.silen4a);
+                    Toggle("AIM MAGNET V2", &pPlayer.aimMagnet);
+                    Toggle("IGNORE KNOCKED PLAYERS", &pPlayer.ignoreKnocked);
+                    Toggle("IGNORE BOTS / AI", &pPlayer.ignoreBots);
+                    ImGui::Spacing();
+                    ImGui::Text("AIM FOV ANGLE: %.0f deg", pPlayer.AimFov);
+                    MobileSliderFloat("##AimFovSlider", &pPlayer.AimFov, 10.0f, 180.0f);
+                    ImGui::Spacing();
+                    ImGui::Text("MAX TARGET DISTANCE: %.0f M", pPlayer.AimDistance);
+                    MobileSliderFloat("##AimDistSlider", &pPlayer.AimDistance, 10.0f, 350.0f);
+                    ImGui::Spacing();
+                }
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+
+            // --- TAB 3: COMBAT ---
+            if (ImGui::BeginTabItem("COMBAT")) {
+                if (ImGui::BeginChild("CombatChild", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
+                    ImGui::Spacing();
+                    Toggle("NO RECOIL (100% STABLE)", &pPlayer.NoRecoil);
+                    Toggle("SPEED MOVEMENT (2X)", &pPlayer.SpeedHackV2);
+                    Toggle("ANTICHEAT REALTIME BYPASS", &Actived.Bypass);
+                    Toggle("UNDERGROUND CAMERA", &pPlayer.undercam);
+                    ImGui::Spacing();
+                }
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+
+            // --- TAB 4: SYSTEM ---
+            if (ImGui::BeginTabItem("SYSTEM")) {
+                if (ImGui::BeginChild("SysChild", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
+                    ImGui::Spacing();
+                    ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "=== SYSTEM & CONTROL ===");
+                    ImGui::Spacing();
+                    ImGui::TextDisabled("Status: Authentic Kernel Driver Mode");
+                    ImGui::Spacing();
+                    if (ImGui::Button("COLLAPSE TO FLOATING LOGO", ImVec2(-1, 38))) {
+                        isOpen = false;
+                    }
+                    ImGui::Spacing();
+                }
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+
+            ImGui::EndTabBar();
         }
-        ImGui::EndChild();
     }
     ImGui::End();
 }
