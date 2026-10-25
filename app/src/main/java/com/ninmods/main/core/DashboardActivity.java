@@ -59,7 +59,11 @@ import com.ninmods.main.ui.SidebarView;
 public class DashboardActivity extends BaseActivity {
 
     static {
-        System.loadLibrary("ninmods");
+        try {
+            System.loadLibrary("ninmods");
+        } catch (Throwable t) {
+            android.util.Log.e("DashboardActivity", "Failed to load ninmods: " + t.getMessage());
+        }
     }
 
     private DrawerLayout drawerLayout;

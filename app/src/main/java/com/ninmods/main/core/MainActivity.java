@@ -224,7 +224,7 @@ public class MainActivity extends BaseActivity {
         if (!hasAutoPromptedOverlay) {
             hasAutoPromptedOverlay = true;
             isNavigatingAway = true;
-            launchOverlaySettings();
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::launchOverlaySettings, 350);
         }
     }
 

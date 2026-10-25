@@ -40,9 +40,22 @@ public final class AppLogger {
         }
         if (!sInitialized) {
             sInitialized = true;
-            ensureLogFolderAndFile();
-            logSystemHeader();
+            installGlobalCrashHandler();
+            sFileExecutor.execute(() -> {
+                ensureLogFolderAndFile();
+                logSystemHeader();
+            });
         }
+    }
+
+    private static void installGlobalCrashHandler() {
+        Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            logE("CRASH", "Fatal unhandled exception in thread [" + thread.getName() + "]: " + throwable.getMessage(), throwable);
+            if (defaultHandler != null) {
+                defaultHandler.uncaughtException(thread, throwable);
+            }
+        });
     }
 
     /**

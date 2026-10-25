@@ -18,7 +18,11 @@ import com.ninmods.main.R;
 
 public class ModeSelectActivity extends BaseActivity {
     static {
-        System.loadLibrary("ninmods");
+        try {
+            System.loadLibrary("ninmods");
+        } catch (Throwable t) {
+            android.util.Log.e("ModeSelectActivity", "Failed to load ninmods: " + t.getMessage());
+        }
     }
 
     public static final int MODE_SAFE = 1;
