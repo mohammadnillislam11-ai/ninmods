@@ -77,33 +77,33 @@ void NativeOverlayController::ApplyDpiTheme() {
     if (fabsf(s_LastAppliedDpi - s_DpiScale) < 0.05f) return;
 
     ImGuiIO& io = ImGui::GetIO();
-    io.FontGlobalScale = s_DpiScale;
+    io.FontGlobalScale = 1.0f; // 1:1 Native crisp vector font rendering (Zero pixelation)
 
     ImGuiStyle& style = ImGui::GetStyle();
     style = ImGuiStyle(); // Reset to fresh baseline
-    style.ScaleAllSizes(s_DpiScale);
+    style.ScaleAllSizes(1.30f); // Balanced touch-friendly scaling as in NINMODS OLD
 
-    // Touch-friendly sizing for fingers
-    style.WindowRounding    = 14.0f;
-    style.ChildRounding     = 10.0f;
+    // In-Game Injected Mod Menu Aesthetic Styling
+    style.WindowRounding    = 12.0f;
+    style.ChildRounding     = 8.0f;
     style.FrameRounding     = 8.0f;
-    style.PopupRounding     = 12.0f;
+    style.PopupRounding     = 10.0f;
     style.ScrollbarRounding = 8.0f;
     style.GrabRounding      = 8.0f;
     style.TabRounding       = 8.0f;
 
-    style.WindowBorderSize  = 1.5f;
-    style.FrameBorderSize   = 1.0f;
-    style.PopupBorderSize   = 1.5f;
+    style.WindowBorderSize  = 1.2f;
+    style.FrameBorderSize   = 0.8f;
+    style.PopupBorderSize   = 1.2f;
 
-    style.WindowPadding     = ImVec2(14.0f, 12.0f);
-    style.FramePadding      = ImVec2(10.0f, 7.0f);
-    style.ItemSpacing       = ImVec2(10.0f, 8.0f);
-    style.ItemInnerSpacing  = ImVec2(8.0f, 6.0f);
-    style.TouchExtraPadding = ImVec2(5.0f, 5.0f);
+    style.WindowPadding     = ImVec2(12.0f, 10.0f);
+    style.FramePadding      = ImVec2(10.0f, 6.0f);
+    style.ItemSpacing       = ImVec2(8.0f, 6.0f);
+    style.ItemInnerSpacing  = ImVec2(6.0f, 5.0f);
+    style.TouchExtraPadding = ImVec2(3.0f, 3.0f);
 
-    style.ScrollbarSize     = 16.0f * s_DpiScale;
-    style.GrabMinSize       = 20.0f * s_DpiScale;
+    style.ScrollbarSize     = 18.0f;
+    style.GrabMinSize       = 20.0f;
 
     s_LastAppliedDpi = s_DpiScale;
 }

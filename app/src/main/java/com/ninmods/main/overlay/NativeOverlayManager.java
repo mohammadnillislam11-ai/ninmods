@@ -146,12 +146,18 @@ public class NativeOverlayManager {
 
                 if (!hasActiveLicense) {
                     mIsModalOpen = true;
-                    int dialogW = isLandscape ? (int) (screenW * 0.65f) : (int) (screenW * 0.95f);
-                    int dialogH = isLandscape ? (int) (screenH * 0.85f) : (int) (screenH * 0.60f);
+                    int dialogW = isLandscape ? (int) (screenW * 0.48f) : (int) (screenW * 0.92f);
+                    int dialogH = isLandscape ? (int) (screenH * 0.70f) : (int) (screenH * 0.55f);
+                    int minW = (int) (360 * mDensity);
                     int maxW = (int) (480 * mDensity);
-                    int maxH = (int) (440 * mDensity);
+                    if (dialogW < minW) dialogW = minW;
                     if (dialogW > maxW) dialogW = maxW;
+                    if (dialogW > screenW) dialogW = (int) (screenW * 0.95f);
+
+                    int maxH = (int) (440 * mDensity);
                     if (dialogH > maxH) dialogH = maxH;
+                    if (dialogH > screenH) dialogH = (int) (screenH * 0.90f);
+
                     initialW = dialogW;
                     initialH = dialogH;
                     initialGravity = Gravity.CENTER;
@@ -282,13 +288,18 @@ public class NativeOverlayManager {
                 int screenH = dm.heightPixels;
                 boolean isLandscape = screenW > screenH;
 
-                int dialogW = isLandscape ? (int) (screenW * 0.65f) : (int) (screenW * 0.95f);
-                int dialogH = isLandscape ? (int) (screenH * 0.85f) : (int) (screenH * 0.60f);
+                int dialogW = isLandscape ? (int) (screenW * 0.48f) : (int) (screenW * 0.92f);
+                int dialogH = isLandscape ? (int) (screenH * 0.70f) : (int) (screenH * 0.55f);
 
+                int minW = (int) (360 * dm.density);
                 int maxW = (int) (480 * dm.density);
-                int maxH = (int) (440 * dm.density);
+                if (dialogW < minW) dialogW = minW;
                 if (dialogW > maxW) dialogW = maxW;
+                if (dialogW > screenW) dialogW = (int) (screenW * 0.95f);
+
+                int maxH = (int) (440 * dm.density);
                 if (dialogH > maxH) dialogH = maxH;
+                if (dialogH > screenH) dialogH = (int) (screenH * 0.90f);
 
                 mParams.width = dialogW;
                 mParams.height = dialogH;
@@ -320,13 +331,19 @@ public class NativeOverlayManager {
                 int screenH = dm.heightPixels;
                 boolean isLandscape = screenW > screenH;
 
-                int menuW = isLandscape ? (int) (screenW * 0.62f) : (int) (screenW * 0.92f);
-                int menuH = isLandscape ? (int) (screenH * 0.85f) : (int) (screenH * 0.72f);
+                // Authentic In-Game Golden Ratio Sizing
+                int menuW = isLandscape ? (int) (screenW * 0.44f) : (int) (screenW * 0.90f);
+                int menuH = isLandscape ? (int) (screenH * 0.78f) : (int) (screenH * 0.65f);
 
-                int maxW = (int) (520 * dm.density);
-                int maxH = (int) (700 * dm.density);
+                int minW = (int) (380 * dm.density);
+                int maxW = (int) (540 * dm.density);
+                if (menuW < minW) menuW = minW;
                 if (menuW > maxW) menuW = maxW;
+                if (menuW > screenW) menuW = (int) (screenW * 0.95f);
+
+                int maxH = (int) (650 * dm.density);
                 if (menuH > maxH) menuH = maxH;
+                if (menuH > screenH) menuH = (int) (screenH * 0.92f);
 
                 mParams.width = menuW;
                 mParams.height = menuH;

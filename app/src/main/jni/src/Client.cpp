@@ -40,6 +40,9 @@
 #include "UI/NativeOverlayController.h"
 #include "UI/MenuRouter.h"
 #include "UI/Popups/LicensePopup.h"
+#include "Icon/Font.h"
+#include "Icon/Icon.h"
+#include "Icon/Iconcpp.h"
 
 
 // ============================================
@@ -1148,8 +1151,48 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz
         io.LogFilename = nullptr;
 
         float scale = (float)density;
-        if (scale < 1.8f) scale = 2.4f;
-        if (scale > 4.2f) scale = 4.2f;
+        if (scale < 1.5f) scale = 2.0f;
+        if (scale > 4.0f) scale = 4.0f;
+
+        // ----------------------------------------------------------------------
+        // Load High-Definition TrueType Vector Font & FontAwesome Icons
+        // (Authentic in-game injected crisp rendering as in NINMODS OLD)
+        // ----------------------------------------------------------------------
+        static const ImWchar icons_ranges[] = { 0xe000, 0xf8ff, 0 };
+        ImFontConfig icons_config;
+        icons_config.MergeMode = true;
+        icons_config.PixelSnapH = true;
+        icons_config.OversampleH = 3;
+        icons_config.OversampleV = 3;
+
+        ImFontConfig customFontCfg;
+        customFontCfg.FontDataOwnedByAtlas = false;
+        customFontCfg.OversampleH = 3;
+        customFontCfg.OversampleV = 3;
+        customFontCfg.PixelSnapH = true;
+
+        float fontSize = 24.0f;
+
+        io.Fonts->AddFontFromMemoryTTF(
+            const_cast<std::uint8_t*>(Custom),
+            sizeof(Custom),
+            fontSize,
+            &customFontCfg
+        );
+
+        io.Fonts->AddFontFromMemoryCompressedTTF(
+            font_awesome_data,
+            font_awesome_size,
+            fontSize,
+            &icons_config,
+            icons_ranges
+        );
+
+        ImFontConfig defCfg;
+        defCfg.SizePixels = fontSize;
+        io.Fonts->AddFontDefault(&defCfg);
+
+        io.Fonts->Build();
 
         NativeOverlayController::SetDpiScale(scale);
         NativeOverlayController::ApplyDpiTheme();
@@ -1157,7 +1200,7 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env, jclass clazz
         ImGui_ImplOpenGL3_Init("#version 300 es");
         g_ImGuiInitialized = true;
         MenuRouter::Initialize();
-        LOGD("GLES3 ImGui Hardware ESP & MenuRouter initialized with DPI scale: %.2f", scale);
+        LOGD("GLES3 ImGui Hardware ESP & MenuRouter initialized with DPI scale: %.2f and TrueType vector font (24px)", scale);
     }
 }
 
