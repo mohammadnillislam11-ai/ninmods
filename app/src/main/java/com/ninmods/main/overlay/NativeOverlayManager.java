@@ -96,37 +96,12 @@ public class NativeOverlayManager {
                 // 1. Initialize C++ Native Bridge Engine & Driver link
                 NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense, mDensity, activeKey, serverUrl);
 
-                int layoutFlag = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                        ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                        : WindowManager.LayoutParams.TYPE_PHONE;
-
-                // 2. Attach Fullscreen Transparent Hardware ESP Drawing Surface (Non-blocking touch)
-                if (mEspOverlayView == null) {
-                    mEspOverlayView = new GLES3JNIView(mContext);
-
-                    int espFlags = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                            | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                            | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
-
-                    mEspParams = new WindowManager.LayoutParams(
-                            WindowManager.LayoutParams.MATCH_PARENT,
-                            WindowManager.LayoutParams.MATCH_PARENT,
-                            layoutFlag,
-                            espFlags,
-                            PixelFormat.TRANSLUCENT
-                    );
-                    mEspParams.gravity = Gravity.TOP | Gravity.START;
-                    mWindowManager.addView(mEspOverlayView, mEspParams);
-                    AppLogger.log(TAG, "Hardware ESP transparent surface attached");
-                }
-
-                // 3. Attach Android Native Floating Menu Window (Semi-JNI Architecture)
+                // Attach Android Native Floating Menu Window (Exact Semi-JNI Window Architecture)
                 if (mFloatingMenuView == null) {
                     mFloatingMenuView = new FloatingMenuView(mContext, mWindowManager);
                     mWindowManager.addView(mFloatingMenuView.getRootFrame(), mFloatingMenuView.getLayoutParams());
                     mFloatingMenuView.setAttached(true);
-                    AppLogger.log(TAG, "Android Native Floating Menu Window attached (DPI immune, touch enabled)");
+                    AppLogger.log(TAG, "Android Native Floating Menu Window attached (Pure floating view, zero screen block)");
                 }
 
                 mIsAttached = true;

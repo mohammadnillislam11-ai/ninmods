@@ -1418,10 +1418,10 @@ Java_com_ninmods_main_core_NativeBridge_getFeatureState(JNIEnv *env, jclass claz
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isKernelDriverConnected(JNIEnv *env, jclass clazz) {
-    if (driver && driver->isConnected()) return JNI_TRUE;
+    if (driver && driver->isConnected() && driver->getFd() >= 0) return JNI_TRUE;
     if (access("/dev/BYNb", F_OK) == 0) {
         if (driver) driver->initDriver();
-        if (driver && driver->isConnected()) return JNI_TRUE;
+        if (driver && driver->isConnected() && driver->getFd() >= 0) return JNI_TRUE;
     }
     return JNI_FALSE;
 }
@@ -1429,14 +1429,14 @@ Java_com_ninmods_main_core_NativeBridge_isKernelDriverConnected(JNIEnv *env, jcl
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env, jclass clazz) {
     char buf[512];
-    bool connected = (driver && driver->isConnected());
-    const char* node = connected ? driver->getNodeName() : "/dev/BYNb";
-    const char* mode = connected ? driver->getDriverModeName() : "STANDBY";
+    bool connected = (driver && driver->isConnected() && driver->getFd() >= 0);
+    const char* node = (connected && strlen(driver->getNodeName()) > 0) ? driver->getNodeName() : "/dev/BYNb (DISCONNECTED)";
+    const char* mode = connected ? driver->getDriverModeName() : "OFFLINE";
     int fd = connected ? driver->getFd() : -1;
-    pid_t targetPid = driver ? driver->getPid() : 0;
+    pid_t targetPid = (connected && driver) ? driver->getPid() : 0;
 
-    int entities = s_cachedResponse.PlayerCount;
-    int visible = s_cachedResponse.VisibleEnemyCount;
+    int entities = connected ? s_cachedResponse.PlayerCount : 0;
+    int visible = connected ? s_cachedResponse.VisibleEnemyCount : 0;
     bool espActive = Actived.activar;
     bool aimActive = pPlayer.aimbot;
 
@@ -1444,17 +1444,17 @@ Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env, jclass 
         "KERNEL DRIVER : %s\n"
         "DEVICE NODE   : %s (fd: %d)\n"
         "CHANNEL MODE  : %s\n"
-        "TARGET PID    : %d\n"
+        "TARGET PID    : %s\n"
         "MEMORY IOCTL  : %s\n"
         "ENTITIES READ : %d TARGETS\n"
         "ENEMIES VIS   : %d VISIBLE\n"
-        "HARDWARE ESP  : %s (GLES3)\n"
+        "HARDWARE ESP  : %s\n"
         "AIM ENGINE    : %s",
-        connected ? "ONLINE" : "STANDBY",
+        connected ? "ONLINE" : "OFFLINE (NOT LOADED)",
         node, fd,
         mode,
-        (int)targetPid,
-        connected ? "ACTIVE (32-BYTE RING 0)" : "WAITING FOR TARGET",
+        (targetPid > 0) ? std::to_string(targetPid).c_str() : "NONE (NO TARGET)",
+        connected ? "ACTIVE (32-BYTE RING 0)" : "STANDBY (LOADER REQUIRED)",
         entities,
         visible,
         espActive ? "ACTIVE" : "STANDBY",

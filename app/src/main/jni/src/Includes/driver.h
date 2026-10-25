@@ -127,8 +127,7 @@ enum DriverMode {
     DRIVER_MODE_RT_DEV      = 1, // Official Linux Character Device IOCTL (/dev/BYNb, /dev/mem_tool)
     DRIVER_MODE_RT_PROC     = 2, // Official Linux ProcFS IOCTL (/proc/uevents_records, /proc/sched_debug)
     DRIVER_MODE_SYS_CLASS   = 3, // Official Linux Sysfs Class Device (/sys/class/mem_tool_class)
-    DRIVER_MODE_PROC_DEVICES= 4, // Official Linux Kernel Device Registry (/proc/devices)
-    DRIVER_MODE_PROC_MEM    = 5  // Official Linux Process Memory Virtualization (process_vm_readv / pread64)
+    DRIVER_MODE_PROC_DEVICES= 4  // Official Linux Kernel Device Registry (/proc/devices)
 };
 
 class c_driver {
@@ -309,27 +308,6 @@ private:
         return false;
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // 5. Linux Official Process Virtual Memory Syscalls (process_vm_readv)
-    // ──────────────────────────────────────────────────────────────────
-    bool probe_linux_process_vm() {
-        pid_t self_pid = getpid();
-        uintptr_t test_magic = 0x5A5AA5A512345678ULL;
-        uintptr_t read_back = 0;
-        struct iovec local_iov = { &read_back, sizeof(read_back) };
-        struct iovec remote_iov = { (void*)&test_magic, sizeof(test_magic) };
-        ssize_t n = sys_process_vm_readv(self_pid, &local_iov, 1, &remote_iov, 1, 0);
-        if (n == (ssize_t)sizeof(read_back) && read_back == test_magic) {
-            fd = open("/proc/self/mem", O_RDONLY);
-            if (fd < 0) fd = open("/dev/null", O_RDWR);
-            active_mode = DRIVER_MODE_PROC_MEM;
-            strncpy(active_node_name, "LINUX_PROCESS_VM_READV", sizeof(active_node_name) - 1);
-            NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official process_vm_readv / process_vm_writev Active! <<<");
-            return true;
-        }
-        return false;
-    }
-
 public:
     c_driver() : fd(-1), pid(-1), active_mode(DRIVER_MODE_NONE),
                  active_read_cmd(DEV_OP_READ_MEM), active_write_cmd(DEV_OP_WRITE_MEM),
@@ -343,7 +321,7 @@ public:
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Unified Linux Official Driver Discovery
+    // Unified Linux Official Driver Discovery (Strictly Genuine Kernel Nodes)
     // ──────────────────────────────────────────────────────────────────
     bool initDriver() {
         if (isConnected()) {
@@ -364,9 +342,10 @@ public:
         // [Priority 4] Linux Official /proc/devices Registry
         if (probe_proc_devices()) return true;
 
-        // [Priority 5] Linux Official Process Memory Virtualization (process_vm_readv)
-        if (probe_linux_process_vm()) return true;
-
+        // Strictly NO fake fallback. If kernel driver is not loaded, stay OFFLINE.
+        fd = -1;
+        active_mode = DRIVER_MODE_NONE;
+        memset(active_node_name, 0, sizeof(active_node_name));
         NIN_LOGE("c_driver", ">>> [DRIVER_FAIL] All Official Linux Driver Endpoints Unreachable! Ensure Loader is Active. <<<");
         return false;
     }
@@ -376,7 +355,7 @@ public:
     }
 
     bool isConnected() {
-        return ((fd >= 0 || active_mode == DRIVER_MODE_PROC_MEM) && active_mode != DRIVER_MODE_NONE);
+        return (fd >= 0 && active_mode != DRIVER_MODE_NONE);
     }
 
     int getFd() const { return fd; }
@@ -390,7 +369,6 @@ public:
             case DRIVER_MODE_RT_PROC:      return "Linux RT Proc (/proc/uevents_records)";
             case DRIVER_MODE_SYS_CLASS:   return "Linux Sysfs (mem_tool_class)";
             case DRIVER_MODE_PROC_DEVICES:return "Linux /proc/devices";
-            case DRIVER_MODE_PROC_MEM:    return "Linux process_vm_readv";
             default:                      return "OFFLINE";
         }
     }
