@@ -1499,43 +1499,26 @@ Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jcla
     std::string perms_str = "Inaccessible";
     std::string status_text = "Inactive";
 
-    // 1. Check official Linux sysfs class: /sys/class/mem_tool_class
-    DIR *dir = opendir("/sys/class/mem_tool_class");
-    if (dir) {
-        struct dirent *ent;
-        while ((ent = readdir(dir)) != nullptr) {
-            if (ent->d_name[0] == '.') continue;
-            char dev_file[256];
-            snprintf(dev_file, sizeof(dev_file), "/sys/class/mem_tool_class/%s/dev", ent->d_name);
-            FILE *fp = fopen(dev_file, "r");
-            if (fp) {
-                if (fscanf(fp, "%d:%d", &maj, &min) == 2) {
-                    char node[128];
-                    snprintf(node, sizeof(node), "/dev/%s", ent->d_name);
-                    active_node = node;
-                    is_active = true;
-                    char dev_buf[64];
-                    snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (/sys/class/mem_tool_class/%s)", maj, min, ent->d_name);
-                    dev_id_str = dev_buf;
-                    int fd = open(node, O_RDWR);
-                    if (fd >= 0) {
-                        perms_str = "rw-rw-rw- (FD Open OK)";
-                        status_text = "ACTIVE & RESPONDING (Linux Sysfs Ring 0)";
-                        close(fd);
-                    } else {
-                        perms_str = "Sysfs registered (Node pending mknod)";
-                        status_text = "Driver active in kernel sysfs";
-                    }
-                    fclose(fp);
-                    break;
-                }
-                fclose(fp);
-            }
+    // 1. Primary: Check Unified c_driver Engine
+    if (driver && (driver->isConnected() || driver->initDriver())) {
+        is_active = true;
+        active_node = (strlen(driver->getNodeName()) > 0) ? driver->getNodeName() : "/dev/BYNb";
+        int c_fd = driver->getFd();
+        struct stat st{};
+        if (stat(active_node.c_str(), &st) == 0) {
+            maj = major(st.st_rdev);
+            min = minor(st.st_rdev);
+            char dev_buf[64];
+            snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (0x%lX)", maj, min, (unsigned long)st.st_rdev);
+            dev_id_str = dev_buf;
+        } else {
+            dev_id_str = "Ring-0 Device (" + active_node + ")";
         }
-        closedir(dir);
+        perms_str = "rw-rw-rw- (FD: " + std::to_string(c_fd) + " Connected)";
+        status_text = std::string("ACTIVE & RESPONDING (") + driver->getDriverModeName() + ")";
     }
 
-    // 2. Check official character & proc nodes
+    // 2. Fallback: Check official character & proc nodes
     if (!is_active) {
         const char* candidate_nodes[] = {
             "/dev/BYNb",
@@ -1554,11 +1537,11 @@ Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env, jcla
                 snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (0x%lX)", maj, min, (unsigned long)st.st_rdev);
                 dev_id_str = dev_buf;
 
-                int fd = open(node, O_RDWR);
-                if (fd >= 0) {
+                int test_fd = open(node, O_RDWR);
+                if (test_fd >= 0) {
                     perms_str = "rw-rw-rw- (FD Open OK)";
                     status_text = "ACTIVE & RESPONDING (Ring 0)";
-                    close(fd);
+                    close(test_fd);
                 } else {
                     perms_str = "Node exists (Restricted permission)";
                     status_text = "Node detected, run chmod 666 in loader";
