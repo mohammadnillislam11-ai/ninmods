@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <signal.h>
 
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
@@ -752,6 +753,21 @@ inline void CreateDataList(Response& SendResponse) {
     SendResponse.ProximityEnemyCount = 0;
 
     if (!Actived.activar) return;
+
+    static pid_t s_last_verified_pid = -1;
+    if (target_pid <= 0 || kill(target_pid, 0) != 0) {
+        target_pid = FindGamePid();
+        if (target_pid <= 0) {
+            libAddress = 0;
+            return;
+        }
+        InitMemoryAccess(target_pid);
+    }
+
+    if (target_pid != s_last_verified_pid) {
+        libAddress = 0;
+        s_last_verified_pid = target_pid;
+    }
 
     if (libAddress == 0) {
         libAddress = GetModuleBase(target_pid, "libil2cpp.so");
