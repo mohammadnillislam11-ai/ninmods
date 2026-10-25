@@ -1472,7 +1472,7 @@ Java_com_ninmods_main_core_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF("");
+    return env->NewStringUTF(OBFUSCATE("nin_engine"));
 }
 
 extern "C" JNIEXPORT void JNICALL

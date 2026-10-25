@@ -33,9 +33,13 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "ndk.dir=$ANDROID_HOME/ndk/24.0.8215888" >> local.properties
           
-          # Compile native shared library with ndk-build
+          # Compile native shared library and root daemon engine with ndk-build
           $ANDROID_HOME/ndk/24.0.8215888/ndk-build -C app/src/main/jni
           mkdir -p app/src/main/assets
+          if [ -f "app/src/main/libs/arm64-v8a/nin_engine" ]; then
+            echo "Packaging arm64-v8a nin_engine into assets"
+            cp -f app/src/main/libs/arm64-v8a/nin_engine app/src/main/assets/nin_engine
+          fi
 
           # Build APK with Gradle
           ./gradlew assembleDebug --stacktrace

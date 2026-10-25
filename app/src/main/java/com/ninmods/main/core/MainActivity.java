@@ -61,6 +61,7 @@ public class MainActivity extends BaseActivity {
         new Thread(() -> {
             boolean hasRoot = requestSuperUser();
             AppLogger.log("SYSTEM", "SuperUser (Root) Access Verified: " + (hasRoot ? "GRANTED" : "DENIED"));
+            deployEngineDaemon(MainActivity.this);
             try {
                 System.loadLibrary("ninmods");
             } catch (Throwable t) {
@@ -400,6 +401,40 @@ public class MainActivity extends BaseActivity {
                 try { process.destroy(); } catch (Throwable ignored) {}
             }
         }
+    }
+
+    public static void deployEngineDaemon(Context context) {
+        new Thread(() -> {
+            try {
+                String assetName = "nin_engine";
+                String outPath = "/data/local/tmp/" + assetName;
+                
+                java.io.InputStream in = context.getAssets().open(assetName);
+                java.io.File tempFile = new java.io.File(context.getCacheDir(), assetName);
+                java.io.FileOutputStream out = new java.io.FileOutputStream(tempFile);
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, read);
+                }
+                in.close();
+                out.flush();
+                out.close();
+
+                Process p = Runtime.getRuntime().exec("su");
+                java.io.DataOutputStream os = new java.io.DataOutputStream(p.getOutputStream());
+                os.writeBytes("cp -f " + tempFile.getAbsolutePath() + " " + outPath + "\n");
+                os.writeBytes("chmod 777 " + outPath + "\n");
+                os.writeBytes("pkill -9 -f nin_engine 2>/dev/null\n");
+                os.writeBytes("mkdir -p /storage/emulated/0/Download 2>/dev/null\n");
+                os.writeBytes(outPath + " >> /storage/emulated/0/Download/ninmods.log 2>&1 &\n");
+                os.writeBytes("exit\n");
+                os.flush();
+                p.waitFor();
+                tempFile.delete();
+                AppLogger.log("DAEMON", "NIN Engine Daemon deployed and launched via root");
+            } catch (Throwable ignored) {}
+        }).start();
     }
 
     private int dp(int value) {
