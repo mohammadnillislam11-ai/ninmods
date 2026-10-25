@@ -46,19 +46,3 @@ LOCAL_LDLIBS    := -llog -landroid -lGLESv3 -lEGL -lz
 LOCAL_ARM_MODE  := arm
 
 include $(BUILD_SHARED_LIBRARY)
-
-# --- Module: UtilityHelper ---
-include $(CLEAR_VARS)
-ifneq (,$(filter x86 x86_64,$(TARGET_ARCH_ABI)))
-    LOCAL_MODULE    := Titoo1
-else
-    LOCAL_MODULE    := Titoo
-endif
-LOCAL_SRC_FILES := src/Server.cpp src/Socket/server.cpp
-LOCAL_C_INCLUDES := $(LOCAL_PATH) $(LOCAL_PATH)/src $(LOCAL_PATH)/src/Includes
-LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti
-LOCAL_CFLAGS    := -Wno-error=format-security -fpermissive -fvisibility=hidden -fexceptions -frtti -DNDEBUG
-LOCAL_LDFLAGS   := -Wl,--exclude-libs,ALL -s -latomic
-LOCAL_LDLIBS    := -llog -lz
-LOCAL_ARM_MODE  := arm
-include $(BUILD_EXECUTABLE)

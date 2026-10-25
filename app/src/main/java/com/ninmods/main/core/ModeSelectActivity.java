@@ -182,7 +182,7 @@ public class ModeSelectActivity extends BaseActivity {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            new Initialize(this);
+            com.ninmods.main.menu.MenuRouter.launchActiveMenu(this);
         }
 
         finish();

@@ -25,11 +25,11 @@ uintptr_t last_failed_ptr = 0;
 
 // ========== Unified Logging System ==========
 void InitLogs() {
-    NIN_LOGI("DAEMON", "=== Titoo Daemon Session Initialized ===");
+    NIN_LOGI("DAEMON", "=== NINMODS Daemon Session Initialized ===");
 }
 
 void CloseLogs() {
-    NIN_LOGI("DAEMON", "=== Titoo Daemon Session Ended ===");
+    NIN_LOGI("DAEMON", "=== NINMODS Daemon Session Ended ===");
 }
 
 void LogPlayerData(const char* name, bool isBot, int health, float distance, bool isDead) {
@@ -1050,7 +1050,7 @@ __attribute__ ((visibility ("hidden")))
 int main(int argc, char*argv[]){
     signal(SIGPIPE, SIG_IGN);
     InitLogs();
-    NIN_LOGI("DAEMON", "=== Titoo Daemon Starting (PID: %d, UID: %d, GID: %d) ===", getpid(), getuid(), getgid());
+    NIN_LOGI("DAEMON", "=== NINMODS Daemon Starting (PID: %d, UID: %d, GID: %d) ===", getpid(), getuid(), getgid());
     
     // Launch Aim Magnet Thread
     std::thread(UpdateAimMagnetFast).detach();

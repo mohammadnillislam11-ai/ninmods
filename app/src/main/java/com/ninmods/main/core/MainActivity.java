@@ -366,6 +366,29 @@ public class MainActivity extends BaseActivity {
             java.io.DataOutputStream os = new java.io.DataOutputStream(process.getOutputStream());
             os.writeBytes("id\n");
             os.writeBytes("setenforce 0 2>/dev/null\n");
+            
+            // Universal Character Device Auto-Node Discovery & Symlink to /dev/BYNb
+            os.writeBytes("for s in /sys/dev/char/*/uevent; do if [ -e \"$s\" ]; then " +
+                    "dname=\"\"; maj=\"\"; min=\"\"; " +
+                    "eval \"$(grep -E '^(MAJOR|MINOR|DEVNAME)=' \"$s\")\"; " +
+                    "if [ -n \"$DEVNAME\" ] && [ -n \"$MAJOR\" ] && [ -n \"$MINOR\" ]; then " +
+                    "[ ! -e \"/dev/$DEVNAME\" ] && mknod \"/dev/$DEVNAME\" c \"$MAJOR\" \"$MINOR\" 2>/dev/null; " +
+                    "chmod 666 \"/dev/$DEVNAME\" 2>/dev/null; " +
+                    "if [ \"$MAJOR\" -ge 200 ] && [ ! -e \"/dev/BYNb\" ]; then " +
+                    "ln -sf \"/dev/$DEVNAME\" /dev/BYNb 2>/dev/null; chmod 666 /dev/BYNb 2>/dev/null; " +
+                    "fi; fi; fi; done\n");
+
+            os.writeBytes("for s in /sys/class/*/*/dev; do if [ -e \"$s\" ]; then " +
+                    "dname=$(echo \"$s\" | awk -F'/' '{print $(NF-1)}'); " +
+                    "mm=$(cat \"$s\" 2>/dev/null); maj=$(echo \"$mm\" | cut -d: -f1); min=$(echo \"$mm\" | cut -d: -f2); " +
+                    "if [ -n \"$maj\" ] && [ -n \"$min\" ]; then " +
+                    "[ ! -e \"/dev/$dname\" ] && mknod \"/dev/$dname\" c \"$maj\" \"$min\" 2>/dev/null; " +
+                    "chmod 666 \"/dev/$dname\" 2>/dev/null; " +
+                    "if [ ! -e \"/dev/BYNb\" ]; then " +
+                    "ln -sf \"/dev/$dname\" /dev/BYNb 2>/dev/null; chmod 666 /dev/BYNb 2>/dev/null; " +
+                    "fi; fi; fi; done\n");
+
+            os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /proc/uevents_records 2>/dev/null\n");
             os.writeBytes("exit\n");
             os.flush();
             int exitCode = process.waitFor();

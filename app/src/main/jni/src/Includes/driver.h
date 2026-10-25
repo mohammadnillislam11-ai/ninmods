@@ -153,63 +153,126 @@ private:
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // 1. Linux Official Sysfs Class Discovery (/sys/class/mem_tool_class)
+    // 1. Linux Official Sysfs Class Discovery & /sys/dev/char/ Probing
     // ──────────────────────────────────────────────────────────────────
     bool probe_sysfs_class() {
-        DIR *dir = opendir("/sys/class/mem_tool_class");
-        if (!dir) return false;
-        struct dirent *ent;
-        while ((ent = readdir(dir)) != nullptr) {
-            if (ent->d_name[0] == '.') continue;
-            char dev_file[256];
-            snprintf(dev_file, sizeof(dev_file), "/sys/class/mem_tool_class/%s/dev", ent->d_name);
-            FILE *fp = fopen(dev_file, "r");
-            if (fp) {
-                int maj = 0, min = 0;
-                if (fscanf(fp, "%d:%d", &maj, &min) == 2) {
-                    fclose(fp);
-                    char node[128];
-                    snprintf(node, sizeof(node), "/dev/%s", ent->d_name);
-                    if (access(node, F_OK) != 0) {
-                        char mknod_cmd[256];
-                        snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d %d 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, min, node);
-                        system(mknod_cmd);
-                    }
-                    chmod(node, 0666);
-                    symlink(node, "/dev/BYNb");
-                    chmod("/dev/BYNb", 0666);
-
-                    int test_fd = open(node, O_RDWR);
-                    if (test_fd >= 0) {
-                        if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
-                            fd = test_fd;
-                            active_mode = DRIVER_MODE_SYS_CLASS;
-                            active_read_cmd = DEV_OP_READ_MEM;
-                            active_write_cmd = DEV_OP_WRITE_MEM;
-                            active_base_cmd = DEV_OP_MODULE_BASE;
-                            strncpy(active_node_name, node, sizeof(active_node_name) - 1);
-                            closedir(dir);
-                            NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official Sysfs Class (/sys/class/mem_tool_class/%s) Connected! (FD: %d) <<<", ent->d_name, fd);
-                            return true;
+        // A. Probe official classes: mem_tool_class
+        const char* official_classes[] = { "mem_tool_class", nullptr };
+        for (int i = 0; official_classes[i] != nullptr; i++) {
+            char dir_path[128];
+            snprintf(dir_path, sizeof(dir_path), "/sys/class/%s", official_classes[i]);
+            DIR *dir = opendir(dir_path);
+            if (!dir) continue;
+            struct dirent *ent;
+            while ((ent = readdir(dir)) != nullptr) {
+                if (ent->d_name[0] == '.') continue;
+                char dev_file[256];
+                snprintf(dev_file, sizeof(dev_file), "%s/%s/dev", dir_path, ent->d_name);
+                FILE *fp = fopen(dev_file, "r");
+                if (fp) {
+                    int maj = 0, min = 0;
+                    if (fscanf(fp, "%d:%d", &maj, &min) == 2) {
+                        fclose(fp);
+                        char node[128];
+                        snprintf(node, sizeof(node), "/dev/%s", ent->d_name);
+                        if (access(node, F_OK) != 0) {
+                            char mknod_cmd[256];
+                            snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d %d 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, min, node);
+                            system(mknod_cmd);
                         }
-                        close(test_fd);
+                        chmod(node, 0666);
+                        symlink(node, "/dev/BYNb");
+                        chmod("/dev/BYNb", 0666);
+
+                        int test_fd = open(node, O_RDWR);
+                        if (test_fd >= 0) {
+                            if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                                fd = test_fd;
+                                active_mode = DRIVER_MODE_SYS_CLASS;
+                                active_read_cmd = DEV_OP_READ_MEM;
+                                active_write_cmd = DEV_OP_WRITE_MEM;
+                                active_base_cmd = DEV_OP_MODULE_BASE;
+                                strncpy(active_node_name, node, sizeof(active_node_name) - 1);
+                                closedir(dir);
+                                NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Sysfs Class (%s) Connected! (FD: %d) <<<", ent->d_name, fd);
+                                return true;
+                            }
+                            close(test_fd);
+                        }
+                    } else {
+                        fclose(fp);
                     }
-                } else {
-                    fclose(fp);
                 }
             }
+            closedir(dir);
         }
-        closedir(dir);
+
+        // B. Enumerate /sys/dev/char/ for all dynamic devices (Major >= 200)
+        DIR *dev_char = opendir("/sys/dev/char");
+        if (dev_char) {
+            struct dirent *ent;
+            while ((ent = readdir(dev_char)) != nullptr) {
+                if (ent->d_name[0] == '.') continue;
+                int maj = 0, min = 0;
+                if (sscanf(ent->d_name, "%d:%d", &maj, &min) == 2 && maj >= 200) {
+                    char uevent_path[256];
+                    snprintf(uevent_path, sizeof(uevent_path), "/sys/dev/char/%s/uevent", ent->d_name);
+                    FILE *fp = fopen(uevent_path, "r");
+                    if (fp) {
+                        char uline[128];
+                        char devname[128] = {0};
+                        while (fgets(uline, sizeof(uline), fp)) {
+                            if (strncmp(uline, "DEVNAME=", 8) == 0) {
+                                sscanf(uline + 8, "%127s", devname);
+                                break;
+                            }
+                        }
+                        fclose(fp);
+
+                        if (strlen(devname) > 0) {
+                            char node[128];
+                            snprintf(node, sizeof(node), "/dev/%s", devname);
+                            if (access(node, F_OK) != 0) {
+                                char mknod_cmd[256];
+                                snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d %d 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, min, node);
+                                system(mknod_cmd);
+                            }
+                            chmod(node, 0666);
+                            int test_fd = open(node, O_RDWR);
+                            if (test_fd >= 0) {
+                                if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                                    fd = test_fd;
+                                    active_mode = DRIVER_MODE_SYS_CLASS;
+                                    active_read_cmd = DEV_OP_READ_MEM;
+                                    active_write_cmd = DEV_OP_WRITE_MEM;
+                                    active_base_cmd = DEV_OP_MODULE_BASE;
+                                    strncpy(active_node_name, node, sizeof(active_node_name) - 1);
+                                    symlink(node, "/dev/BYNb");
+                                    chmod("/dev/BYNb", 0666);
+                                    closedir(dev_char);
+                                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux /sys/dev/char (%s Major %d) Connected! (FD: %d) <<<", devname, maj, fd);
+                                    return true;
+                                }
+                                close(test_fd);
+                            }
+                        }
+                    }
+                }
+            }
+            closedir(dev_char);
+        }
         return false;
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // 2. Linux Official Character Device Nodes (/dev/BYNb, /dev/mem_tool)
+    // 2. Linux Official Character Device Nodes (/dev/BYNb, /dev/mem_tool, /dev/nh, etc.)
     // ──────────────────────────────────────────────────────────────────
     bool probe_character_nodes() {
         const char *official_nodes[] = {
             "/dev/BYNb",
-            "/dev/mem_tool"
+            "/dev/mem_tool",
+            "/dev/nh",
+            "/dev/wanbai"
         };
         for (const char *node : official_nodes) {
             int test_fd = open(node, O_RDWR);
@@ -221,7 +284,11 @@ private:
                     active_write_cmd = DEV_OP_WRITE_MEM;
                     active_base_cmd = DEV_OP_MODULE_BASE;
                     strncpy(active_node_name, node, sizeof(active_node_name) - 1);
-                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official Character Device (%s) Connected! (FD: %d) <<<", node, fd);
+                    if (strcmp(node, "/dev/BYNb") != 0) {
+                        symlink(node, "/dev/BYNb");
+                        chmod("/dev/BYNb", 0666);
+                    }
+                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Character Device (%s) Connected! (FD: %d) <<<", node, fd);
                     return true;
                 }
                 close(test_fd);
@@ -248,7 +315,7 @@ private:
                     active_write_cmd = DEV_OP_WRITE_MEM;
                     active_base_cmd = DEV_OP_MODULE_BASE;
                     strncpy(active_node_name, node, sizeof(active_node_name) - 1);
-                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official ProcFS IOCTL (%s) Connected! (FD: %d) <<<", node, fd);
+                    NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux ProcFS IOCTL (%s) Connected! (FD: %d) <<<", node, fd);
                     return true;
                 }
                 close(test_fd);
@@ -258,7 +325,7 @@ private:
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // 4. Linux Official Character Device Registry (/proc/devices)
+    // 4. Linux Universal Character Device Registry (/proc/devices)
     // ──────────────────────────────────────────────────────────────────
     bool probe_proc_devices() {
         FILE *fp = fopen("/proc/devices", "r");
@@ -276,29 +343,38 @@ private:
             int maj = 0;
             char name[128] = {0};
             if (sscanf(line, "%d %127s", &maj, name) == 2) {
-                if (strcmp(name, "mem_tool") == 0 || strcmp(name, "BYNb") == 0) {
-                    char node[128];
-                    snprintf(node, sizeof(node), "/dev/%s", name);
-                    if (access(node, F_OK) != 0) {
-                        char mknod_cmd[256];
-                        snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d 0 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, node);
-                        system(mknod_cmd);
+                // Ignore standard OS devices that are never memory drivers
+                if (strcmp(name, "mem") == 0 || strcmp(name, "null") == 0 || strcmp(name, "zero") == 0 ||
+                    strcmp(name, "random") == 0 || strcmp(name, "urandom") == 0 || strcmp(name, "tty") == 0 ||
+                    strcmp(name, "ptmx") == 0 || strcmp(name, "fuse") == 0 || strcmp(name, "binder") == 0 ||
+                    strcmp(name, "ashmem") == 0 || strcmp(name, "ion") == 0 || strcmp(name, "hwbinder") == 0 ||
+                    strcmp(name, "vndbinder") == 0 || strcmp(name, "input") == 0 || strcmp(name, "block") == 0) {
+                    continue;
+                }
+
+                char node[128];
+                snprintf(node, sizeof(node), "/dev/%s", name);
+                if (access(node, F_OK) != 0) {
+                    char mknod_cmd[256];
+                    snprintf(mknod_cmd, sizeof(mknod_cmd), "mknod %s c %d 0 2>/dev/null && chmod 666 %s 2>/dev/null", node, maj, node);
+                    system(mknod_cmd);
+                }
+                int test_fd = open(node, O_RDWR);
+                if (test_fd >= 0) {
+                    if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                        fd = test_fd;
+                        active_mode = DRIVER_MODE_PROC_DEVICES;
+                        active_read_cmd = DEV_OP_READ_MEM;
+                        active_write_cmd = DEV_OP_WRITE_MEM;
+                        active_base_cmd = DEV_OP_MODULE_BASE;
+                        strncpy(active_node_name, node, sizeof(active_node_name) - 1);
+                        symlink(node, "/dev/BYNb");
+                        chmod("/dev/BYNb", 0666);
+                        fclose(fp);
+                        NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux /proc/devices (%s Major %d) Connected via IOCTL! <<<", name, maj);
+                        return true;
                     }
-                    int test_fd = open(node, O_RDWR);
-                    if (test_fd >= 0) {
-                        if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
-                            fd = test_fd;
-                            active_mode = DRIVER_MODE_PROC_DEVICES;
-                            active_read_cmd = DEV_OP_READ_MEM;
-                            active_write_cmd = DEV_OP_WRITE_MEM;
-                            active_base_cmd = DEV_OP_MODULE_BASE;
-                            strncpy(active_node_name, node, sizeof(active_node_name) - 1);
-                            fclose(fp);
-                            NIN_LOGI("c_driver", ">>> [DRIVER_ACTIVE] Mode: Linux Official /proc/devices (%s Major %d) Connected! <<<", name, maj);
-                            return true;
-                        }
-                        close(test_fd);
-                    }
+                    close(test_fd);
                 }
             }
         }
