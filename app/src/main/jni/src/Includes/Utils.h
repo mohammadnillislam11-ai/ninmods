@@ -14,14 +14,13 @@
 #include <fcntl.h>
 #include <sys/uio.h>
 #include "Logger.h"
-#include "Logger.h"
 #include "NativeCrypto.h"
 #include "driver.h"
 
-pid_t target_pid = -1;
-uintptr_t libAddress, anogs;
-int driver_fd = -1;
-char active_driver_node[128] = {0};
+inline pid_t target_pid = -1;
+inline uintptr_t libAddress = 0, anogs = 0;
+inline int driver_fd = -1;
+inline char active_driver_node[128] = {0};
 
 static inline int OpenDriver() {
     if (driver && driver->isConnected()) {
@@ -143,7 +142,7 @@ static bool IsProcessActiveForeground(pid_t pid) {
 
 // Encontra o PID do processo com prioridade estrita para Free Fire Normal (com.dts.freefireth)
 // e validação contra processos suspensos/em cache do Android
-pid_t FindGamePid() {
+inline pid_t FindGamePid() {
     // 1. Pass 1: Look specifically for Normal Free Fire (com.dts.freefireth or com.dts.freefirein)
     DIR* dir = opendir("/proc");
     if (dir) {
@@ -213,7 +212,7 @@ pid_t FindGamePid() {
     return 0;
 }
 
-pid_t FindPid(const char *PackageName) {
+inline pid_t FindPid(const char *PackageName) {
     if (PackageName != nullptr && (strstr(PackageName, "freefire") != nullptr)) {
         return FindGamePid();
     }
@@ -232,7 +231,7 @@ pid_t FindPid(const char *PackageName) {
 }
 
 // Encontra o endereço base de uma biblioteca dentro do processo alvo
-uintptr_t FindLibrary(const char* name, int index) {
+inline uintptr_t FindLibrary(const char* name, int index) {
     int i = 0;
     uintptr_t start = 0;
     char line[1024] = {0};
@@ -283,7 +282,7 @@ std::string Read<std::string>(uintptr_t address) {
     return result;
 }
 
-size_t vm_readv(long address, void *buffer, size_t size) {
+inline size_t vm_readv(long address, void *buffer, size_t size) {
     if (address == 0 || buffer == nullptr || size == 0) return 0;
     if (DriverReadMemory(target_pid, (uintptr_t)address, buffer, size)) {
         return size;
@@ -293,16 +292,16 @@ size_t vm_readv(long address, void *buffer, size_t size) {
 
 // Pure Kernel Driver Memory Write via IOCTL_RT_WRITE (Ring 0)
 template<typename T>
-bool Write(uintptr_t address, T value) {
+inline bool Write(uintptr_t address, T value) {
     if (address == 0) return false;
     return DriverWriteMemory(target_pid, address, &value, sizeof(T));
 }
 
-uintptr_t getMemoryAddr(uintptr_t address) {
+inline uintptr_t getMemoryAddr(uintptr_t address) {
     return Read<uintptr_t>(address);
 }
 
-std::vector<uint8_t> ParseHexBytes(const std::string& hexString) {
+inline std::vector<uint8_t> ParseHexBytes(const std::string& hexString) {
     std::vector<uint8_t> bytes;
     std::istringstream stream(hexString);
     std::string byteStr;
@@ -317,12 +316,12 @@ std::vector<uint8_t> ParseHexBytes(const std::string& hexString) {
     return bytes;
 }
 
-bool WriteIO(uintptr_t address, const std::vector<uint8_t>& bytes) {
+inline bool WriteIO(uintptr_t address, const std::vector<uint8_t>& bytes) {
     if (address == 0 || bytes.empty()) return false;
     return DriverWriteMemory(target_pid, address, bytes.data(), bytes.size());
 }
 
-bool WriteIO(uintptr_t address, const std::string& hexString) {
+inline bool WriteIO(uintptr_t address, const std::string& hexString) {
     std::vector<uint8_t> bytes = ParseHexBytes(hexString);
     return WriteIO(address, bytes);
 }
@@ -352,7 +351,7 @@ public:
     }
 };
 
-uintptr_t string2Offset(const char *c) {
+inline uintptr_t string2Offset(const char *c) {
     int base = 16;
     
     // Safe conversion for all architectures
@@ -385,7 +384,7 @@ typedef enum {
     conversionFailed
 } ConversionResult;
 
-int Utf16_To_Utf8(const UTF16 *sourceStart, UTF8 *targetStart, size_t outLen,
+inline int Utf16_To_Utf8(const UTF16 *sourceStart, UTF8 *targetStart, size_t outLen,
                   ConversionFlags flags) {
     int result = conversionOK;
     const UTF16 *source = sourceStart;
@@ -479,7 +478,7 @@ int Utf16_To_Utf8(const UTF16 *sourceStart, UTF8 *targetStart, size_t outLen,
     return result;
 }
 
-void getCharacterName(uintptr_t address, UTF8 *transcoding, size_t bufSize) {
+inline void getCharacterName(uintptr_t address, UTF8 *transcoding, size_t bufSize) {
     if (bufSize < 1) return;
     
     memset(transcoding, 0, bufSize);
@@ -507,25 +506,25 @@ void getCharacterName(uintptr_t address, UTF8 *transcoding, size_t bufSize) {
 }
 
 // Helper functions for common operations via Kernel Driver (Ring 0)
-bool WriteBytes(uintptr_t address, const void* data, size_t size) {
+inline bool WriteBytes(uintptr_t address, const void* data, size_t size) {
     if (size == 0) return true;
     if (address == 0 || data == nullptr) return false;
     return DriverWriteMemory(target_pid, address, data, size);
 }
 
-bool ReadBytes(uintptr_t address, void* buffer, size_t size) {
+inline bool ReadBytes(uintptr_t address, void* buffer, size_t size) {
     if (size == 0 || buffer == nullptr || address == 0) return false;
     return DriverReadMemory(target_pid, address, buffer, size);
 }
 
 // Initialize the Kernel Driver connection
-bool InitMemoryAccess(pid_t pid) {
+inline bool InitMemoryAccess(pid_t pid) {
     target_pid = pid;
     return IsDriverConnected();
 }
 
 // Cleanup Kernel Driver connection
-void CleanupMemoryAccess() {
+inline void CleanupMemoryAccess() {
     if (driver) {
         driver->closeDriver();
     }

@@ -65,7 +65,6 @@ public class DashboardActivity extends BaseActivity {
     private DrawerLayout drawerLayout;
     private LinearLayout mainContainer;
     private View currentBodyView;
-    private BroadcastReceiver driverStateReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,25 +115,6 @@ public class DashboardActivity extends BaseActivity {
             }
         }
         refreshBody();
-        if (driverStateReceiver == null) {
-            driverStateReceiver = DriverManager.registerDriverStateReceiver(this, (isLoaded, mode, activeNode) -> {
-                runOnUiThread(() -> {
-                    Toast.makeText(DashboardActivity.this, "Driver: " + (isLoaded ? "ACTIVE (" + mode + ")" : "OFFLINE"), Toast.LENGTH_SHORT).show();
-                    refreshBody();
-                });
-            });
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (driverStateReceiver != null) {
-            try {
-                unregisterReceiver(driverStateReceiver);
-            } catch (Exception ignored) {}
-            driverStateReceiver = null;
-        }
     }
 
     private void buildInterface() {

@@ -52,7 +52,6 @@ public class MainActivity extends BaseActivity {
 
         // Initialize logging & telemetry subsystem with application context
         AppLogger.init(this);
-        TelegramLogUploader.init(this);
         AppLogger.log("SYSTEM", "=== NINMODS Engine Initialized (Version: " + getString(R.string.app_version) + ") ===");
 
         // Always show branded loading view immediately (eliminates blank / black screens)
@@ -62,7 +61,6 @@ public class MainActivity extends BaseActivity {
         new Thread(() -> {
             boolean hasRoot = requestSuperUser();
             AppLogger.log("SYSTEM", "SuperUser (Root) Access Verified: " + (hasRoot ? "GRANTED" : "DENIED"));
-            deployEngineDaemon(MainActivity.this);
             try {
                 System.loadLibrary("ninmods");
             } catch (Throwable t) {
@@ -371,23 +369,14 @@ public class MainActivity extends BaseActivity {
             
             // Universal Character Device Auto-Node Discovery & Symlink to /dev/BYNb
             os.writeBytes("for s in /sys/dev/char/*/uevent; do if [ -e \"$s\" ]; then " +
-                    "dname=\"\"; maj=\"\"; min=\"\"; " +
-                    "eval \"$(grep -E '^(MAJOR|MINOR|DEVNAME)=' \"$s\")\"; " +
-                    "if [ -n \"$DEVNAME\" ] && [ -n \"$MAJOR\" ] && [ -n \"$MINOR\" ]; then " +
-                    "[ ! -e \"/dev/$DEVNAME\" ] && mknod \"/dev/$DEVNAME\" c \"$MAJOR\" \"$MINOR\" 2>/dev/null; " +
-                    "chmod 666 \"/dev/$DEVNAME\" 2>/dev/null; " +
-                    "if [ \"$MAJOR\" -ge 200 ] && [ ! -e \"/dev/BYNb\" ]; then " +
-                    "ln -sf \"/dev/$DEVNAME\" /dev/BYNb 2>/dev/null; chmod 666 /dev/BYNb 2>/dev/null; " +
-                    "fi; fi; fi; done\n");
-
-            os.writeBytes("for s in /sys/class/*/*/dev; do if [ -e \"$s\" ]; then " +
-                    "dname=$(echo \"$s\" | awk -F'/' '{print $(NF-1)}'); " +
-                    "mm=$(cat \"$s\" 2>/dev/null); maj=$(echo \"$mm\" | cut -d: -f1); min=$(echo \"$mm\" | cut -d: -f2); " +
-                    "if [ -n \"$maj\" ] && [ -n \"$min\" ]; then " +
-                    "[ ! -e \"/dev/$dname\" ] && mknod \"/dev/$dname\" c \"$maj\" \"$min\" 2>/dev/null; " +
-                    "chmod 666 \"/dev/$dname\" 2>/dev/null; " +
-                    "if [ ! -e \"/dev/BYNb\" ]; then " +
-                    "ln -sf \"/dev/$dname\" /dev/BYNb 2>/dev/null; chmod 666 /dev/BYNb 2>/dev/null; " +
+                    "maj=$(grep MAJOR= \"$s\" 2>/dev/null | cut -d= -f2); " +
+                    "min=$(grep MINOR= \"$s\" 2>/dev/null | cut -d= -f2); " +
+                    "dev=$(grep DEVNAME= \"$s\" 2>/dev/null | cut -d= -f2); " +
+                    "if [ -n \"$maj\" ] && [ \"$maj\" -ge 200 ] 2>/dev/null; then " +
+                    "if [ -n \"$dev\" ]; then " +
+                    "[ ! -e \"/dev/$dev\" ] && mknod \"/dev/$dev\" c \"$maj\" \"$min\" 2>/dev/null; " +
+                    "chmod 666 \"/dev/$dev\" 2>/dev/null; " +
+                    "ln -sf \"/dev/$dev\" /dev/BYNb 2>/dev/null; chmod 666 /dev/BYNb 2>/dev/null; " +
                     "fi; fi; fi; done\n");
 
             os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /proc/uevents_records 2>/dev/null\n");
@@ -404,39 +393,6 @@ public class MainActivity extends BaseActivity {
         }
     }
 
-    public static void deployEngineDaemon(Context context) {
-        new Thread(() -> {
-            try {
-                String assetName = "nin_engine";
-                String outPath = "/data/local/tmp/" + assetName;
-                
-                java.io.InputStream in = context.getAssets().open(assetName);
-                java.io.File tempFile = new java.io.File(context.getCacheDir(), assetName);
-                java.io.FileOutputStream out = new java.io.FileOutputStream(tempFile);
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
-                }
-                in.close();
-                out.flush();
-                out.close();
-
-                Process p = Runtime.getRuntime().exec("su");
-                java.io.DataOutputStream os = new java.io.DataOutputStream(p.getOutputStream());
-                os.writeBytes("cp -f " + tempFile.getAbsolutePath() + " " + outPath + "\n");
-                os.writeBytes("chmod 777 " + outPath + "\n");
-                os.writeBytes("pkill -9 -f nin_engine 2>/dev/null\n");
-                os.writeBytes("mkdir -p /storage/emulated/0/Download 2>/dev/null\n");
-                os.writeBytes(outPath + " >> /storage/emulated/0/Download/ninmods.log 2>&1 &\n");
-                os.writeBytes("exit\n");
-                os.flush();
-                p.waitFor();
-                tempFile.delete();
-                AppLogger.log("DAEMON", "NIN Engine Daemon deployed and launched via root");
-            } catch (Throwable ignored) {}
-        }).start();
-    }
 
     private int dp(int value) {
         return (int) TypedValue.applyDimension(

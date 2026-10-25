@@ -22,7 +22,7 @@ public:
         // 1. Android Logcat output
         __android_log_print(ANDROID_LOG_INFO, tag, "%s", buffer);
 
-        // 2. Persistent file log
+        // 2. Persistent file log strictly in Android default Download/ninmods/ directory
         static std::mutex s_mutex;
         std::lock_guard<std::mutex> lock(s_mutex);
 
@@ -37,51 +37,17 @@ public:
                  tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec, (int)ms.count());
 
-        // Ensure directories exist across root and user storage
-        mkdir("/data/media/0/Download", 0777);
+        // Automatically ensure the dedicated ninmods folder exists inside the official Download directory
         mkdir("/storage/emulated/0/Download", 0777);
-        mkdir("/sdcard/Download", 0777);
-        mkdir("/storage/emulated/0/Android/data/com.ninmods.main", 0777);
-        mkdir("/storage/emulated/0/Android/data/com.ninmods.main/files", 0777);
-        mkdir("/sdcard/Android/data/com.ninmods.main", 0777);
-        mkdir("/sdcard/Android/data/com.ninmods.main/files", 0777);
+        mkdir("/storage/emulated/0/Download/ninmods", 0777);
 
-        // Candidates: We write to BOTH the public Download folder AND the app external data folder
-        const char* publicDownloadPaths[] = {
-            "/data/media/0/Download/ninmods.log",
-            "/storage/emulated/0/Download/ninmods.log",
-            "/sdcard/Download/ninmods.log"
-        };
-
-        const char* appStoragePaths[] = {
-            "/storage/emulated/0/Android/data/com.ninmods.main/files/ninmods.log",
-            "/sdcard/Android/data/com.ninmods.main/files/ninmods.log",
-            "/data/local/tmp/ninmods.log",
-            "/data/data/com.ninmods.main/files/ninmods.log"
-        };
-
-        // Write to public download location
-        for (const char* path : publicDownloadPaths) {
-            FILE* f = fopen(path, "a");
-            if (f) {
-                fprintf(f, "[%s] [%s] %s\n", timeStr, tag, buffer);
-                fflush(f);
-                fclose(f);
-                chmod(path, 0666);
-                break;
-            }
-        }
-
-        // Also write to app-accessible storage so user can inspect with MT Manager
-        for (const char* path : appStoragePaths) {
-            FILE* f = fopen(path, "a");
-            if (f) {
-                fprintf(f, "[%s] [%s] %s\n", timeStr, tag, buffer);
-                fflush(f);
-                fclose(f);
-                chmod(path, 0666);
-                break;
-            }
+        const char* logPath = "/storage/emulated/0/Download/ninmods/ninmods.log";
+        FILE* f = fopen(logPath, "a");
+        if (f) {
+            fprintf(f, "[%s] [%s] %s\n", timeStr, tag, buffer);
+            fflush(f);
+            fclose(f);
+            chmod(logPath, 0666);
         }
     }
 };

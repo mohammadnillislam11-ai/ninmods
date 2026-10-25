@@ -89,17 +89,22 @@ public class Utils {
     }
 
     private static void deleteFilesInDir(File dir) {
-        for (File file: dir.listFiles()) {
-            if (file.isDirectory()) {
-                deleteFilesInDir(file);
+        if (dir == null || !dir.exists()) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file != null) {
+                if (file.isDirectory()) {
+                    deleteFilesInDir(file);
+                }
+                file.delete();
             }
-            file.delete();
         }
     }
 
     static byte[] loaderDecrypt(byte[] srcdata){
         try {
-            SecretKeySpec skey = new SecretKeySpec("22P9ULFDKPJ70G46".getBytes(), "AES");
+            SecretKeySpec skey = new SecretKeySpec("22P9ULFDKPJ70G46".getBytes(StandardCharsets.UTF_8), "AES");
             Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
             cipher.init(Cipher.DECRYPT_MODE, skey);
             return cipher.doFinal(srcdata);

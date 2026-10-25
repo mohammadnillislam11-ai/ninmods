@@ -297,7 +297,8 @@ public class DeviceInfoActivity extends BaseActivity {
                 tvDriverIdValue.setText(info.deviceId != null ? info.deviceId : "Unknown");
                 tvDriverPermValue.setText(info.isActive ? "Accessible" : "Inaccessible");
                 tvKernelModuleValue.setText(info.kernelModule != null ? info.kernelModule : "Not Detected in /proc/modules");
-                tvLoaderStatusValue.setText(info.loaderInstalled ? "com.ninmods.loader (Installed)" : "com.ninmods.loader (Not Found)");
+                boolean installed = DriverManager.isLoaderInstalled(DeviceInfoActivity.this);
+                tvLoaderStatusValue.setText(installed ? "Kernel-Driver 2.0 (Installed)" : "Kernel-Driver 2.0 (Not Installed)");
             });
         });
     }

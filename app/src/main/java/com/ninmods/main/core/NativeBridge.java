@@ -123,11 +123,7 @@ public final class NativeBridge {
     public static void openLoader(Context context) {
         if (context == null) return;
         try {
-            Intent intent = context.getPackageManager().getLaunchIntentForPackage("com.ninmods.loader");
-            if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                context.startActivity(intent);
-            }
+            DriverManager.launchDriverLoader(context);
         } catch (Throwable t) {
             Log.e(TAG, "Failed to launch Driver Loader", t);
         }

@@ -34,7 +34,6 @@ public abstract class BaseActivity extends Activity {
         if (getWindow() != null) {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         }
-        TelegramLogUploader.init(this);
         ensureBaseWrapper();
     }
 

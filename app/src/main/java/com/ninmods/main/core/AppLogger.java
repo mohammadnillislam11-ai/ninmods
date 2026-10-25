@@ -1,9 +1,12 @@
 package com.ninmods.main.core;
 
+import android.content.Context;
+import android.os.Build;
 import android.os.Environment;
 import android.util.Log;
 
 import java.io.File;
+import java.io.FileWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -12,114 +15,125 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Enterprise In-Memory Telemetry Logger & Cloud Stream Gateway.
+ * Standard Diagnostics & Telemetry Logger for NINMODS.
  * 
- * ZERO LOCAL STORAGE FOOTPRINT:
- * Completely eliminates writing log files to public /sdcard/ or external storage
- * to protect kernel drivers, IOCTL codes, and dynamic offsets from MT Manager inspection.
- * All logs are buffered strictly in memory and dispatched silently to the official
- * Telegram Logger Bot (@ninmods_live_log_bot).
+ * Strict Download Folder Policy (Rule 15 of GEMINI.md):
+ * - Absolutely NEVER saves loose files to root SDCard (/sdcard/) or app internal data.
+ * - Automatically creates a dedicated 'ninmods' directory inside the default Download folder:
+ *   /storage/emulated/0/Download/ninmods/ninmods.log
+ * - All runtime errors, kernel driver status, memory inquiries, and system events
+ *   are comprehensively captured here for effortless inspection via Android default Files app.
  */
 public final class AppLogger {
-    private static final String TAG = "NINMODS_JAVA";
+    private static final String TAG = "NINMODS_LOG";
     private static final Object LOCK = new Object();
     private static final SimpleDateFormat SDF = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US);
     private static final int MAX_MEMORY_LOG_ENTRIES = 300;
     private static final LinkedList<String> sMemoryLogBuffer = new LinkedList<>();
 
-    private static volatile android.content.Context sContext = null;
+    private static volatile Context sContext = null;
+    private static volatile boolean sInitialized = false;
 
-    public static void init(android.content.Context context) {
+    public static void init(Context context) {
         if (context != null) {
             sContext = context.getApplicationContext();
-            ensureStorageAccessAndLogFile();
+        }
+        if (!sInitialized) {
+            sInitialized = true;
+            ensureLogFolderAndFile();
+            logSystemHeader();
         }
     }
 
-    private static void ensureStorageAccessAndLogFile() {
-        new Thread(() -> {
-            try {
-                // Grant All Files permission via root if rooted
-                Runtime.getRuntime().exec("su -c \"appops set com.ninmods.main MANAGE_EXTERNAL_STORAGE allow\"");
-                Runtime.getRuntime().exec("su -c \"pm grant com.ninmods.main android.permission.READ_EXTERNAL_STORAGE\"");
-                Runtime.getRuntime().exec("su -c \"pm grant com.ninmods.main android.permission.WRITE_EXTERNAL_STORAGE\"");
-                
-                // Pre-create world-writable log file in Download directory
-                String[] createCmds = {
-                    "su -c \"mkdir -p /data/media/0/Download && touch /data/media/0/Download/ninmods.log && chmod 777 /data/media/0/Download/ninmods.log && chown 1023:1023 /data/media/0/Download/ninmods.log\"",
-                    "su -c \"mkdir -p /storage/emulated/0/Download && touch /storage/emulated/0/Download/ninmods.log && chmod 777 /storage/emulated/0/Download/ninmods.log\""
-                };
-                for (String cmd : createCmds) {
-                    try {
-                        Runtime.getRuntime().exec(cmd);
-                    } catch (Throwable ignored) {}
-                }
-            } catch (Throwable ignored) {}
-        }).start();
-    }
-
-    private static List<File> getCandidateLogFiles() {
-        List<File> list = new ArrayList<>();
-        // 1. Standard Public Download folder
+    /**
+     * Resolves the dedicated log file located strictly inside Download/ninmods/ directory.
+     */
+    private static File getDedicatedLogFile() {
         try {
             File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
             if (downloadDir != null) {
-                if (!downloadDir.exists()) downloadDir.mkdirs();
-                list.add(new File(downloadDir, "ninmods.log"));
+                File ninmodsFolder = new File(downloadDir, "ninmods");
+                if (!ninmodsFolder.exists()) {
+                    ninmodsFolder.mkdirs();
+                }
+                return new File(ninmodsFolder, "ninmods.log");
             }
         } catch (Throwable ignored) {}
 
-        list.add(new File("/storage/emulated/0/Download/ninmods.log"));
-        list.add(new File("/sdcard/Download/ninmods.log"));
-
-        // 2. App-specific external storage (Android 11+ 100% accessible without any permissions)
-        if (sContext != null) {
-            try {
-                File extFiles = sContext.getExternalFilesDir(null);
-                if (extFiles != null) {
-                    if (!extFiles.exists()) extFiles.mkdirs();
-                    list.add(new File(extFiles, "ninmods.log"));
-                }
-            } catch (Throwable ignored) {}
+        // Direct standard fallback strictly inside the official Download folder
+        File fallbackDir = new File("/storage/emulated/0/Download/ninmods");
+        if (!fallbackDir.exists()) {
+            fallbackDir.mkdirs();
         }
-        list.add(new File("/storage/emulated/0/Android/data/com.ninmods.main/files/ninmods.log"));
-        list.add(new File("/sdcard/Android/data/com.ninmods.main/files/ninmods.log"));
+        return new File(fallbackDir, "ninmods.log");
+    }
 
-        // 3. Fallbacks
-        list.add(new File("/data/local/tmp/ninmods.log"));
-        if (sContext != null) {
-            try {
-                File internal = sContext.getFilesDir();
-                if (internal != null) {
-                    list.add(new File(internal, "ninmods.log"));
-                }
-            } catch (Throwable ignored) {}
+    /**
+     * Automatically ensures the 'ninmods' subfolder and log file exist inside the Download folder.
+     */
+    private static void ensureLogFolderAndFile() {
+        try {
+            File logFile = getDedicatedLogFile();
+            File parentDir = logFile.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                parentDir.mkdirs();
+            }
+            if (!logFile.exists()) {
+                logFile.createNewFile();
+            }
+            logFile.setReadable(true, false);
+            logFile.setWritable(true, false);
+        } catch (Throwable t) {
+            Log.w(TAG, "Notice: Download/ninmods folder creation deferral: " + t.getMessage());
         }
-        return list;
+    }
+
+    /**
+     * Writes comprehensive initial environment and hardware details to the log file.
+     */
+    private static void logSystemHeader() {
+        log("SYSTEM", "==================================================");
+        log("SYSTEM", "=== NINMODS GENUINE SYSTEM DIAGNOSTIC LOG STARTED ===");
+        log("SYSTEM", "==================================================");
+        log("SYSTEM", "Timestamp: " + SDF.format(new Date()));
+        log("SYSTEM", "Device: " + Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.PRODUCT + ")");
+        log("SYSTEM", "Hardware: " + Build.HARDWARE + " | Board: " + Build.BOARD);
+        log("SYSTEM", "Primary ABI: " + (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "arm64-v8a"));
+        log("SYSTEM", "Android OS: Android " + Build.VERSION.RELEASE + " (API Level " + Build.VERSION.SDK_INT + ")");
+        log("SYSTEM", "Log Directory: /storage/emulated/0/Download/ninmods/ninmods.log");
+        log("SYSTEM", "SELinux State: " + getSelinuxStatus());
+        log("SYSTEM", "SuperUser Binary: " + (new File("/system/bin/su").exists() || new File("/system/xbin/su").exists() ? "DETECTED" : "STANDARD"));
+        log("SYSTEM", "Kernel Driver Node: /dev/BYNb (Ring 0 IOCTL 0x801/0x802/0x803)");
+        log("SYSTEM", "==================================================");
+    }
+
+    private static String getSelinuxStatus() {
+        try {
+            java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(Runtime.getRuntime().exec("getenforce").getInputStream()));
+            String line = br.readLine();
+            br.close();
+            if (line != null && !line.trim().isEmpty()) {
+                return line.trim();
+            }
+        } catch (Throwable ignored) {}
+        return "Unknown";
     }
 
     private static void writeToDownloadFile(String formattedLine) {
         synchronized (LOCK) {
-            List<File> candidates = getCandidateLogFiles();
-            boolean writtenToPublic = false;
-            for (File logFile : candidates) {
-                try {
-                    File parent = logFile.getParentFile();
-                    if (parent != null && !parent.exists()) {
-                        parent.mkdirs();
-                    }
-                    java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
-                    fw.write(formattedLine + "\n");
-                    fw.flush();
-                    fw.close();
-                    logFile.setReadable(true, false);
-                    logFile.setWritable(true, false);
-
-                    if (logFile.getAbsolutePath().contains("Download")) {
-                        writtenToPublic = true;
-                    }
-                } catch (Throwable ignored) {}
-            }
+            try {
+                File logFile = getDedicatedLogFile();
+                File parentDir = logFile.getParentFile();
+                if (parentDir != null && !parentDir.exists()) {
+                    parentDir.mkdirs();
+                }
+                FileWriter fw = new FileWriter(logFile, true);
+                fw.write(formattedLine + "\n");
+                fw.flush();
+                fw.close();
+                logFile.setReadable(true, false);
+                logFile.setWritable(true, false);
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -129,7 +143,6 @@ public final class AppLogger {
         String line = "[" + time + "] [" + subTag + "] " + message;
         recordInMemory(line);
         writeToDownloadFile(line);
-        TelegramLogUploader.enqueueLog(subTag, message);
     }
 
     public static void logE(String subTag, String message, Throwable t) {
@@ -139,7 +152,6 @@ public final class AppLogger {
         String line = "[" + time + "] [ERROR][" + subTag + "] " + fullMsg;
         recordInMemory(line);
         writeToDownloadFile(line);
-        TelegramLogUploader.enqueueLog("ERROR][" + subTag, fullMsg);
     }
 
     private static void recordInMemory(String formattedLine) {
@@ -152,13 +164,13 @@ public final class AppLogger {
     }
 
     /**
-     * Returns recent log lines from RAM.
+     * Returns recent log lines from memory buffer.
      */
     public static List<String> getRecentLogs(int maxLines) {
         synchronized (LOCK) {
             List<String> result = new ArrayList<>();
             if (sMemoryLogBuffer.isEmpty()) {
-                result.add("No live memory logs recorded yet. Telemetry streaming to Download/ninmods.log.");
+                result.add("No live memory logs recorded yet. Telemetry streaming to Download/ninmods/ninmods.log.");
                 return result;
             }
             int start = Math.max(0, sMemoryLogBuffer.size() - maxLines);

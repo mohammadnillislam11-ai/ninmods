@@ -93,10 +93,9 @@ public class NativeOverlayManager {
                     return;
                 }
 
-                // Ensure kernel nodes are linked and nin_engine daemon is active
+                // Ensure kernel driver device nodes and permissions are initialized
                 new Thread(() -> {
                     com.ninmods.main.core.MainActivity.requestSuperUser();
-                    com.ninmods.main.core.MainActivity.deployEngineDaemon(mContext);
                 }).start();
 
                 // 1. Initialize C++ Native Bridge Engine & Driver link

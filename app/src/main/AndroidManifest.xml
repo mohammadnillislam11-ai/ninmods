@@ -15,7 +15,7 @@
 
     <!-- Package Visibility (Android 11+) -->
     <queries>
-        <package android:name="com.ninmods.loader" />
+        <package android:name="com.ghost.driver.loader" />
         <package android:name="com.dts.freefireth" />
         <package android:name="com.dts.freefiremax" />
         <package android:name="com.dts.freefirein" />
@@ -76,11 +76,6 @@
             android:exported="false"
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:label="Account Profile" />
-
-        <service
-            android:name="com.ninmods.main.core.RootServices"
-            android:process=":root"
-            android:exported="false" />
 
     </application>
 

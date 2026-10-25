@@ -1,9 +1,7 @@
 package com.ninmods.main.core;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.util.Log;
@@ -17,7 +15,7 @@ import java.io.FileReader;
 
 /**
  * NINMODS Driver Integration Manager
- * Permanently links the Main App (com.ninmods.main) with the Driver Loader (com.ninmods.loader).
+ * Connects the Main App directly with Kernel Driver 2.0 (com.ghost.driver.loader).
  * Provides deep real-time inquiry of Ring 0 Kernel Driver nodes, device IDs, and module statuses.
  */
 public class DriverManager {
@@ -25,14 +23,14 @@ public class DriverManager {
     private static final String TAG = "DriverManager";
 
     public static final String MAIN_PACKAGE_NAME = "com.ninmods.main";
-    public static final String LOADER_PACKAGE_NAME = "com.ninmods.loader";
-    public static final String LOADER_ACTIVITY_NAME = "com.ninmods.loader.MainActivity";
-    public static final String ACTION_DRIVER_STATE = "com.ninmods.action.DRIVER_STATE";
+    public static final String LOADER_PACKAGE_NAME = "com.ghost.driver.loader";
 
     public static final String PRIMARY_DRIVER_NODE = "/dev/BYNb";
     public static final String[] CANDIDATE_DRIVER_NODES = {
             "/dev/BYNb",
             "/dev/mem_tool",
+            "/dev/nh",
+            "/dev/wanbai",
             "/proc/uevents_records"
     };
 
@@ -52,17 +50,13 @@ public class DriverManager {
         public int minor = 0;
         public String permissions = "Inaccessible";
         public String kernelModule = "Not Detected";
-        public String loaderMode = "NONE";
+        public String loaderMode = "RING_0_KERNEL";
         public String statusText = "Driver Inactive";
         public boolean loaderInstalled = false;
     }
 
-    public interface DriverStateListener {
-        void onDriverStateChanged(boolean isLoaded, String mode, String activeNode);
-    }
-
     /**
-     * Checks if Driver Loader APK (com.ninmods.loader) is installed on the device.
+     * Checks if Driver Loader APK (com.ghost.driver.loader) is installed on the device.
      */
     public static boolean isLoaderInstalled(Context context) {
         if (context == null) return false;
@@ -115,7 +109,7 @@ public class DriverManager {
     /**
      * Performs a comprehensive, automated real-time inquiry of the Ring 0 Driver.
      * Evaluates character device nodes, major/minor device IDs, kernel modules,
-     * file permissions, and persisted driver states.
+     * and file permissions directly via JNI and Linux VFS.
      */
     public static DriverInfo inquireDriverInfo(Context context) {
         DriverInfo info = new DriverInfo();
@@ -132,7 +126,7 @@ public class DriverManager {
                 info.minor = obj.optInt("minor", 0);
                 info.deviceId = obj.optString("device_id", "Major: " + info.major + ", Minor: " + info.minor);
                 info.permissions = obj.optString("permissions", "rw-rw-rw-");
-                info.statusText = obj.optString("status_text", info.isActive ? "Active (Ring 0)" : "Inactive");
+                info.statusText = obj.optString("status_text", info.isActive ? "Active (Ring 0 Kernel)" : "Inactive");
             }
         } catch (Throwable t) {
             Log.d(TAG, "Native driver probe fallback to Java: " + t.getMessage());
@@ -174,6 +168,7 @@ public class DriverManager {
                 if (parts.length > 0) {
                     String modName = parts[0].toLowerCase();
                     if (modName.contains("5.10") || modName.contains("4.14") || modName.contains("4.19") ||
+                        modName.contains("4.9") || modName.contains("5.15") || modName.contains("6.1") ||
                         modName.contains("nh") || modName.contains("mem_tool") || modName.contains("bynb") ||
                         modName.contains("driver")) {
                         info.kernelModule = parts[0] + " (Size: " + (parts.length > 1 ? parts[1] + " B" : "Loaded") + ")";
@@ -184,27 +179,6 @@ public class DriverManager {
             }
         } catch (Throwable ignored) {}
 
-        // 4. Check persisted state from /data/local/tmp/.nin_driver_state
-        File stateFile = new File("/data/local/tmp/.nin_driver_state");
-        if (stateFile.exists() && stateFile.canRead()) {
-            try (BufferedReader br = new BufferedReader(new FileReader(stateFile))) {
-                String stateJson = br.readLine();
-                if (stateJson != null && !stateJson.trim().isEmpty()) {
-                    JSONObject obj = new JSONObject(stateJson);
-                    info.loaderMode = obj.optString("mode", "NONE");
-                    String status = obj.optString("status", "");
-                    if ("ACTIVE".equalsIgnoreCase(status)) {
-                        info.isActive = true;
-                        if ("ROOT_RAM".equalsIgnoreCase(info.loaderMode)) {
-                            info.statusText = "ACTIVE & RESPONDING (RAM Daemon)";
-                        } else {
-                            info.statusText = "ACTIVE & RESPONDING (Ring 0 Kernel RT)";
-                        }
-                    }
-                }
-            } catch (Throwable ignored) {}
-        }
-
         if (!info.isActive) {
             info.statusText = "NOT LOADED / INACTIVE";
         }
@@ -213,7 +187,7 @@ public class DriverManager {
     }
 
     /**
-     * Seamlessly launches the Driver Loader (com.ninmods.loader).
+     * Seamlessly launches Kernel Driver 2.0 (com.ghost.driver.loader).
      */
     public static boolean launchDriverLoader(Context context) {
         if (context == null) return false;
@@ -224,40 +198,10 @@ public class DriverManager {
             context.startActivity(intent);
             AppLogger.log("DRIVER_MGR", "Launched Driver Loader: " + LOADER_PACKAGE_NAME);
             return true;
-        } else {
-            Toast.makeText(context, "Driver Loader (" + LOADER_PACKAGE_NAME + ") is not installed!", Toast.LENGTH_LONG).show();
-            AppLogger.logE("DRIVER_MGR", "Failed to launch Driver Loader - package not installed: " + LOADER_PACKAGE_NAME, null);
-            return false;
         }
-    }
-
-    /**
-     * Registers a BroadcastReceiver to listen for real-time driver state updates sent by com.ninmods.loader.
-     */
-    public static BroadcastReceiver registerDriverStateReceiver(Context context, final DriverStateListener listener) {
-        if (context == null || listener == null) return null;
-
-        BroadcastReceiver receiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context ctx, Intent intent) {
-                if (intent != null && ACTION_DRIVER_STATE.equals(intent.getAction())) {
-                    String mode = intent.getStringExtra("mode");
-                    String status = intent.getStringExtra("status");
-                    boolean isActive = "ACTIVE".equalsIgnoreCase(status);
-                    String node = getActiveDriverNode();
-                    AppLogger.log("DRIVER_MGR", "Received driver broadcast: mode=" + mode + ", status=" + status + ", node=" + node);
-                    listener.onDriverStateChanged(isActive, mode != null ? mode : "NONE", node);
-                }
-            }
-        };
-
-        IntentFilter filter = new IntentFilter(ACTION_DRIVER_STATE);
-        if (Build.VERSION.SDK_INT >= 33) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
-        } else {
-            context.registerReceiver(receiver, filter);
-        }
-        return receiver;
+        Toast.makeText(context, "Kernel Driver 2.0 is not installed!", Toast.LENGTH_LONG).show();
+        AppLogger.logE("DRIVER_MGR", "Failed to launch Driver Loader: " + LOADER_PACKAGE_NAME, null);
+        return false;
     }
 
     // Native JNI driver probing method

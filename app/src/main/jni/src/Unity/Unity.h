@@ -20,20 +20,20 @@
 
 // --- Math Helpers ---
 
-float NormalizeAngle (float angle){
+inline float NormalizeAngle (float angle){
     while (angle > 360) angle -= 360;
     while (angle < 0) angle += 360;
     return angle;
 }
 
-Vector3 NormalizeAngles (Vector3 angles){
+inline Vector3 NormalizeAngles (Vector3 angles){
     angles.X = NormalizeAngle (angles.X);
     angles.Y = NormalizeAngle (angles.Y);
     angles.Z = NormalizeAngle (angles.Z);
     return angles;
 }
 
-Vector3 ToEulerRad(Quaternion q1){
+inline Vector3 ToEulerRad(Quaternion q1){
     float Rad2Deg = 360.0 / (M_PI * 2.0);
     float sqw = q1.W * q1.W;
     float sqx = q1.X * q1.X;
@@ -62,7 +62,7 @@ Vector3 ToEulerRad(Quaternion q1){
     return NormalizeAngles (v * Rad2Deg);
 }
 
-Quaternion GetRotationToLocation(Vector3 targetLocation, float y_bias, Vector3 myLoc){
+inline Quaternion GetRotationToLocation(Vector3 targetLocation, float y_bias, Vector3 myLoc){
     return Quaternion::LookRotation((targetLocation + Vector3(0, y_bias, 0)) - myLoc, Vector3(0, 1, 0));
 }
 
@@ -145,20 +145,20 @@ typedef struct _monoString
 
 // --- Obscured Types ---
 
-int GetObscuredIntValue(uintptr_t location){
+inline int GetObscuredIntValue(uintptr_t location){
     if (!location) return 0;
 	int cryptoKey = *(int *)location;
 	int obfuscatedValue = *(int *)(location + 0x4);
 	return obfuscatedValue ^ cryptoKey;
 }
 
-void SetObscuredIntValue(uintptr_t location, int value){
+inline void SetObscuredIntValue(uintptr_t location, int value){
     if (!location) return;
 	int cryptoKey = *(int *)location;
 	*(int *)(location + 0x4) = value ^ cryptoKey;
 }
 
-float GetObscuredFloatValue(uintptr_t location){
+inline float GetObscuredFloatValue(uintptr_t location){
     if (!location) return 0;
 	int cryptoKey = *(int *)location;
 	int obfuscatedValue = *(int *)(location + 0x4);
@@ -167,7 +167,7 @@ float GetObscuredFloatValue(uintptr_t location){
 	return IF.f;
 }
 
-void SetObscuredFloatValue(uintptr_t location, float value){
+inline void SetObscuredFloatValue(uintptr_t location, float value){
     if (!location) return;
 	int cryptoKey = *(int *)location;
 	intfloat IF;

@@ -56,6 +56,7 @@ public:
                                  (int) color.g, (int) color.b,
                                  thickness,
                                  start.X, start.Y, end.X, end.Y);
+            _env->DeleteLocalRef(canvasView);
         }
     }
 
@@ -74,21 +75,11 @@ public:
     }
 
     void DrawText2(Color color, float stroke, const char *txt, Vector2 pos, float size) {
-        if (isValid() && txt != nullptr) {
-            jclass canvasView = _env->GetObjectClass(_cvsView);
-            jmethodID drawtext = _env->GetMethodID(canvasView, ("DrawText"),
-                                                   ("(Landroid/graphics/Canvas;IIIILjava/lang/String;FFF)V"));
-            jstring s = _env->NewStringUTF(txt);
-            _env->CallVoidMethod(_cvsView, drawtext, _cvs, (int) color.a, (int) color.r,
-                                 (int) color.g, (int) color.b,
-                                 s, pos.X, pos.Y, size);
-            _env->DeleteLocalRef(s);
-            _env->DeleteLocalRef(canvasView);
-        }
+        DrawText(color, txt, pos, size);
     }
 
     void DrawName(Color color, const char *txt, Vector3 pos, float size) {
-        if (isValid()) {
+        if (isValid() && txt != nullptr) {
             jclass canvasView = _env->GetObjectClass(_cvsView);
             jmethodID drawtext = _env->GetMethodID(canvasView, ("DrawName"),
                                                    ("(Landroid/graphics/Canvas;IIIILjava/lang/String;IFFF)V"));
@@ -97,6 +88,7 @@ public:
                                  (int) color.g, (int) color.b,
                                  s, pos.X, pos.Y, size);
             _env->DeleteLocalRef(s);
+            _env->DeleteLocalRef(canvasView);
         }
     }
 
@@ -107,6 +99,7 @@ public:
                                                            ("(Landroid/graphics/Canvas;IIIIFFF)V"));
             _env->CallVoidMethod(_cvsView, drawfilledcircle, _cvs, (int) color.a, (int) color.r,
                                  (int) color.g, (int) color.b, pos.X, pos.Y, radius);
+            _env->DeleteLocalRef(canvasView);
         }
     }
 
@@ -117,6 +110,7 @@ public:
                                                      ("(Landroid/graphics/Canvas;IIIIFFFF)V"));
             _env->CallVoidMethod(_cvsView, drawcircle, _cvs, (int) color.a, (int) color.r,
                                  (int) color.g, (int) color.b,stroke, pos.X, pos.Y, radius);
+            _env->DeleteLocalRef(canvasView);
         }
     }
 
@@ -127,6 +121,7 @@ public:
                                                          "(Landroid/graphics/Canvas;IIIIFFFF)V");
             _env->CallVoidMethod(_cvsView, drawfilledrect, _cvs, (int) color.a, (int) color.r,
                                  (int) color.g, (int) color.b, pos.X, pos.Y, width, height);
+            _env->DeleteLocalRef(canvasView);
         }
     }
 

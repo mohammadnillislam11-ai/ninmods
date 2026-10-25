@@ -1,57 +1,275 @@
+#pragma once
+
+#include <jni.h>
+#include <stdio.h>
+#include <wchar.h>
 #include <string>
-#include <fstream>
-#include <sstream>
-#include <iostream>
-#include <iomanip>
-#include <mutex>
+#include <vector>
+#include <map>
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <mutex>
+#include <cmath>
+#include <algorithm>
 #include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
-#include <math.h>
-#include <stdarg.h>
-#include <sys/stat.h>
-#include <signal.h>
-#include <android/log.h>
 
-#include "Server.h"
-#include "Includes/Encrypt/oxorany_include.h"
+#include "Includes/Logger.h"
+#include "Includes/Utils.h"
+#include "Includes/gameoffsets.h"
+#include "BooleanClient.h"
+#include "src/Unity/Vector3.hpp"
+#include "src/Unity/Vector2.hpp"
+#include "src/Unity/Quaternion.hpp"
+#include "src/Unity/Color.hpp"
 
-// Global to prevent log spamming
-uintptr_t last_failed_ptr = 0;
+#define maxplayerCount 200
 
-// ========== Unified Logging System ==========
-void InitLogs() {
-    NIN_LOGI("DAEMON", "=== NINMODS Daemon Session Initialized ===");
+struct PlayerData {
+    Vector3 Head;
+    Vector3 Toe;
+    bool IsCaido;
+    float Distancia;
+    int Health;
+    bool Name;
+    char PlayerName[64];
+};
+
+struct Response {
+    bool Success;
+    int PlayerCount;
+    int VisibleEnemyCount;                // On-screen enemies
+    int VisibleNearOffScreenEnemyCount;   // Off-screen but near screen edges
+    int ProximityEnemyCount;              // Enemies within 30m of local player
+    PlayerData Players[maxplayerCount];
+};
+
+inline int g_screenWidth = 0;
+inline int g_screenHeight = 0;
+inline std::map<uintptr_t, Vector3> BasePosMap;
+
+
+// ==================== ENGINE CORE (TRANSFORMS & MATH) ====================
+inline uintptr_t GetPlayerSpineTF(uintptr_t player) {
+    auto ptr = Read<uintptr_t>(player + Offsets::Spine);
+    if (!ptr || ptr < 0x10000000) {
+        ptr = Read<uintptr_t>(player + Offsets::SpineFallback);
+    }
+    return ptr;
 }
 
-void CloseLogs() {
-    NIN_LOGI("DAEMON", "=== NINMODS Daemon Session Ended ===");
+inline uintptr_t GetPlayerHeadTF(uintptr_t player) {
+    auto ptr = Read<uintptr_t>(player + Offsets::Head);
+    if (!ptr || ptr < 0x10000000) {
+        ptr = Read<uintptr_t>(player + Offsets::HeadFallback);
+    }
+    if (!ptr || ptr < 0x10000000) {
+        ptr = Read<uintptr_t>(player + Offsets::HeadOld);
+    }
+    return ptr;
 }
 
-void LogPlayerData(const char* name, bool isBot, int health, float distance, bool isDead) {
-    NIN_LOGI("DAEMON_ENTITY", "Name: %s | Bot: %s | HP: %d | Dist: %.1f | Dead: %s",
-             name, (isBot ? "Yes" : "No"), health, distance, (isDead ? "Yes" : "No"));
+inline uintptr_t GetPlayerPeTF(uintptr_t player) {
+    auto ptr = Read<uintptr_t>(player + Offsets::Feet);
+    if (!ptr || ptr < 0x10000000) {
+        ptr = Read<uintptr_t>(player + Offsets::FeetFallback);
+    }
+    return ptr;
 }
 
-void LogDebug(const char* format, ...) {
-    va_list args;
-    va_start(args, format);
-    char buffer[512];
-    vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
-    NIN_LOGI("DAEMON_DEBUG", "%s", buffer);
+inline uintptr_t GetPlayerMainCamera(uintptr_t player) {
+    auto ptr = Read<uintptr_t>(player + Offsets::MainCameraTransform);
+    if (!ptr || ptr < 0x10000000) {
+        ptr = Read<uintptr_t>(player + Offsets::MainCameraTransformAlt);
+    }
+    if (!ptr || ptr < 0x10000000) {
+        ptr = Read<uintptr_t>(player + Offsets::MainCamera);
+    }
+    return ptr;
 }
 
-void LogWeaponData(const char* playerName, int weaponId, bool isLocal) {
-    NIN_LOGI("DAEMON_WEAPON", "%s | Name: %s | WeaponID: %d", (isLocal ? "Local" : "Enemy"), playerName, weaponId);
+struct Matrix {
+    Vector4 Position;
+    Quaternion Rotation;
+    Vector4 Scale;
+};
+
+static Vector3 GetPosition(uintptr_t Transform) {
+    auto pos = Vector3::Zero();
+    if (!IsValidUserPointer64(Transform)) return pos;
+
+    uintptr_t transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObj);
+    if (!IsValidUserPointer64(transformObjValue)) {
+        transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObjAlt);
+    }
+    if (!IsValidUserPointer64(transformObjValue)) {
+        transformObjValue = Transform;
+    }
+
+    auto indexValue = Read<uintptr_t>(transformObjValue + Offsets::TransformIndex);
+    auto matrixValue = Read<uintptr_t>(transformObjValue + Offsets::TransformMatrix);
+    if (!IsValidUserPointer64(matrixValue)) return pos;
+
+    uintptr_t matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixList);
+    if (!IsValidUserPointer64(matrixListValue)) {
+        matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixListAlt);
+    }
+    auto matrixIndicesValue = Read<uintptr_t>(matrixValue + Offsets::MatrixIndices);
+    if (!IsValidUserPointer64(matrixListValue) || !IsValidUserPointer64(matrixIndicesValue)) return pos;
+
+    auto resultValue = Read<Vector3>(matrixListValue + (indexValue * Offsets::MatrixDataSize));
+
+    int maxTries = 50;
+    int tries = 0;
+    auto transformIndexValue = Read<int>(matrixIndicesValue + (indexValue * 4));
+
+    while (transformIndexValue >= 0 && tries < maxTries) {
+        tries++;
+        uintptr_t matrixItemPtr = matrixListValue + (transformIndexValue * Offsets::MatrixDataSize);
+        if (!IsValidUserPointer64(matrixItemPtr)) break;
+
+        auto tMatrixValue = Read<Matrix>(matrixItemPtr);
+        auto rotX = tMatrixValue.Rotation.X;
+        auto rotY = tMatrixValue.Rotation.Y;
+        auto rotZ = tMatrixValue.Rotation.Z;
+        auto rotW = tMatrixValue.Rotation.W;
+
+        auto scaleX = resultValue.X * tMatrixValue.Scale.X;
+        auto scaleY = resultValue.Y * tMatrixValue.Scale.Y;
+        auto scaleZ = resultValue.Z * tMatrixValue.Scale.Z;
+
+        resultValue.X = tMatrixValue.Position.X + scaleX +
+                        (scaleX * ((rotY * rotY * -2.0f) - (rotZ * rotZ * 2.0f))) +
+                        (scaleY * ((rotW * rotZ * -2.0f) - (rotY * rotX * -2.0f))) +
+                        (scaleZ * ((rotZ * rotX * 2.0f) - (rotW * rotY * -2.0f)));
+        resultValue.Y = tMatrixValue.Position.Y + scaleY +
+                        (scaleX * ((rotX * rotY * 2.0f) - (rotW * rotZ * -2.0f))) +
+                        (scaleY * ((rotZ * rotZ * -2.0f) - (rotX * rotX * 2.0f))) +
+                        (scaleZ * ((rotW * rotX * -2.0f) - (rotZ * rotY * -2.0f)));
+        resultValue.Z = tMatrixValue.Position.Z + scaleZ +
+                        (scaleX * ((rotW * rotY * -2.0f) - (rotX * rotZ * -2.0f))) +
+                        (scaleY * ((rotY * rotZ * 2.0f) - (rotW * rotX * -2.0f))) +
+                        (scaleZ * ((rotX * rotX * -2.0f) - (rotY * rotY * 2.0f)));
+
+        uintptr_t indexItemPtr = matrixIndicesValue + (transformIndexValue * 4);
+        if (!IsValidUserPointer64(indexItemPtr)) break;
+        transformIndexValue = Read<int>(indexItemPtr);
+    }
+
+    if (tries < maxTries) {
+        pos = resultValue;
+    }
+
+    return pos;
 }
 
+static Vector3 GetNodePosition(uintptr_t nodeTransform) {
+    if (!IsValidUserPointer64(nodeTransform)) return Vector3::Zero();
+    auto transformValue = Read<uintptr_t>(nodeTransform + Offsets::TransformObj);
+    if (!IsValidUserPointer64(transformValue)) {
+        transformValue = Read<uintptr_t>(nodeTransform + Offsets::TransformObjAlt);
+    }
+    if (!IsValidUserPointer64(transformValue)) {
+        return GetPosition(nodeTransform);
+    }
+    return GetPosition(transformValue);
+}
+
+static Quaternion GetTransformRotation(uintptr_t Transform) {
+    if (!IsValidUserPointer64(Transform)) return Quaternion::Identity();
+    uintptr_t transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObj);
+    if (!IsValidUserPointer64(transformObjValue)) {
+        transformObjValue = Read<uintptr_t>(Transform + Offsets::TransformObjAlt);
+    }
+    if (!IsValidUserPointer64(transformObjValue)) transformObjValue = Transform;
+
+    auto indexValue = Read<uintptr_t>(transformObjValue + Offsets::TransformIndex);
+    auto matrixValue = Read<uintptr_t>(transformObjValue + Offsets::TransformMatrix);
+    if (!IsValidUserPointer64(matrixValue)) return Quaternion::Identity();
+
+    uintptr_t matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixList);
+    if (!IsValidUserPointer64(matrixListValue)) {
+        matrixListValue = Read<uintptr_t>(matrixValue + Offsets::MatrixListAlt);
+    }
+    auto matrixIndicesValue = Read<uintptr_t>(matrixValue + Offsets::MatrixIndices);
+    if (!IsValidUserPointer64(matrixListValue) || !IsValidUserPointer64(matrixIndicesValue)) return Quaternion::Identity();
+
+    auto selfMatrix = Read<Matrix>(matrixListValue + (indexValue * Offsets::MatrixDataSize));
+    Quaternion rot = selfMatrix.Rotation;
+
+    int maxTries = 30;
+    int tries = 0;
+    auto transformIndexValue = Read<int>(matrixIndicesValue + (indexValue * 4));
+    while (transformIndexValue >= 0 && tries < maxTries) {
+        tries++;
+        uintptr_t parentItemPtr = matrixListValue + (transformIndexValue * Offsets::MatrixDataSize);
+        if (!IsValidUserPointer64(parentItemPtr)) break;
+        auto parentMatrix = Read<Matrix>(parentItemPtr);
+        rot = parentMatrix.Rotation * rot;
+        uintptr_t indexItemPtr = matrixIndicesValue + (transformIndexValue * 4);
+        if (!IsValidUserPointer64(indexItemPtr)) break;
+        transformIndexValue = Read<int>(indexItemPtr);
+    }
+    return rot;
+}
+
+static D3DMatrix BuildViewMatrix(Vector3 camPos, Quaternion rot, float fovDeg, float aspect) {
+    if (rot.X == 0.0f && rot.Y == 0.0f && rot.Z == 0.0f && rot.W == 0.0f) {
+        rot = Quaternion::Identity();
+    }
+    Vector3 fwd = rot * Vector3(0.0f, 0.0f, 1.0f);
+    Vector3 right = rot * Vector3(1.0f, 0.0f, 0.0f);
+    Vector3 up = rot * Vector3(0.0f, 1.0f, 0.0f);
+
+    float rad = fovDeg * 0.5f * (3.14159265f / 180.0f);
+    float tanHalf = tanf(rad);
+    if (tanHalf < 0.01f) tanHalf = 0.57735f; // ~60 deg default
+    float fovY = 1.0f / tanHalf;
+    float fovX = fovY / (aspect > 0.1f ? aspect : 1.777778f);
+
+    D3DMatrix m = {0};
+    m._11 = right.X * fovX;
+    m._12 = up.X * fovY;
+    m._14 = fwd.X;
+
+    m._21 = right.Y * fovX;
+    m._22 = up.Y * fovY;
+    m._24 = fwd.Y;
+
+    m._31 = right.Z * fovX;
+    m._32 = up.Z * fovY;
+    m._34 = fwd.Z;
+
+    m._41 = -Vector3::Dot(camPos, right) * fovX;
+    m._42 = -Vector3::Dot(camPos, up) * fovY;
+    m._44 = -Vector3::Dot(camPos, fwd);
+
+    return m;
+}
+
+static auto WorldToScreenPoint(D3DMatrix viewMatrix, Vector3 ScreenPos) {
+    auto result = Vector3(-1, -1, -1);
+
+    auto v9 = (ScreenPos.X * viewMatrix._11) + (ScreenPos.Y * viewMatrix._21) + (ScreenPos.Z * viewMatrix._31) + viewMatrix._41;
+    auto v10 = (ScreenPos.X * viewMatrix._12) + (ScreenPos.Y * viewMatrix._22) + (ScreenPos.Z * viewMatrix._32) + viewMatrix._42;
+    auto v12 = (ScreenPos.X * viewMatrix._14) + (ScreenPos.Y * viewMatrix._24) + (ScreenPos.Z * viewMatrix._34) + viewMatrix._44;
+
+    if (v12 >= 0.001f) {
+        auto v13 = (float)g_screenWidth / 2.0f;
+        auto v14 = (float)g_screenHeight / 2.0f;
+
+        result.X = v13 + (v13 * v9) / v12;
+        result.Y = v14 - (v14 * v10) / v12;
+    }
+    return result;
+}
+
+// ==================== ENGINE SCANNER & ENTITIES ====================
 // ========== Pointer Validation (Strict ARM64 64-bit User Space Pointer) ==========
-bool IsValidUserPointer64(uintptr_t ptr) {
+inline bool IsValidUserPointer64(uintptr_t ptr) {
     // 1. High 16 bits must be strictly 0x0000 (rejects instructions like 0xa902... or packed opcodes)
     if ((ptr >> 48) != 0) return false;
     // 2. Must be in ARM64 Linux user-space memory range (from 256MB to 128TB)
@@ -62,7 +280,7 @@ bool IsValidUserPointer64(uintptr_t ptr) {
 }
 
 // ========== Genuine Player Object Validator ==========
-bool IsValidPlayerObject(uintptr_t player) {
+inline bool IsValidPlayerObject(uintptr_t player) {
     if (!IsValidUserPointer64(player)) return false;
     // 1. Check MainCameraTransform (0x3F0 from pAdress.h / 0x3E8)
     uintptr_t cam = Read<uintptr_t>(player + Offsets::MainCameraTransform);
@@ -89,7 +307,7 @@ bool IsValidPlayerObject(uintptr_t player) {
 }
 
 // ========== ELF Magic Header Checker ==========
-bool is_elf_header(uintptr_t addr) {
+inline bool is_elf_header(uintptr_t addr) {
     if (addr == 0 || !IsDriverConnected()) return false;
     unsigned char magic[4] = {0};
     if (DriverReadMemory(target_pid, addr, magic, 4)) {
@@ -103,7 +321,7 @@ bool is_elf_header(uintptr_t addr) {
 }
 
 // ========== ARM64 Instruction Decoders (Auto-Extract Static Pointers from Game Code) ==========
-uintptr_t DecodeAdrpLdr(uintptr_t pc) {
+inline uintptr_t DecodeAdrpLdr(uintptr_t pc) {
     if (pc == 0 || !IsDriverConnected()) return 0;
     uint32_t inst1 = Read<uint32_t>(pc);
     uint32_t inst2 = Read<uint32_t>(pc + 4);
@@ -137,7 +355,7 @@ static bool IsValidViewMatrix(const D3DMatrix& m) {
 }
 
 // ========== Module Base Address (ROBUST MULTI-ELF DETECTOR) ==========
-uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
+inline uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
     // 1. First Priority: Direct Kernel Ring 0 Driver Base Address
     uintptr_t kernelBase = DriverGetModuleBase(pid, moduleName);
     if (kernelBase > 0) {
@@ -215,17 +433,17 @@ uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
 
 // ========== Original Code ==========
 
-Quaternion GetRotationToTheLocation(Vector3 Target, float Height, Vector3 MyEnemy) {
+inline Quaternion GetRotationToTheLocation(Vector3 Target, float Height, Vector3 MyEnemy) {
     return Quaternion::LookRotation((Target + Vector3(0, Height, 0)) - MyEnemy, Vector3(0, 1, 0));
 }
 
-bool isLocked = false;
-uint64_t lockedEnemyAddress = 0;
-Vector3 lockedTargetPos;
-std::mutex g_aimStateMutex;
+inline bool isLocked = false;
+inline uint64_t lockedEnemyAddress = 0;
+inline Vector3 lockedTargetPos;
+inline std::mutex g_aimStateMutex;
 
 // Helper to restore all enemies to their original positions
-void RestoreAllPositions() {
+inline void RestoreAllPositions() {
     std::vector<std::pair<uintptr_t, Vector3>> snapshot;
     {
         std::lock_guard<std::mutex> lock(g_aimStateMutex);
@@ -254,17 +472,17 @@ void RestoreAllPositions() {
     BasePosMap.clear();
 }
 
-uintptr_t currentBestTargetObj = 0;
-std::atomic<bool> keepAiming{false};
-std::thread aimThread;
-Vector3 currentBestTargetPos = Vector3::Zero();
+inline uintptr_t currentBestTargetObj = 0;
+inline std::atomic<bool> keepAiming{false};
+inline std::thread aimThread;
+inline Vector3 currentBestTargetPos = Vector3::Zero();
 
-uintptr_t ShareLocalPlayer = 0;
-uintptr_t ShareEnemy = 0;
-D3DMatrix ViewMatrix;
-Vector3 MainCameraTransformPos = Vector3::Zero();
+inline uintptr_t ShareLocalPlayer = 0;
+inline uintptr_t ShareEnemy = 0;
+inline D3DMatrix ViewMatrix;
+inline Vector3 MainCameraTransformPos = Vector3::Zero();
 
-bool speedHackEnabled = false;
+inline bool speedHackEnabled = false;
 
 static float FloatFromBits(uint32_t bits) {
     float value = 0.0f;
@@ -272,7 +490,7 @@ static float FloatFromBits(uint32_t bits) {
     return value;
 }
 
-void getUTF8(char* dst, uintptr_t addr) {
+inline void getUTF8(char* dst, uintptr_t addr) {
     if (addr < 0x10000000) {
         dst[0] = '\0';
         return;
@@ -317,7 +535,7 @@ void getUTF8(char* dst, uintptr_t addr) {
     dst[j] = '\0';
 }
 
-bool isWithinFOV(Vector3 screenPos, float fovRadius) {
+inline bool isWithinFOV(Vector3 screenPos, float fovRadius) {
     float screenCenterX = g_screenWidth / 2.0f;
     float screenCenterY = g_screenHeight / 2.0f;
     float deltaX = screenPos.X - screenCenterX;
@@ -326,7 +544,7 @@ bool isWithinFOV(Vector3 screenPos, float fovRadius) {
     return distanceFromCenter <= fovRadius;
 }
 
-float FastRandomFloat() {
+inline float FastRandomFloat() {
     static uint32_t x = 123456789;
     x ^= x << 13;
     x ^= x >> 17;
@@ -335,7 +553,7 @@ float FastRandomFloat() {
     return (normalized - 0.5f) * 2.0f * 0.033;
 }
 
-void ContinuousAim(uintptr_t oneself) {
+inline void ContinuousAim(uintptr_t oneself) {
     while (keepAiming.load()) {
         if (!IsValidUserPointer64(oneself)) break;
 
@@ -426,12 +644,12 @@ void ContinuousAim(uintptr_t oneself) {
     }
 }
 
-float Map(float value, float inMin, float inMax, float outMin, float outMax) {
+inline float Map(float value, float inMin, float inMax, float outMin, float outMax) {
     return outMin + (value - inMin) * (outMax - outMin) / (inMax - inMin);
 }
 
 // Helper to get the target bone based on fixed setting (Old Silent Aim style)
-uintptr_t GetTargetBone(uintptr_t enemy) {
+inline uintptr_t GetTargetBone(uintptr_t enemy) {
     if (pPlayer.silentAimHead) {
         return GetPlayerHeadTF(enemy); // Head
     } else {
@@ -439,7 +657,7 @@ uintptr_t GetTargetBone(uintptr_t enemy) {
     }
 }
 
-int GetWeaponId(uintptr_t player) {
+inline int GetWeaponId(uintptr_t player) {
     // InventoryManager
     uintptr_t inventoryManager = Read<uintptr_t>(player + Offsets::InventoryManager);
     if (!inventoryManager) inventoryManager = Read<uintptr_t>(player + Offsets::InventoryManagerOld);
@@ -457,7 +675,7 @@ int GetWeaponId(uintptr_t player) {
     return Read<int>(itemData + Offsets::WeaponId);
 }
 
-void UpdateAimMagnetFast() {
+inline void UpdateAimMagnetFast() {
     while (true) {
         if (!pPlayer.aimMagnet) {
             usleep(100000);  // 100ms idle sleep to save CPU and memory bandwidth
@@ -527,7 +745,7 @@ void UpdateAimMagnetFast() {
 
 
 
-void CreateDataList(Response& SendResponse) {
+inline void CreateDataList(Response& SendResponse) {
     SendResponse.Success = true;
     SendResponse.PlayerCount = 0;
     SendResponse.VisibleEnemyCount = 0;
@@ -1044,124 +1262,17 @@ void CreateDataList(Response& SendResponse) {
     }
 }
 
+inline std::mutex g_engineTransactionMutex;
+inline Response s_cachedResponse{};
 
+inline Response getData(int screenWidth, int screenHeight) {
+    std::lock_guard<std::mutex> lock(g_engineTransactionMutex);
+    g_screenWidth = screenWidth;
+    g_screenHeight = screenHeight;
+    CreateDataList(s_cachedResponse);
+    return s_cachedResponse;
+}
 
-__attribute__ ((visibility ("hidden")))
-int main(int argc, char*argv[]){
-    signal(SIGPIPE, SIG_IGN);
-    InitLogs();
-    NIN_LOGI("DAEMON", "=== NINMODS Daemon Starting (PID: %d, UID: %d, GID: %d) ===", getpid(), getuid(), getgid());
-    
-    // Launch Aim Magnet Thread
-    std::thread(UpdateAimMagnetFast).detach();
-
-    if (InitServer() != 0) {
-        NIN_LOGE("DAEMON", "InitServer() failed to bind/listen on dual channels!");
-        return 1;
-    }
-    NIN_LOGI("DAEMON", "InitServer() listening on dual channels (UNIX: \\0%s, TCP: %s:%d)", SOCKET_NAME, TCP_HOST, TCP_PORT);
-
-    while (true) {
-        NIN_LOGI("DAEMON", "Waiting for client connection...");
-        if (server.Accept()) {
-            NIN_LOGI("DAEMON", "Client accepted! Session established.");
-
-            Request request{};
-            while (server.receive((void*)&request) > 0) {
-                Response SendResponse{};
-
-                // Attach / scan target game dynamically if needed (throttled to 1s to prevent kernel mmap_lock starvation)
-                if (request.Mode != Mode::InitMode && request.Mode != Mode::HackMode) {
-                    if (target_pid <= 0 || !IsDriverConnected() || libAddress == 0) {
-                        static time_t lastAttachAttempt = 0;
-                        time_t nowScan = time(nullptr);
-                        if (nowScan - lastAttachAttempt >= 1) {
-                            lastAttachAttempt = nowScan;
-                            if (target_pid <= 0) target_pid = FindGamePid();
-                            if (target_pid > 0) {
-                                if (IsDriverConnected()) {
-                                    if (libAddress == 0) libAddress = GetModuleBase(target_pid, "libil2cpp.so");
-                                    if (libAddress > 0) {
-                                        NIN_LOGI("DAEMON", "Game attached via c_driver: PID=%d, DriverFD=%d (%s), libil2cpp=0x%lx",
-                                                 target_pid, driver_fd, active_driver_node, (unsigned long)libAddress);
-                                    }
-                                } else {
-                                    NIN_LOGE("DAEMON", "Target PID %d found, but c_driver not ready yet", target_pid);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (request.Mode == Mode::InitMode) {
-                    SendResponse.Success = true;
-                    NIN_LOGI("DAEMON", "InitMode handshake received from client, replied Success=true");
-                } else if (request.Mode == Mode::HackMode) {
-                    SendResponse.Success = true;
-                } else if (request.Mode == Mode::EspMode) {
-                    g_screenWidth = request.ScreenWidth;
-                    g_screenHeight = request.ScreenHeight;
-                    CreateDataList(SendResponse);
-                    SendResponse.Success = true;
-                } else if (request.Mode == 3) {
-                    Actived.activar = request.m_IsOn;
-                    SendResponse.Success = true;
-                    NIN_LOGI("DAEMON", "Feature: ESP Toggle = %s", Actived.activar ? "ON" : "OFF");
-                } else if (request.Mode == 5) {
-                    pPlayer.aimbot = request.m_IsOn;
-                    SendResponse.Success = true;
-                    NIN_LOGI("DAEMON", "Feature: Aimbot = %s", pPlayer.aimbot ? "ON" : "OFF");
-                } else if (request.Mode == 22) {
-                    pPlayer.fovawm = request.m_IsOn;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 54) {
-                    pPlayer.aimbotlock = request.m_IsOn;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 57) {
-                    pPlayer.silen4a = request.m_IsOn;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 58) {
-                    pPlayer.AimFov = FloatFromBits(static_cast<uint32_t>(request.value));
-                    SendResponse.Success = true;
-                } else if (request.Mode == 59) {
-                    pPlayer.AimDistance = FloatFromBits(static_cast<uint32_t>(request.value));
-                    SendResponse.Success = true;
-                } else if (request.Mode == 60) {
-                    speedHackEnabled = request.m_IsOn;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 25) {
-                    pPlayer.gameSpeed = (float)request.value / 10.0f; // Input 10-50 -> 1.0x-5.0x
-                    SendResponse.Success = true;
-                } else if (request.Mode == 61) {
-                    pPlayer.silentAimHead = request.m_IsOn;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 62) {
-                    pPlayer.targetByDistance = request.m_IsOn;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 63) {
-                    pPlayer.aimMagnet = request.m_IsOn;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 70) {
-                    pPlayer.headshotRate = request.value;
-                    if (pPlayer.headshotRate > 100) pPlayer.headshotRate = 100;
-                    if (pPlayer.headshotRate < 0) pPlayer.headshotRate = 0;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 71) {
-                    pPlayer.ignoreBots = request.m_IsOn;
-                    SendResponse.Success = true;
-                } else if (request.Mode == 72) {
-                    pPlayer.ignoreKnocked = request.m_IsOn;
-                    SendResponse.Success = true;
-                }
-
-                server.send((void*)& SendResponse, sizeof(SendResponse));
-            }
-            NIN_LOGI("DAEMON", "Client disconnected from session. Resetting session...");
-            server.CloseAccept();
-        } else {
-            usleep(200000); // 200ms
-        }
-    }
-    CloseLogs();
-    return 0;
+inline bool isConnected() {
+    return (driver && (driver->isConnected() || driver->initDriver()));
 }
