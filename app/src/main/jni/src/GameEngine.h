@@ -51,6 +51,16 @@ inline int g_screenWidth = 0;
 inline int g_screenHeight = 0;
 inline std::map<uintptr_t, Vector3> BasePosMap;
 
+// ========== Pointer Validation (Strict ARM64 64-bit User Space Pointer) ==========
+inline bool IsValidUserPointer64(uintptr_t ptr) {
+    // 1. High 16 bits must be strictly 0x0000 (rejects instructions like 0xa902... or packed opcodes)
+    if ((ptr >> 48) != 0) return false;
+    // 2. Must be in ARM64 Linux user-space memory range (from 256MB to 128TB)
+    if (ptr < 0x10000000ULL || ptr > 0x00007FFFFFFFFFFFULL) return false;
+    // 3. Must be aligned to at least 4 bytes (ARM64 heap objects and pointers are aligned)
+    if ((ptr & 0x3) != 0) return false;
+    return true;
+}
 
 // ==================== ENGINE CORE (TRANSFORMS & MATH) ====================
 inline uintptr_t GetPlayerSpineTF(uintptr_t player) {
@@ -268,17 +278,6 @@ static auto WorldToScreenPoint(D3DMatrix viewMatrix, Vector3 ScreenPos) {
 }
 
 // ==================== ENGINE SCANNER & ENTITIES ====================
-// ========== Pointer Validation (Strict ARM64 64-bit User Space Pointer) ==========
-inline bool IsValidUserPointer64(uintptr_t ptr) {
-    // 1. High 16 bits must be strictly 0x0000 (rejects instructions like 0xa902... or packed opcodes)
-    if ((ptr >> 48) != 0) return false;
-    // 2. Must be in ARM64 Linux user-space memory range (from 256MB to 128TB)
-    if (ptr < 0x10000000ULL || ptr > 0x00007FFFFFFFFFFFULL) return false;
-    // 3. Must be aligned to at least 4 bytes (ARM64 heap objects and pointers are aligned)
-    if ((ptr & 0x3) != 0) return false;
-    return true;
-}
-
 // ========== Genuine Player Object Validator ==========
 inline bool IsValidPlayerObject(uintptr_t player) {
     if (!IsValidUserPointer64(player)) return false;
