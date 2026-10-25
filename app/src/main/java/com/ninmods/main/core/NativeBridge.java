@@ -82,6 +82,7 @@ public final class NativeBridge {
     public static native void setFeatureFloat(int featId, float value);
     public static native boolean getFeatureState(int featId);
     public static native boolean isKernelDriverConnected();
+    public static native String getEngineLiveStatus();
 
     /**
      * Invoked directly from C++ LicensePopup modal when user clicks "VERIFY LICENSE".

@@ -1426,6 +1426,43 @@ Java_com_ninmods_main_core_NativeBridge_isKernelDriverConnected(JNIEnv *env, jcl
     return JNI_FALSE;
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env, jclass clazz) {
+    char buf[512];
+    bool connected = (driver && driver->isConnected());
+    const char* node = connected ? driver->getNodeName() : "/dev/BYNb";
+    const char* mode = connected ? driver->getDriverModeName() : "STANDBY";
+    int fd = connected ? driver->getFd() : -1;
+    pid_t targetPid = driver ? driver->pid : 0;
+
+    int entities = s_cachedResponse.PlayerCount;
+    int visible = s_cachedResponse.VisibleEnemyCount;
+    bool espActive = Actived.activar;
+    bool aimActive = pPlayer.aimbot;
+
+    snprintf(buf, sizeof(buf),
+        "KERNEL DRIVER : %s\n"
+        "DEVICE NODE   : %s (fd: %d)\n"
+        "CHANNEL MODE  : %s\n"
+        "TARGET PID    : %d\n"
+        "MEMORY IOCTL  : %s\n"
+        "ENTITIES READ : %d TARGETS\n"
+        "ENEMIES VIS   : %d VISIBLE\n"
+        "HARDWARE ESP  : %s (GLES3)\n"
+        "AIM ENGINE    : %s",
+        connected ? "ONLINE" : "STANDBY",
+        node, fd,
+        mode,
+        (int)targetPid,
+        connected ? "ACTIVE (32-BYTE RING 0)" : "WAITING FOR TARGET",
+        entities,
+        visible,
+        espActive ? "ACTIVE" : "STANDBY",
+        aimActive ? "ENABLED" : "OFF"
+    );
+    return env->NewStringUTF(buf);
+}
+
 
 
 extern "C" JNIEXPORT jstring JNICALL
