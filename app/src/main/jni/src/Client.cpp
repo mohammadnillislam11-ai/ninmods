@@ -1433,7 +1433,7 @@ Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env, jclass 
     const char* node = connected ? driver->getNodeName() : "/dev/BYNb";
     const char* mode = connected ? driver->getDriverModeName() : "STANDBY";
     int fd = connected ? driver->getFd() : -1;
-    pid_t targetPid = driver ? driver->pid : 0;
+    pid_t targetPid = driver ? driver->getPid() : 0;
 
     int entities = s_cachedResponse.PlayerCount;
     int visible = s_cachedResponse.VisibleEnemyCount;

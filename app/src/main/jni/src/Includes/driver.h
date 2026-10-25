@@ -380,6 +380,7 @@ public:
     }
 
     int getFd() const { return fd; }
+    pid_t getPid() const { return pid; }
     const char* getNodeName() const { return active_node_name; }
     DriverMode getDriverMode() const { return active_mode; }
 
