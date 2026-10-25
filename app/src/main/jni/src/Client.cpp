@@ -894,74 +894,7 @@ void DrawESP(ESP esp) {
   }
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_overlay_Floater_Functions(JNIEnv *env, jclass clazz) {
-  if (!SecurityVault_IsSessionValid()) {
-    NIN_LOGE("SECURITY",
-             ">>> [ACCESS_DENIED] Floater Functions blocked: Unauthorized "
-             "execution without verified server session! <<<");
-    return;
-  }
-  Widget widget = Widget(env);
 
-  widget.Category(OBFUSCATE("Aim"));
-  widget.Switch(OBFUSCATE("Enable Functions"), 1);
-  widget.Switch(OBFUSCATE("Aim External"), 6);
-  // Version-agnostic features
-  widget.Switch(OBFUSCATE("Aimbot"), 2);
-
-  if (isButrulVersion()) {
-    widget.Switch(OBFUSCATE("Aim Silent"), 8);
-    widget.Switch(OBFUSCATE("Aim Magnet"), 63);
-  }
-
-  if (isButrulVersion()) {
-    widget.Switch(OBFUSCATE("Speed Hack Enable"), 60);
-    widget.SeekBar(OBFUSCATE("Game Speed"), 10, 50, OBFUSCATE("SpeedValue"),
-                   25);
-  }
-
-  // Tab Order: Brutal -> Aim Setting is Second
-  if (isButrulVersion()) {
-    widget.Category(OBFUSCATE("Aim Setting"));
-    widget.SeekBar(OBFUSCATE("Silent Aim Target"), 0, 1,
-                   OBFUSCATE("SilentAimTarget"), 61);
-    widget.SeekBar(OBFUSCATE("Target Priority"), 0, 1,
-                   OBFUSCATE("TargetPriority"), 62);
-    widget.SeekBar(OBFUSCATE("Aim FOV Radius"), 10, 180, OBFUSCATE(""), 9);
-    widget.SeekBar(OBFUSCATE("Aim Distance"), 10, 200, OBFUSCATE(""), 10);
-    widget.SeekBar(OBFUSCATE("Headshot %"), 0, 100, OBFUSCATE(""), 70);
-  }
-
-  widget.Category(OBFUSCATE("Esp"));
-  widget.Switch(OBFUSCATE("Draw Line"), 11);
-  widget.Switch(OBFUSCATE("Draw Distance"), 13);
-  widget.Switch(OBFUSCATE("Draw Aim FOV"), 27);
-  widget.Switch(OBFUSCATE("Draw Box"), 12);
-  widget.Switch(OBFUSCATE("Draw Name"), 21);
-  widget.Switch(OBFUSCATE("Draw Health"), 19);
-  widget.Switch(OBFUSCATE("Draw Count"), 23);
-
-  widget.Category(OBFUSCATE("Esp Setting"));
-  widget.SeekBar(OBFUSCATE("ESP Color"), 0, 9, OBFUSCATE("Color"), 16);
-  widget.SeekBar(OBFUSCATE("Box Type"), 0, 2, OBFUSCATE("BoxType"), 17);
-  widget.SeekBar(OBFUSCATE("Line Type"), 0, 2, OBFUSCATE("LineType"), 18);
-  widget.SeekBar(OBFUSCATE("Text Size"), 10, 15, OBFUSCATE(""), 20);
-  widget.SeekBar(OBFUSCATE("Thickness"), 1, 10, OBFUSCATE(""), 22);
-
-  widget.Category(OBFUSCATE("Position Fix"));
-  widget.SeekBar(OBFUSCATE("ESP Left Adjust"), 0, 100, OBFUSCATE(""), 30);
-  widget.SeekBar(OBFUSCATE("ESP Right Adjust"), 0, 100, OBFUSCATE(""), 31);
-  widget.Switch(OBFUSCATE("Reset Adjust"), 32);
-
-  // Tab Order: Safe -> Aim Setting is Last
-  if (!isButrulVersion()) {
-    widget.Category(OBFUSCATE("Aim Setting"));
-    widget.SeekBar(OBFUSCATE("Aim FOV Radius"), 10, 180, OBFUSCATE(""), 9);
-    widget.SeekBar(OBFUSCATE("Aim Distance"), 10, 200, OBFUSCATE(""), 10);
-    widget.SeekBar(OBFUSCATE("Headshot %"), 0, 100, OBFUSCATE(""), 70);
-  }
-}
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_overlay_Floater_ChangesID(JNIEnv *env, jclass clazz,
