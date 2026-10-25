@@ -1230,7 +1230,6 @@ Java_com_ninmods_main_core_NativeBridge_launchBrandOverlay(JNIEnv *env, jclass c
 
     // Register verify handler to call Java AuthApiController
     LicensePopup::SetVerifyHandler([](const std::string& key, const std::string& brand) {
-        extern JavaVM* g_JavaVM;
         if (!g_JavaVM) return;
         JNIEnv* jEnv = nullptr;
         bool attached = false;
@@ -1587,7 +1586,7 @@ Java_com_ninmods_main_auth_SecurityVault_nativeIsSessionValid(JNIEnv *env, jclas
     return g_session_verified ? JNI_TRUE : JNI_FALSE;
 }
 
-JavaVM* g_JavaVM = nullptr;
+extern "C" JavaVM* g_JavaVM = nullptr;
 
 extern "C" JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM* vm, void* reserved) {

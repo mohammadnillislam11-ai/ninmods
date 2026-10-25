@@ -9,9 +9,10 @@
 #include "../../Icon/TextureLoader.h"
 #include "../../Includes/Logger.h"
 
+extern "C" JavaVM* g_JavaVM;
+
 // JNI Helpers to interface with Android NativeBridge
 inline std::string GetClipboardTextNative() {
-    extern JavaVM* g_JavaVM;
     if (!g_JavaVM) return "";
     JNIEnv* jEnv = nullptr;
     bool attached = false;
@@ -42,7 +43,6 @@ inline std::string GetClipboardTextNative() {
 }
 
 inline void ShowKeyInputDialogNative(const std::string& currentKey) {
-    extern JavaVM* g_JavaVM;
     if (!g_JavaVM) return;
     JNIEnv* jEnv = nullptr;
     bool attached = false;
