@@ -366,24 +366,17 @@ public class MainActivity extends BaseActivity {
             java.io.DataOutputStream os = new java.io.DataOutputStream(process.getOutputStream());
             os.writeBytes("id\n");
             os.writeBytes("setenforce 0 2>/dev/null\n");
-            
-            // Universal Character Device Auto-Node Discovery & Symlink to /dev/BYNb
-            os.writeBytes("for s in /sys/dev/char/*/uevent; do if [ -e \"$s\" ]; then " +
-                    "maj=$(grep MAJOR= \"$s\" 2>/dev/null | cut -d= -f2); " +
-                    "min=$(grep MINOR= \"$s\" 2>/dev/null | cut -d= -f2); " +
-                    "dev=$(grep DEVNAME= \"$s\" 2>/dev/null | cut -d= -f2); " +
-                    "if [ -n \"$maj\" ] && [ \"$maj\" -ge 200 ] 2>/dev/null; then " +
-                    "if [ -n \"$dev\" ]; then " +
-                    "[ ! -e \"/dev/$dev\" ] && mknod \"/dev/$dev\" c \"$maj\" \"$min\" 2>/dev/null; " +
-                    "chmod 666 \"/dev/$dev\" 2>/dev/null; " +
-                    "ln -sf \"/dev/$dev\" /dev/BYNb 2>/dev/null; chmod 666 /dev/BYNb 2>/dev/null; " +
-                    "fi; fi; fi; done\n");
-
-            os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /proc/uevents_records 2>/dev/null\n");
+            os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /dev/nh* /dev/wanbai* /proc/uevents_records 2>/dev/null\n");
             os.writeBytes("exit\n");
             os.flush();
-            int exitCode = process.waitFor();
-            return exitCode == 0;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                boolean finished = process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS);
+                return finished && process.exitValue() == 0;
+            } else {
+                int exitCode = process.waitFor();
+                return exitCode == 0;
+            }
         } catch (Throwable t) {
             return false;
         } finally {

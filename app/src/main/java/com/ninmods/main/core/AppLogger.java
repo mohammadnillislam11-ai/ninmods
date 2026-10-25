@@ -107,34 +107,40 @@ public final class AppLogger {
         log("SYSTEM", "==================================================");
     }
 
+    private static final java.util.concurrent.ExecutorService sFileExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+
     private static String getSelinuxStatus() {
         try {
-            java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(Runtime.getRuntime().exec("getenforce").getInputStream()));
-            String line = br.readLine();
-            br.close();
-            if (line != null && !line.trim().isEmpty()) {
-                return line.trim();
+            File enforceFile = new File("/sys/fs/selinux/enforce");
+            if (enforceFile.exists() && enforceFile.canRead()) {
+                java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(enforceFile));
+                String line = br.readLine();
+                br.close();
+                if ("0".equals(line != null ? line.trim() : "")) return "Permissive";
+                if ("1".equals(line != null ? line.trim() : "")) return "Enforcing";
             }
         } catch (Throwable ignored) {}
-        return "Unknown";
+        return "Standard";
     }
 
     private static void writeToDownloadFile(String formattedLine) {
-        synchronized (LOCK) {
-            try {
-                File logFile = getDedicatedLogFile();
-                File parentDir = logFile.getParentFile();
-                if (parentDir != null && !parentDir.exists()) {
-                    parentDir.mkdirs();
-                }
-                FileWriter fw = new FileWriter(logFile, true);
-                fw.write(formattedLine + "\n");
-                fw.flush();
-                fw.close();
-                logFile.setReadable(true, false);
-                logFile.setWritable(true, false);
-            } catch (Throwable ignored) {}
-        }
+        sFileExecutor.execute(() -> {
+            synchronized (LOCK) {
+                try {
+                    File logFile = getDedicatedLogFile();
+                    File parentDir = logFile.getParentFile();
+                    if (parentDir != null && !parentDir.exists()) {
+                        parentDir.mkdirs();
+                    }
+                    FileWriter fw = new FileWriter(logFile, true);
+                    fw.write(formattedLine + "\n");
+                    fw.flush();
+                    fw.close();
+                    logFile.setReadable(true, false);
+                    logFile.setWritable(true, false);
+                } catch (Throwable ignored) {}
+            }
+        });
     }
 
     public static void log(String subTag, String message) {
