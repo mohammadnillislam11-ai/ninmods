@@ -6,6 +6,13 @@
 *.aab
 scratch/
 
+# IDE / Clang tooling
+compile_commands.json
+compile_flags.txt
+app/src/main/jni/src/Includes/android_ide_stubs/
+app/src/main/jni/compile_commands.json
+app/src/main/jni/compile_flags.txt
+
 # Files for the ART/Dalvik VM
 *.dex
 

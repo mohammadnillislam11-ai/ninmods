@@ -1,7 +1,11 @@
 #include "BullMenu.h"
 #include "../NativeOverlayController.h"
 #include "../../BooleanClient.h"
+#if __has_include(<imgui.h>)
 #include <imgui.h>
+#else
+#include "../../imgui/imgui.h"
+#endif
 
 void BullMenu::ApplyTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -91,6 +95,7 @@ void BullMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Checkbox("Silent Aim 360", &pPlayer.silen4a);
                     ImGui::Checkbox("Aimbot Direct Track", &pPlayer.aimbot);
                     ImGui::Checkbox("Auto Aim Lock", &pPlayer.aimbotlock);
+                    ImGui::Checkbox("Draw FOV Circle", &showFOVCircle);
                     ImGui::Checkbox("Aim Magnet V2", &pPlayer.aimMagnet);
                     ImGui::Checkbox("Ignore Knocked", &pPlayer.ignoreKnocked);
                     ImGui::Checkbox("Ignore Bots", &pPlayer.ignoreBots);

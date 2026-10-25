@@ -1,7 +1,6 @@
 #include "TextureLoader.h"
 #include <stdint.h>
 #include <stdlib.h>
-#include <GLES2/gl2.h>
 
 #ifndef STB_IMAGE_STATIC
 #define STB_IMAGE_STATIC

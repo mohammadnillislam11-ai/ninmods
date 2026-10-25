@@ -15,6 +15,11 @@ enum LineType {
     LINE_BOTTOM = 2
 };
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++17-extensions"
+#endif
+
 inline struct PlayerState {
     bool aimbot = false;
     bool fovawm = false;
@@ -60,3 +65,9 @@ inline struct EspPlayerState {
     BoxType boxType = BOX_STROKE;
     LineType lineType = LINE_TOP;
 } pEspPlayer;
+
+inline bool showFOVCircle = true;
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif

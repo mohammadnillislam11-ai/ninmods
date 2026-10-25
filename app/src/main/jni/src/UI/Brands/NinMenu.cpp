@@ -3,7 +3,11 @@
 #include "../Toggle.h"
 #include "../../Icon/TextureLoader.h"
 #include "../../BooleanClient.h"
+#if __has_include(<imgui.h>)
 #include <imgui.h>
+#else
+#include "../../imgui/imgui.h"
+#endif
 
 void NinMenu::ApplyTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -109,7 +113,8 @@ void NinMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                 if (ImGui::BeginChild("VisChild", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
                     ImGui::Spacing();
                     Toggle("ESP MASTER SWITCH", &Actived.activar);
-                    Toggle("ESP BOX & LINE", &pEspPlayer.espCaixa);
+                    Toggle("ESP BOX", &pEspPlayer.espCaixa);
+                    Toggle("ESP LINE", &pEspPlayer.espLinha);
                     Toggle("ESP SKELETON (BONES)", &pEspPlayer.espSkeleton);
                     Toggle("ESP DISTANCE IN METERS", &pEspPlayer.espDistance);
                     Toggle("ESP HEALTH BAR", &pEspPlayer.espHealth);
@@ -129,6 +134,7 @@ void NinMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     Toggle("AIMBOT AUTO LOCK", &pPlayer.aimbot);
                     Toggle("AIMBOT STICKY TARGET", &pPlayer.aimbotlock);
                     Toggle("SILENT AIM (MAGIC BULLET)", &pPlayer.silen4a);
+                    Toggle("DRAW FOV CIRCLE", &showFOVCircle);
                     Toggle("AIM MAGNET V2", &pPlayer.aimMagnet);
                     Toggle("IGNORE KNOCKED PLAYERS", &pPlayer.ignoreKnocked);
                     Toggle("IGNORE BOTS / AI", &pPlayer.ignoreBots);

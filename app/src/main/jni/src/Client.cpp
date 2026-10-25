@@ -1,5 +1,12 @@
+#if __has_include(<EGL/egl.h>)
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#else
+#include "Includes/android_ide_stubs/EGL/egl.h"
+#include "Includes/android_ide_stubs/GLES3/gl3.h"
+#endif
+#include <cstdio>
+#include <cmath>
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -7,7 +14,11 @@
 #include <dlfcn.h>
 #include <fstream>
 #include <iomanip>
+#if __has_include(<jni.h>)
 #include <jni.h>
+#else
+#include "Includes/android_ide_stubs/jni.h"
+#endif
 #include <pthread.h>
 #include <random>
 #include <signal.h>
@@ -37,9 +48,15 @@
 #include "UI/MenuRouter.h"
 #include "UI/NativeOverlayController.h"
 #include "UI/Popups/LicensePopup.h"
-#include "imgui.h"
-#include "imgui_impl_opengl3.h"
-#include "imgui_internal.h"
+#if __has_include(<imgui.h>)
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_internal.h>
+#else
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_opengl3.h"
+#include "imgui/imgui_internal.h"
+#endif
 
 // ============================================
 // GLOBAL SYSTEM STATE & PROFILE SETTINGS
@@ -58,8 +75,6 @@ inline bool NativeIsLoggedIn() { return true; }
 
 float g_espLeftAdjust = 0.0f;
 float g_espRightAdjust = 0.0f;
-
-static bool showFOVCircle = false;
 
 static bool g_ImGuiInitialized = false;
 static int g_ScreenWidth = 0;
@@ -97,7 +112,8 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
   ImDrawList *draw = ImGui::GetBackgroundDrawList();
 
   // 1. Draw FOV Circle
-  if (Actived.activar && pPlayer.silen4a && showFOVCircle &&
+  bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock || pPlayer.aimMagnet;
+  if (Actived.activar && anyAimActive && showFOVCircle &&
       pPlayer.AimFov > 0) {
     float centerX = screenWidth * 0.5f;
     float centerY = screenHeight * 0.5f;
@@ -444,7 +460,8 @@ void DrawESP(ESP esp) {
   if (!isConnected())
     return;
 
-  if (Actived.activar && pPlayer.silen4a && showFOVCircle &&
+  bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock || pPlayer.aimMagnet;
+  if (Actived.activar && anyAimActive && showFOVCircle &&
       pPlayer.AimFov > 0) {
     DrawFOVCircle(esp, pPlayer.AimFov, pEspPlayer.espColor);
   }
@@ -461,6 +478,125 @@ void DrawESP(ESP esp) {
   if (response.PlayerCount <= 0)
     return;
 
+  // Draw Live Threat Counter HUD once per frame if enabled
+  if (Actived.activar && pEspPlayer.espDrawCount) {
+    const bool showOnScreen = response.VisibleEnemyCount > 0;
+    const bool showNearScreen = response.VisibleNearOffScreenEnemyCount > 0;
+    const bool showProximity = response.ProximityEnemyCount > 0;
+    const bool noThreatVisible =
+        !showOnScreen && !showNearScreen && !showProximity;
+
+    std::string onScreenLabel = std::to_string(response.VisibleEnemyCount);
+    std::string nearScreenLabel =
+        std::to_string(response.VisibleNearOffScreenEnemyCount);
+    std::string proximityLabel = std::to_string(response.ProximityEnemyCount);
+
+    float countSize = pEspPlayer.textSize + 10.0f;
+    if (countSize < 24.0f)
+      countSize = 24.0f;
+
+    float topMargin = 80.0f;
+    float sectionWidth = 120.0f;
+    float sectionHeight = countSize + 22.0f;
+    float sectionGap = 14.0f;
+
+    int activeSections = (showOnScreen ? 1 : 0) + (showNearScreen ? 1 : 0) +
+                         (showProximity ? 1 : 0);
+    float totalWidth =
+        sectionWidth * activeSections + sectionGap * (activeSections - 1);
+    float startX = (screenWidth - totalWidth) / 2.0f;
+
+    float backgroundY = topMargin;
+    float countY = backgroundY + sectionHeight / 2.0f;
+    float cornerRadius = sectionHeight * 0.30f;
+    Color outlineColor = Color(0, 0, 0, 220);
+    Color textColor = Color::White();
+
+    auto DrawRoundedPanel = [&](float x, float y, float width, float height,
+                                float radius, Color color) {
+      float clampedRadius =
+          std::max(1.0f, std::min(radius, std::min(width, height) * 0.5f));
+      esp.DrawFilledRect(color, Vector3(x + clampedRadius, y, 0),
+                         width - (clampedRadius * 2.0f), height);
+      esp.DrawFilledRect(color, Vector3(x, y + clampedRadius, 0),
+                         clampedRadius, height - (clampedRadius * 2.0f));
+      esp.DrawFilledRect(
+          color, Vector3(x + width - clampedRadius, y + clampedRadius, 0),
+          clampedRadius, height - (clampedRadius * 2.0f));
+      esp.DrawFilledCircle(color,
+                           Vector2(x + clampedRadius, y + clampedRadius),
+                           clampedRadius);
+      esp.DrawFilledCircle(
+          color, Vector2(x + width - clampedRadius, y + clampedRadius),
+          clampedRadius);
+      esp.DrawFilledCircle(
+          color, Vector2(x + clampedRadius, y + height - clampedRadius),
+          clampedRadius);
+      esp.DrawFilledCircle(
+          color,
+          Vector2(x + width - clampedRadius, y + height - clampedRadius),
+          clampedRadius);
+    };
+
+    if (noThreatVisible) {
+      float safeWidth = 200.0f;
+      float safeX = (screenWidth - safeWidth) / 2.0f;
+      DrawRoundedPanel(safeX, backgroundY, safeWidth, sectionHeight,
+                       cornerRadius, Color(22, 165, 70, 235));
+      const char *safeLabel = "SAFE";
+      float safeTextX = safeX + (safeWidth * 0.5f);
+      esp.DrawText(outlineColor, safeLabel,
+                   Vector2(safeTextX - 1, countY - 1), countSize - 2.0f);
+      esp.DrawText(outlineColor, safeLabel,
+                   Vector2(safeTextX + 1, countY + 1), countSize - 2.0f);
+      esp.DrawText(textColor, safeLabel, Vector2(safeTextX, countY),
+                   countSize - 2.0f);
+    } else {
+      Color onScreenBg = Color(255, 215, 0, 230);   // Yellow
+      Color nearScreenBg = Color(235, 30, 30, 230); // Red
+      Color proximityBg = Color(255, 140, 0, 230);  // Orange
+      float nextSectionX = startX;
+
+      if (showOnScreen) {
+        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
+                         sectionHeight, cornerRadius, onScreenBg);
+        float centerX = nextSectionX + (sectionWidth * 0.5f);
+        esp.DrawText(outlineColor, onScreenLabel.c_str(),
+                     Vector2(centerX - 1, countY - 1), countSize);
+        esp.DrawText(outlineColor, onScreenLabel.c_str(),
+                     Vector2(centerX + 1, countY + 1), countSize);
+        esp.DrawText(textColor, onScreenLabel.c_str(),
+                     Vector2(centerX, countY), countSize);
+        nextSectionX += sectionWidth + sectionGap;
+      }
+
+      if (showNearScreen) {
+        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
+                         sectionHeight, cornerRadius, nearScreenBg);
+        float centerX = nextSectionX + (sectionWidth * 0.5f);
+        esp.DrawText(outlineColor, nearScreenLabel.c_str(),
+                     Vector2(centerX - 1, countY - 1), countSize);
+        esp.DrawText(outlineColor, nearScreenLabel.c_str(),
+                     Vector2(centerX + 1, countY + 1), countSize);
+        esp.DrawText(textColor, nearScreenLabel.c_str(),
+                     Vector2(centerX, countY), countSize);
+        nextSectionX += sectionWidth + sectionGap;
+      }
+
+      if (showProximity) {
+        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
+                         sectionHeight, cornerRadius, proximityBg);
+        float centerX = nextSectionX + (sectionWidth * 0.5f);
+        esp.DrawText(outlineColor, proximityLabel.c_str(),
+                     Vector2(centerX - 1, countY - 1), countSize);
+        esp.DrawText(outlineColor, proximityLabel.c_str(),
+                     Vector2(centerX + 1, countY + 1), countSize);
+        esp.DrawText(textColor, proximityLabel.c_str(),
+                     Vector2(centerX, countY), countSize);
+      }
+    }
+  }
+
   float globalThickness = pEspPlayer.thickness;
 
   for (int i = 0; i < response.PlayerCount; i++) {
@@ -473,6 +609,10 @@ void DrawESP(ESP esp) {
     float distance = player.Distancia;
     if (distance < 0.1f || distance > 150.0f)
       continue;
+
+    // Dynamic distance scaling for clean visuals
+    float thickness = (distance > 70.0f) ? 1.0f : globalThickness;
+    float fSize = (distance > 70.0f) ? 10.0f : pEspPlayer.textSize;
 
     float headToFeetHeight = std::abs(player.Toe.Y - player.Head.Y);
     float boxHeight = headToFeetHeight * 1.15f;
@@ -489,7 +629,6 @@ void DrawESP(ESP esp) {
     if (player.IsCaido)
       currentBoxColor = Color::Red(); // knocked (changed from Yellow to Red)
     Color strokeColor = Color(0, 0, 0, 255);
-    float fSize = pEspPlayer.textSize;
 
     float adjustedHeadX = player.Head.X + totalXAdjust;
 
@@ -505,7 +644,7 @@ void DrawESP(ESP esp) {
       lineEnd = (pEspPlayer.lineType == LINE_BOTTOM)
                     ? Vector3(adjustedHeadX, boxY + boxHeight, 0)
                     : Vector3(adjustedHeadX, boxY, 0);
-      esp.DrawLine(currentBoxColor, globalThickness, lineStart, lineEnd);
+      esp.DrawLine(currentBoxColor, thickness, lineStart, lineEnd);
     }
 
     if (pEspPlayer.espCaixa) {
@@ -518,135 +657,9 @@ void DrawESP(ESP esp) {
       }
       if (pEspPlayer.boxType == BOX_CORNER)
         esp.DrawBox4Line(boxX, boxY, width, boxHeight, currentBoxColor,
-                         globalThickness);
+                         thickness);
       else
-        esp.DrawBox(currentBoxColor, globalThickness, playerRect);
-    }
-
-    // Client.cpp – inside DrawESP(), after getting response
-    if (Actived.activar && pEspPlayer.espDrawCount) {
-      const bool showOnScreen = response.VisibleEnemyCount > 0;
-      const bool showNearScreen = response.VisibleNearOffScreenEnemyCount > 0;
-      const bool showProximity = response.ProximityEnemyCount > 0;
-      const bool noThreatVisible =
-          !showOnScreen && !showNearScreen && !showProximity;
-
-      std::string onScreenLabel = std::to_string(response.VisibleEnemyCount);
-      std::string nearScreenLabel =
-          std::to_string(response.VisibleNearOffScreenEnemyCount);
-      std::string proximityLabel = std::to_string(response.ProximityEnemyCount);
-
-      float countSize = pEspPlayer.textSize + 10.0f;
-      if (countSize < 24.0f)
-        countSize = 24.0f;
-
-      float topMargin = 80.0f;
-      float sectionWidth = 120.0f;
-      float sectionHeight = countSize + 22.0f;
-      float sectionGap = 14.0f;
-
-      int activeSections = (showOnScreen ? 1 : 0) + (showNearScreen ? 1 : 0) +
-                           (showProximity ? 1 : 0);
-      float totalWidth =
-          sectionWidth * activeSections + sectionGap * (activeSections - 1);
-      float startX = (screenWidth - totalWidth) / 2.0f;
-
-      float backgroundY = topMargin;
-      float countY = backgroundY + sectionHeight / 2.0f;
-      float cornerRadius = sectionHeight * 0.30f;
-      Color outlineColor = Color(0, 0, 0, 220);
-      Color textColor = Color::White();
-
-      auto DrawRoundedPanel = [&](float x, float y, float width, float height,
-                                  float radius, Color color) {
-        float clampedRadius =
-            std::max(1.0f, std::min(radius, std::min(width, height) * 0.5f));
-        esp.DrawFilledRect(color, Vector3(x + clampedRadius, y, 0),
-                           width - (clampedRadius * 2.0f), height);
-        esp.DrawFilledRect(color, Vector3(x, y + clampedRadius, 0),
-                           clampedRadius, height - (clampedRadius * 2.0f));
-        esp.DrawFilledRect(
-            color, Vector3(x + width - clampedRadius, y + clampedRadius, 0),
-            clampedRadius, height - (clampedRadius * 2.0f));
-        esp.DrawFilledCircle(color,
-                             Vector2(x + clampedRadius, y + clampedRadius),
-                             clampedRadius);
-        esp.DrawFilledCircle(
-            color, Vector2(x + width - clampedRadius, y + clampedRadius),
-            clampedRadius);
-        esp.DrawFilledCircle(
-            color, Vector2(x + clampedRadius, y + height - clampedRadius),
-            clampedRadius);
-        esp.DrawFilledCircle(
-            color,
-            Vector2(x + width - clampedRadius, y + height - clampedRadius),
-            clampedRadius);
-      };
-
-      if (noThreatVisible) {
-        float safeWidth = 200.0f;
-        float safeX = (screenWidth - safeWidth) / 2.0f;
-        DrawRoundedPanel(safeX, backgroundY, safeWidth, sectionHeight,
-                         cornerRadius, Color(22, 165, 70, 235));
-        const char *safeLabel = "SAFE";
-        float safeTextX = safeX + (safeWidth * 0.5f);
-        esp.DrawText(outlineColor, safeLabel,
-                     Vector2(safeTextX - 1, countY - 1), countSize - 2.0f);
-        esp.DrawText(outlineColor, safeLabel,
-                     Vector2(safeTextX + 1, countY + 1), countSize - 2.0f);
-        esp.DrawText(textColor, safeLabel, Vector2(safeTextX, countY),
-                     countSize - 2.0f);
-      } else {
-        Color onScreenBg = Color(255, 215, 0, 230);   // Yellow
-        Color nearScreenBg = Color(235, 30, 30, 230); // Red
-        Color proximityBg = Color(255, 140, 0, 230);  // Orange
-        float nextSectionX = startX;
-
-        if (showOnScreen) {
-          DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
-                           sectionHeight, cornerRadius, onScreenBg);
-          float centerX = nextSectionX + (sectionWidth * 0.5f);
-          esp.DrawText(outlineColor, onScreenLabel.c_str(),
-                       Vector2(centerX - 1, countY - 1), countSize);
-          esp.DrawText(outlineColor, onScreenLabel.c_str(),
-                       Vector2(centerX + 1, countY + 1), countSize);
-          esp.DrawText(textColor, onScreenLabel.c_str(),
-                       Vector2(centerX, countY), countSize);
-          nextSectionX += sectionWidth + sectionGap;
-        }
-
-        if (showNearScreen) {
-          DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
-                           sectionHeight, cornerRadius, nearScreenBg);
-          float centerX = nextSectionX + (sectionWidth * 0.5f);
-          esp.DrawText(outlineColor, nearScreenLabel.c_str(),
-                       Vector2(centerX - 1, countY - 1), countSize);
-          esp.DrawText(outlineColor, nearScreenLabel.c_str(),
-                       Vector2(centerX + 1, countY + 1), countSize);
-          esp.DrawText(textColor, nearScreenLabel.c_str(),
-                       Vector2(centerX, countY), countSize);
-          nextSectionX += sectionWidth + sectionGap;
-        }
-
-        if (showProximity) {
-          DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
-                           sectionHeight, cornerRadius, proximityBg);
-          float centerX = nextSectionX + (sectionWidth * 0.5f);
-          esp.DrawText(outlineColor, proximityLabel.c_str(),
-                       Vector2(centerX - 1, countY - 1), countSize);
-          esp.DrawText(outlineColor, proximityLabel.c_str(),
-                       Vector2(centerX + 1, countY + 1), countSize);
-          esp.DrawText(textColor, proximityLabel.c_str(),
-                       Vector2(centerX, countY), countSize);
-        }
-      }
-    }
-
-    // Show FOV circle if any aim feature is active
-    bool anyAimActive = pPlayer.aimbot || pPlayer.silen4a || pPlayer.aimMagnet;
-    if (Actived.activar && anyAimActive && showFOVCircle &&
-        pPlayer.AimFov > 0) {
-      DrawFOVCircle(esp, pPlayer.AimFov, pEspPlayer.espColor);
+        esp.DrawBox(currentBoxColor, thickness, playerRect);
     }
 
     if (pEspPlayer.espName || pEspPlayer.espDistance || pEspPlayer.espHealth) {

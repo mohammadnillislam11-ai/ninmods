@@ -1,7 +1,11 @@
 #include "CrossMenu.h"
 #include "../NativeOverlayController.h"
 #include "../../BooleanClient.h"
+#if __has_include(<imgui.h>)
 #include <imgui.h>
+#else
+#include "../../imgui/imgui.h"
+#endif
 
 void CrossMenu::ApplyTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -108,6 +112,7 @@ void CrossMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Checkbox("Aim Lock Target", &pPlayer.aimbotlock);
                     ImGui::Checkbox("Auto Aim Target", &pPlayer.aimbot);
                     ImGui::Checkbox("Silent Headshot", &pPlayer.silen4a);
+                    ImGui::Checkbox("Draw FOV Circle", &showFOVCircle);
                     ImGui::Checkbox("Aim Magnet", &pPlayer.aimMagnet);
                     ImGui::Spacing();
                     ImGui::SliderFloat("Target FOV", &pPlayer.AimFov, 15.0f, 180.0f, "%.0f deg");

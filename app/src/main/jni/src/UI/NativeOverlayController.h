@@ -2,7 +2,11 @@
 
 #include <string>
 #include <functional>
+#if __has_include(<GLES3/gl3.h>)
 #include <GLES3/gl3.h>
+#else
+#include "../Includes/android_ide_stubs/GLES3/gl3.h"
+#endif
 #include "IBrandMenu.h"
 
 /**

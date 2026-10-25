@@ -1,7 +1,11 @@
 #include "DeltaMenu.h"
 #include "../NativeOverlayController.h"
 #include "../../BooleanClient.h"
+#if __has_include(<imgui.h>)
 #include <imgui.h>
+#else
+#include "../../imgui/imgui.h"
+#endif
 
 void DeltaMenu::ApplyTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -89,6 +93,7 @@ void DeltaMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
 
                     ImGui::Checkbox("Fast Aim Lock", &pPlayer.aimbotlock);
                     ImGui::Checkbox("Silent Headshot", &pPlayer.silen4a);
+                    ImGui::Checkbox("Draw FOV Circle", &showFOVCircle);
                     ImGui::Checkbox("Delta Speed Hack", &pPlayer.SpeedHackV2);
                     ImGui::SliderFloat("Delta FOV", &pPlayer.AimFov, 20.0f, 150.0f, "%.0f deg");
                 }
