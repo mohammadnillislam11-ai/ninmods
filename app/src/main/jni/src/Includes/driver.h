@@ -420,29 +420,12 @@ public:
         in_flight_ops.fetch_add(1, std::memory_order_relaxed);
         bool success = false;
 
-        if (active_mode == DRIVER_MODE_PROC_MEM) {
-            struct iovec local_iov = { buffer, size };
-            struct iovec remote_iov = { (void*)addr, size };
-            ssize_t n = sys_process_vm_readv(this->pid, &local_iov, 1, &remote_iov, 1, 0);
-            if (n == (ssize_t)size) {
-                success = true;
-            } else {
-                char mem_path[64];
-                snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", this->pid);
-                int mem_fd = open(mem_path, O_RDONLY);
-                if (mem_fd >= 0) {
-                    success = (pread64(mem_fd, buffer, size, (off64_t)addr) == (ssize_t)size);
-                    close(mem_fd);
-                }
-            }
-        } else {
-            COPY_MEMORY cm{};
-            cm.pid = this->pid;
-            cm.addr = addr;
-            cm.buffer = buffer;
-            cm.size = size;
-            success = (ioctl(fd, active_read_cmd, &cm) == 0);
-        }
+        COPY_MEMORY cm{};
+        cm.pid = this->pid;
+        cm.addr = addr;
+        cm.buffer = buffer;
+        cm.size = size;
+        success = (ioctl(fd, active_read_cmd, &cm) == 0);
 
         in_flight_ops.fetch_sub(1, std::memory_order_relaxed);
         return success;
@@ -485,29 +468,13 @@ public:
         in_flight_ops.fetch_add(1, std::memory_order_relaxed);
         bool success = false;
 
-        if (active_mode == DRIVER_MODE_PROC_MEM) {
-            struct iovec local_iov = { (void*)buffer, size };
-            struct iovec remote_iov = { (void*)addr, size };
-            ssize_t n = sys_process_vm_writev(this->pid, &local_iov, 1, &remote_iov, 1, 0);
-            if (n == (ssize_t)size) {
-                success = true;
-            } else {
-                char mem_path[64];
-                snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", this->pid);
-                int mem_fd = open(mem_path, O_WRONLY);
-                if (mem_fd >= 0) {
-                    success = (pwrite64(mem_fd, buffer, size, (off64_t)addr) == (ssize_t)size);
-                    close(mem_fd);
-                }
-            }
-        } else {
-            COPY_MEMORY cm{};
-            cm.pid = this->pid;
-            cm.addr = addr;
-            cm.buffer = const_cast<void*>(buffer);
-            cm.size = size;
-            success = (ioctl(fd, active_write_cmd, &cm) == 0);
-        }
+        COPY_MEMORY cm{};
+        cm.pid = this->pid;
+        cm.addr = addr;
+        cm.buffer = const_cast<void*>(buffer);
+        cm.size = size;
+        success = (ioctl(fd, active_write_cmd, &cm) == 0);
+
         in_flight_ops.fetch_sub(1, std::memory_order_relaxed);
         return success;
     }
@@ -558,7 +525,7 @@ public:
         if (!name || this->pid <= 0) return 0;
         if (!isConnected() && !initDriver()) return 0;
 
-        if (active_mode != DRIVER_MODE_PROC_MEM && fd >= 0) {
+        if (fd >= 0) {
             MODULE_BASE mb{};
             char buf[128] = {0};
             strncpy(buf, name, sizeof(buf) - 1);
