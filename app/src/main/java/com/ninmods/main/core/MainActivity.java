@@ -57,12 +57,10 @@ public class MainActivity extends BaseActivity {
         // Always show branded loading view immediately (eliminates blank / black screens)
         buildSplashView();
 
-        // Copy daemon in background thread to avoid freezing UI
+        // Request SuperUser privileges & set permissive mode in background thread
         new Thread(() -> {
-            try {
-                Runtime.getRuntime().exec("su -c setenforce 0");
-            } catch (Throwable ignored) {}
-            copyDaemon(MainActivity.this);
+            boolean hasRoot = requestSuperUser();
+            AppLogger.log("SYSTEM", "SuperUser (Root) Access Verified: " + (hasRoot ? "GRANTED" : "DENIED"));
             try {
                 System.loadLibrary("ninmods");
             } catch (Throwable t) {
@@ -361,26 +359,23 @@ public class MainActivity extends BaseActivity {
         finish();
     }
 
-    public static void copyDaemon(Activity context) {
-        String abi = android.os.Build.SUPPORTED_ABIS[0];
-        String assetName = abi.contains("x86") ? "Titoo1" : "Titoo";
-        String outPath = context.getCacheDir().getAbsolutePath() + "/" + assetName;
-
+    public static boolean requestSuperUser() {
+        Process process = null;
         try {
-            java.io.InputStream in = context.getAssets().open(assetName);
-            java.io.File outFile = new java.io.File(outPath);
-            java.io.FileOutputStream out = new java.io.FileOutputStream(outFile);
-            byte[] buffer = new byte[4096];
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                out.write(buffer, 0, read);
+            process = Runtime.getRuntime().exec("su");
+            java.io.DataOutputStream os = new java.io.DataOutputStream(process.getOutputStream());
+            os.writeBytes("id\n");
+            os.writeBytes("setenforce 0 2>/dev/null\n");
+            os.writeBytes("exit\n");
+            os.flush();
+            int exitCode = process.waitFor();
+            return exitCode == 0;
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            if (process != null) {
+                try { process.destroy(); } catch (Throwable ignored) {}
             }
-            in.close();
-            out.flush();
-            out.close();
-            Runtime.getRuntime().exec("chmod 777 " + outPath);
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 

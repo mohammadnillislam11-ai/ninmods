@@ -1001,7 +1001,7 @@ Java_power_cheats_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_power_cheats_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("Titoo"));
+    return env->NewStringUTF("");
 }
 
 
@@ -1088,7 +1088,7 @@ Java_ninmods_pro_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_ninmods_pro_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("Titoo"));
+    return env->NewStringUTF("");
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1480,94 +1480,17 @@ Java_com_ninmods_main_core_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
-    return env->NewStringUTF(OBFUSCATE("Titoo"));
+    return env->NewStringUTF("");
 }
-
-
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_DashboardActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
     g_hackVersion = (mode == 2) ? 2 : 1;
-    LOGD("Profile mode selected from DashboardActivity (com.ninmods.main): %d", g_hackVersion);
 }
-
-
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_ModeSelectActivity_setModeNative(JNIEnv *env, jclass clazz, jint mode) {
     g_hackVersion = (mode == 2) ? 2 : 1;
-    LOGD("Profile mode selected from ModeSelectActivity (com.ninmods.main): %d", g_hackVersion);
-}
-
-
-
-static bool isRooted() {
-    struct stat st;
-    if (stat("/system/xbin/su", &st) == 0) return true;
-    if (stat("/system/bin/su", &st) == 0) return true;
-    if (stat("/sbin/su", &st) == 0) return true;
-    return false;
-}
-
-void StartDaemon() {
-    signal(SIGPIPE, SIG_IGN);
-    NIN_LOGI("CLIENT", "=== StartDaemon() background thread started ===");
-    bool isX86 = false;
-#if defined(__x86_64__) || defined(__i386__)
-    isX86 = true;
-#endif
-
-    const char* dName = isX86 ? "Titoo1" : "Titoo";
-    const char* paths[] = {
-        "/data/user/0/com.ninmods.main/files/",
-        "/data/data/com.ninmods.main/files/",
-        "/data/user/0/com.ninmods.main/cache/",
-        "/data/data/com.ninmods.main/cache/",
-        "/data/local/tmp/"
-    };
-    
-    char path[256] = {0};
-    struct stat st;
-    bool found = false;
-    
-    for (const char* p : paths) {
-        snprintf(path, sizeof(path), "%s%s", p, dName);
-        if (stat(path, &st) == 0 && st.st_size > 5000) {
-            found = true;
-            break;
-        }
-    }
-
-    if (!found) {
-        NIN_LOGE("CLIENT", "Daemon binary %s NOT FOUND at any expected path!", dName);
-        return;
-    }
-
-    NIN_LOGI("CLIENT", "Found daemon binary at: %s (size: %ld)", path, (long)st.st_size);
-
-    char tmpPath[256];
-    snprintf(tmpPath, sizeof(tmpPath), "/data/local/tmp/%s", dName);
-
-    // Set SELinux to permissive mode so unconfined root IPC is fully permitted
-    system("su -c \"setenforce 0\"");
-
-    // Copy to /data/local/tmp for unconstrained root execution
-    char cp_cmd[512];
-    snprintf(cp_cmd, sizeof(cp_cmd), "su -c \"cp -f %s %s && chmod 777 %s\"", path, tmpPath, tmpPath);
-    system(cp_cmd);
-
-    char pkill_cmd[256];
-    snprintf(pkill_cmd, sizeof(pkill_cmd), "su -c \"pkill -9 -f %s\"", dName);
-    system(pkill_cmd);
-    usleep(150000); // 150ms
-
-    // Ensure download directory and log file exist with open permissions
-    system("su -c \"mkdir -p /data/media/0/Download && touch /data/media/0/Download/ninmods.log && chmod 777 /data/media/0/Download/ninmods.log && chown 1023:1023 /data/media/0/Download/ninmods.log\"");
-
-    char launch_cmd[512];
-    snprintf(launch_cmd, sizeof(launch_cmd), "su -c \"%s >> /data/media/0/Download/ninmods.log 2>&1 &\"", tmpPath);
-    NIN_LOGI("CLIENT", "Launching root daemon: %s", launch_cmd);
-    system(launch_cmd);
 }
 
 // ============================================================================
@@ -1750,6 +1673,5 @@ extern "C" JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM* vm, void* reserved) {
     g_JavaVM = vm;
     signal(SIGPIPE, SIG_IGN);
-    std::thread(StartDaemon).detach();
     return JNI_VERSION_1_6;
 }
