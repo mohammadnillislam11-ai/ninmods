@@ -409,7 +409,7 @@ public class FloatingMenuView {
                 mTabButtons[i].setBackground(activeBg);
             } else {
                 mTabButtons[i].setTextColor(Color.parseColor("#8A98A8"));
-                mTabButtons[i].setBackgroundColor(Color.TRANSLUCENT);
+                mTabButtons[i].setBackgroundColor(Color.TRANSPARENT);
             }
         }
     }
