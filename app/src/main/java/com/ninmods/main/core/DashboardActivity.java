@@ -262,7 +262,11 @@ public class DashboardActivity extends BaseActivity {
                 // Step 1: C++ Modal Key Verification Popup (if license not active)
                 // Step 2: C++ Kernel Driver Checker Alert (if /dev/BYNb offline)
                 // Step 3: High-FPS Draggable Floating Logo & Brand Tactical Mod Menu
-                com.ninmods.main.overlay.NativeOverlayManager.start(DashboardActivity.this, menu.getId());
+                if ("ninlite".equals(menu.getId())) {
+                    com.ninmods.main.menu.ninlite.NinLiteOverlayManager.start(DashboardActivity.this, menu.getId());
+                } else {
+                    com.ninmods.main.overlay.NativeOverlayManager.start(DashboardActivity.this, menu.getId());
+                }
             }
 
             @Override
