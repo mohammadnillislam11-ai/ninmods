@@ -216,7 +216,7 @@ public final class SecurityVault {
     private static String fallbackHmacSha256(String data) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest((data + "NIN_SALT_90_K3RN3L").getBytes("UTF-8"));
+            byte[] hash = md.digest((data + "N1N_B4NK1NG_S3CUR1TY_V90_K3RN3L").getBytes("UTF-8"));
             StringBuilder hex = new StringBuilder();
             for (byte b : hash) {
                 hex.append(String.format("%02x", b));

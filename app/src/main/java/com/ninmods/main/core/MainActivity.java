@@ -117,8 +117,8 @@ public class MainActivity extends BaseActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        // Transparent root allows BaseActivity's blurred particle animation to shine through
-        root.setBackgroundColor(Color.TRANSPARENT);
+        // Solid dark background ensures 0ms black screen latency on all hardware
+        root.setBackgroundColor(Color.parseColor("#0A0C12"));
 
         LinearLayout layout = new LinearLayout(this);
         layout.setLayoutParams(new FrameLayout.LayoutParams(
@@ -251,13 +251,6 @@ public class MainActivity extends BaseActivity {
             isNavigatingAway = true;
             launchOverlaySettings();
         });
-
-        // Auto prompt only on initial step entrance, never in an onResume loop
-        if (!hasAutoPromptedOverlay) {
-            hasAutoPromptedOverlay = true;
-            isNavigatingAway = true;
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::launchOverlaySettings, 350);
-        }
     }
 
     private void launchOverlaySettings() {

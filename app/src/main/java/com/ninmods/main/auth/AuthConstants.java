@@ -9,6 +9,6 @@ public final class AuthConstants {
 
     private AuthConstants() {}
 
-    public static final int HTTP_CONNECT_TIMEOUT_MS = 7000;
-    public static final int HTTP_READ_TIMEOUT_MS = 8000;
+    public static final int HTTP_CONNECT_TIMEOUT_MS = 15000;
+    public static final int HTTP_READ_TIMEOUT_MS = 15000;
 }

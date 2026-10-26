@@ -247,8 +247,8 @@ public class SignupActivity extends BaseActivity {
             return;
         }
 
-        if (username.length() < 3 || username.length() > 20 || !username.matches("^[a-zA-Z0-9_]{3,20}$")) {
-            showError("Username must be 3-20 characters (letters, numbers, underscores only).");
+        if (username.length() < 3 || username.length() > 30 || !username.matches("^[a-zA-Z0-9_.-]{3,30}$")) {
+            showError("Username must be 3-30 characters (letters, numbers, underscores, dots, hyphens).");
             return;
         }
 

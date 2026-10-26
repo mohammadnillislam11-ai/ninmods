@@ -207,7 +207,8 @@ public final class AuthApiController {
                 mainHandler.post(() -> callback.onError("Invalid response from registration server. Please try again."));
             } catch (Exception e) {
                 Log.e(TAG, "Registration request failed: " + e.getMessage());
-                mainHandler.post(() -> callback.onError("Cannot connect to registration server. Active internet connection required."));
+                String errDetail = e.getMessage() != null ? e.getMessage() : "Network error";
+                mainHandler.post(() -> callback.onError("Cannot connect to registration server: " + errDetail));
             }
         });
     }
@@ -495,8 +496,13 @@ public final class AuthApiController {
         conn.setConnectTimeout(timeoutMs);
         conn.setReadTimeout(AuthConstants.HTTP_READ_TIMEOUT_MS);
         conn.setDoInput(true);
-        conn.setRequestProperty("User-Agent", "NinMods-Banking-Client/" + context.getString(R.string.app_version));
+        String defaultAgent = System.getProperty("http.agent");
+        if (defaultAgent == null || defaultAgent.isEmpty()) {
+            defaultAgent = "Mozilla/5.0 (Linux; U; Android " + Build.VERSION.RELEASE + "; " + Build.MODEL + ")";
+        }
+        conn.setRequestProperty("User-Agent", defaultAgent);
         conn.setRequestProperty("X-Client-Version", context.getString(R.string.app_version));
+        conn.setRequestProperty("X-App-Client", "NinMods/" + context.getString(R.string.app_version));
 
         if (!apiKey.isEmpty()) {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
@@ -547,8 +553,13 @@ public final class AuthApiController {
         conn.setDoInput(true);
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-        conn.setRequestProperty("User-Agent", "NinMods-Banking-Client/" + context.getString(R.string.app_version));
+        String defaultAgent = System.getProperty("http.agent");
+        if (defaultAgent == null || defaultAgent.isEmpty()) {
+            defaultAgent = "Mozilla/5.0 (Linux; U; Android " + Build.VERSION.RELEASE + "; " + Build.MODEL + ")";
+        }
+        conn.setRequestProperty("User-Agent", defaultAgent);
         conn.setRequestProperty("X-Client-Version", context.getString(R.string.app_version));
+        conn.setRequestProperty("X-App-Client", "NinMods/" + context.getString(R.string.app_version));
 
         if (!apiKey.isEmpty()) {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
@@ -590,6 +601,10 @@ public final class AuthApiController {
         if (raw == null) return null;
         String trimmed = raw.trim();
         if (trimmed.isEmpty()) return null;
+        // Strip UTF-8 Byte Order Mark (BOM) if present
+        if (trimmed.startsWith("\uFEFF")) {
+            trimmed = trimmed.substring(1).trim();
+        }
         // Strictly reject any HTML or XML response (Cloudflare, Nginx, or Web Server error dumps)
         if (trimmed.startsWith("<") || trimmed.contains("<!DOCTYPE") || trimmed.contains("<html") || trimmed.contains("<body")) {
             return null;

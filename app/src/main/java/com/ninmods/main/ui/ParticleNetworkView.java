@@ -110,34 +110,14 @@ public class ParticleNetworkView extends View {
         // 2: Deep Cyber Violet (#D050FF)
         particlePaints[2] = createPaint(0xAAD050FF);
 
-        // Apply isolated view-level blur (Applies ONLY to this background animation view)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // Keep 100% hardware-accelerated on all Android versions (Zero software layer OOM / Zero Mali RenderEffect black screen bugs)
+        try {
             setLayerType(LAYER_TYPE_HARDWARE, null);
-            Api31BlurHelper.applyBlur(this, blurRadiusPx);
-        } else {
-            // Software layer is strictly required on Android 7-11 for BlurMaskFilter to render
-            setLayerType(LAYER_TYPE_SOFTWARE, null);
-            try {
-                BlurMaskFilter filter = new BlurMaskFilter(blurRadiusPx, BlurMaskFilter.Blur.NORMAL);
-                particlePaints[0].setMaskFilter(filter);
-                particlePaints[1].setMaskFilter(filter);
-                particlePaints[2].setMaskFilter(filter);
-            } catch (Throwable ignored) {}
-        }
+        } catch (Throwable ignored) {}
     }
 
     public void restoreDefaultBlur() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Api31BlurHelper.applyBlur(this, blurRadiusPx);
-        }
-    }
-
-    private static class Api31BlurHelper {
-        static void applyBlur(View view, float blurRadiusPx) {
-            try {
-                view.setRenderEffect(RenderEffect.createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP));
-            } catch (Throwable ignored) {}
-        }
+        // Safe no-op to maintain API compatibility
     }
 
     private Paint createPaint(int color) {

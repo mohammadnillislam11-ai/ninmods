@@ -36,7 +36,7 @@ public final class DeviceHardwareIdentifier {
     private DeviceHardwareIdentifier() {}
 
     /**
-     * Returns the permanent, hardware-bound HWID for this physical device.
+     * Returns the permanent, hardware-bound HWID for this physical device using official Android APIs.
      */
     public static synchronized String getHardwareId(Context context) {
         if (sCachedHwid != null && !sCachedHwid.isEmpty()) {
@@ -45,34 +45,30 @@ public final class DeviceHardwareIdentifier {
 
         StringBuilder hwProfile = new StringBuilder();
 
-        // 1. Hardware-backed DRM Silicon Unique ID
-        String drmId = getWidevineUniqueId();
-        hwProfile.append("DRM:").append(drmId).append(";");
-
-        // 2. Hardware / Motherboard Serial from SystemProperties
-        String bootSerial = getSystemProperty("ro.boot.serialno", "");
-        if (bootSerial.isEmpty()) {
-            bootSerial = getSystemProperty("ro.serialno", "");
-        }
-        hwProfile.append("SERIAL:").append(bootSerial).append(";");
-
-        // 3. CPU / SoC Silicon Serial from /proc/cpuinfo
-        String cpuSerial = getCpuSerialFromProc();
-        hwProfile.append("CPU:").append(cpuSerial).append(";");
-
-        // 4. Physical Board & Hardware Chipset Architecture
-        hwProfile.append("BOARD:").append(Build.BOARD).append(";");
-        hwProfile.append("HARDWARE:").append(Build.HARDWARE).append(";");
-        hwProfile.append("BOOTLOADER:").append(Build.BOOTLOADER).append(";");
-
-        // 5. Fallback Android ID if context is available
+        // 1. Official Android ID (Google-recommended persistent identifier)
+        String androidId = "";
         if (context != null) {
             try {
-                String androidId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
-                if (androidId != null) {
-                    hwProfile.append("AID:").append(androidId).append(";");
-                }
+                androidId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
             } catch (Throwable ignored) {}
+        }
+        if (androidId == null || androidId.isEmpty() || "9774d56d682e549c".equals(androidId)) {
+            androidId = "ANDROID_ID_DEFAULT";
+        }
+        hwProfile.append("AID:").append(androidId).append(";");
+
+        // 2. Official Standard Android Build Hardware Specifications
+        hwProfile.append("MANUFACTURER:").append(Build.MANUFACTURER != null ? Build.MANUFACTURER : "UNKNOWN").append(";");
+        hwProfile.append("MODEL:").append(Build.MODEL != null ? Build.MODEL : "UNKNOWN").append(";");
+        hwProfile.append("BOARD:").append(Build.BOARD != null ? Build.BOARD : "UNKNOWN").append(";");
+        hwProfile.append("HARDWARE:").append(Build.HARDWARE != null ? Build.HARDWARE : "UNKNOWN").append(";");
+        hwProfile.append("DEVICE:").append(Build.DEVICE != null ? Build.DEVICE : "UNKNOWN").append(";");
+        hwProfile.append("FINGERPRINT:").append(Build.FINGERPRINT != null ? Build.FINGERPRINT : "UNKNOWN").append(";");
+
+        // 3. Widevine DRM ID with official scheme verification guard
+        String drmId = getWidevineUniqueIdSafe();
+        if (drmId != null && !drmId.isEmpty()) {
+            hwProfile.append("DRM:").append(drmId).append(";");
         }
 
         // Generate SHA-256 64-character Hardware Fingerprint
@@ -80,8 +76,7 @@ public final class DeviceHardwareIdentifier {
         String hash = computeSha256(rawString);
 
         if (hash == null || hash.isEmpty()) {
-            // Absolute emergency fallback
-            hash = computeSha256(Build.BOARD + Build.HARDWARE + Build.MANUFACTURER + Build.MODEL);
+            hash = computeSha256(androidId + Build.BOARD + Build.HARDWARE + Build.MODEL);
         }
 
         sCachedHwid = "NIN-HWID-" + hash.toUpperCase(Locale.US);
@@ -89,12 +84,14 @@ public final class DeviceHardwareIdentifier {
     }
 
     /**
-     * Reads the hardware-fused device unique ID from the Widevine DRM subsystem.
-     * This ID is burned into hardware TrustZone eFuses and cannot be modified by software.
+     * Safely reads the Widevine DRM Unique ID only when supported by the hardware.
      */
-    private static String getWidevineUniqueId() {
+    private static String getWidevineUniqueIdSafe() {
         MediaDrm mediaDrm = null;
         try {
+            if (!MediaDrm.isCryptoSchemeSupported(WIDEVINE_UUID)) {
+                return "NO_WIDEVINE_SCHEME";
+            }
             mediaDrm = new MediaDrm(WIDEVINE_UUID);
             byte[] deviceUniqueId = mediaDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID);
             if (deviceUniqueId != null && deviceUniqueId.length > 0) {

@@ -3,6 +3,7 @@
     android:id="@+id/baseRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/nin_bg_dark"
     android:fitsSystemWindows="false">
 
     <!-- Bottom Layer: Universal Blurred Particle Network Animation -->
