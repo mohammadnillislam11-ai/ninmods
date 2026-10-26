@@ -85,14 +85,20 @@ public final class NativeBridge {
         setFeatureState(featId, value != 0);
     }
     public static native boolean getFeatureState(int featId);
-    public static native boolean isKernelDriverConnected();
-    public static native String getEngineLiveStatus();
-    public static native int getDetectedGamePid();
-    public static native String getDetectedGameTitle();
     public static native boolean isEmulatorDetected();
     public static native String getConnectionMode();
     public static native boolean isShellDaemonRunning();
+    public static native boolean isKernelDriverConnected();
+    public static native int getDetectedGamePid();
+    public static native String getDetectedGameTitle();
     public static native boolean isLiveGameDetected();
+    public static native String getNinliteStateJson();
+    public static native void startNinliteEngineNative(String nativeLibDir);
+    public static void startNinliteEngineNative() {
+        startNinliteEngineNative("");
+    }
+    public static native void stopNinliteEngineNative();
+    public static native boolean isNinliteSetupDone();
 
 
     /**

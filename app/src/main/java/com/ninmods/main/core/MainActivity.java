@@ -28,6 +28,9 @@ import androidx.core.content.ContextCompat;
 
 import com.ninmods.main.R;
 
+import java.io.DataOutputStream;
+import java.io.InputStream;
+
 public class MainActivity extends BaseActivity {
 
     @Override
@@ -37,12 +40,13 @@ public class MainActivity extends BaseActivity {
 
     private static final int REQUEST_LEGACY_STORAGE_PERMISSION = 1003;
 
-    // Sequential Permission States
+    // Sequential Permission States: Superuser -> Overlay -> Storage -> Done
+    private static final int STEP_ROOT = 0;
     private static final int STEP_OVERLAY = 1;
     private static final int STEP_STORAGE = 2;
     private static final int STEP_DONE = 3;
 
-    private int currentStep = STEP_OVERLAY;
+    private int currentStep = STEP_ROOT;
     private boolean isNavigatingAway = false;
     private boolean hasAutoPromptedOverlay = false;
     private boolean isAppStarted = false;
@@ -63,19 +67,8 @@ public class MainActivity extends BaseActivity {
         // Always show branded loading view immediately (eliminates blank / black screens)
         buildSplashView();
 
-        // Request SuperUser privileges & set permissive mode in background thread
-        new Thread(() -> {
-            boolean hasRoot = requestSuperUser();
-            AppLogger.log("SYSTEM", "SuperUser (Root) Access Verified: " + (hasRoot ? "GRANTED" : "DENIED"));
-            try {
-                System.loadLibrary("ninmods");
-            } catch (Throwable t) {
-                t.printStackTrace();
-            }
-        }).start();
-
-        // Start step-by-step permission sequence
-        currentStep = STEP_OVERLAY;
+        // Start step-by-step permission sequence starting with official SuperUser request
+        currentStep = STEP_ROOT;
         executeCurrentStep();
     }
 
@@ -83,6 +76,11 @@ public class MainActivity extends BaseActivity {
     protected void onResume() {
         super.onResume();
         if (isAppStarted || isFinishing()) return;
+
+        if (currentStep == STEP_ROOT) {
+            // Background thread is currently verifying Superuser privileges, do nothing
+            return;
+        }
 
         if (isNavigatingAway) {
             isNavigatingAway = false;
@@ -200,6 +198,9 @@ public class MainActivity extends BaseActivity {
         if (isFinishing() || isAppStarted) return;
 
         switch (currentStep) {
+            case STEP_ROOT:
+                handleRootStep();
+                break;
             case STEP_OVERLAY:
                 handleOverlayStep();
                 break;
@@ -211,6 +212,28 @@ public class MainActivity extends BaseActivity {
                 startApp();
                 break;
         }
+    }
+
+    // Step 0: SuperUser Permission (Official System Dialog via native su)
+    private void handleRootStep() {
+        tvStatus.setText("Requesting Superuser Privileges...");
+        btnAction.setVisibility(View.GONE);
+        btnContinueWithoutStorage.setVisibility(View.GONE);
+
+        new Thread(() -> {
+            boolean hasRoot = requestSuperUser();
+            AppLogger.log("SYSTEM", "SuperUser (Root) Access Verified: " + (hasRoot ? "GRANTED" : "DENIED"));
+            try {
+                System.loadLibrary("ninmods");
+            } catch (Throwable t) {
+                AppLogger.logE("SYSTEM", "Failed to load ninmods library: " + t.getMessage(), t);
+            }
+            runOnUiThread(() -> {
+                if (isFinishing() || isAppStarted) return;
+                currentStep = STEP_OVERLAY;
+                executeCurrentStep();
+            });
+        }).start();
     }
 
     // Step 1: Overlay Permission
@@ -371,32 +394,41 @@ public class MainActivity extends BaseActivity {
     }
 
     public static boolean requestSuperUser() {
-        Process process = null;
         try {
-            // Use su -c to execute commands in a single atomic batch without hanging standard input streams
-            process = Runtime.getRuntime().exec(new String[]{"su", "-c", "id; setenforce 0 2>/dev/null; chmod 666 /dev/BYNb* /dev/mem_tool* /dev/nh* /dev/wanbai* /proc/uevents_records 2>/dev/null; true"});
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                boolean finished = process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS);
-                return finished && process.exitValue() == 0;
-            } else {
-                boolean finished = process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS);
-                if (!finished) {
-                    process.destroy();
-                    return false;
-                }
-                try {
-                    return process.exitValue() == 0;
-                } catch (Throwable t) {
-                    return false;
-                }
-            }
+            // Official standard interactive su invocation (identical to loader software)
+            Process process = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(process.getOutputStream());
+
+            // Drain stdout & stderr in background to avoid Linux pipe buffer deadlocks
+            drainStream(process.getInputStream());
+            drainStream(process.getErrorStream());
+
+            os.writeBytes("setenforce 0 2>/dev/null\n");
+            os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /dev/nh* /dev/wanbai* /proc/uevents_records 2>/dev/null\n");
+            os.writeBytes("exit\n");
+            os.flush();
+            os.close();
+
+            // Cleanly wait for official Magisk / KernelSU / APatch prompt response
+            int exitVal = process.waitFor();
+            return exitVal == 0;
         } catch (Throwable t) {
+            AppLogger.log("SYSTEM", "requestSuperUser exception: " + t.getMessage());
             return false;
-        } finally {
-            if (process != null) {
-                try { process.destroy(); } catch (Throwable ignored) {}
-            }
         }
+    }
+
+    private static void drainStream(final InputStream stream) {
+        if (stream == null) return;
+        new Thread(() -> {
+            try {
+                byte[] buf = new byte[512];
+                while (stream.read(buf) != -1) {
+                    // Drain and discard
+                }
+                stream.close();
+            } catch (Throwable ignored) {}
+        }).start();
     }
 
 

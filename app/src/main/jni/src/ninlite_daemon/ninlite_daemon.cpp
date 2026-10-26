@@ -46,7 +46,7 @@
 #include "../Includes/android_ide_stubs/android/log.h"
 #endif
 
-#include <ctime>
+#include <time.h>
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -65,10 +65,8 @@
 #include "Namegun.h"
 #include "../Includes/gameoffsets.h"
 #include "../Unity/Vector3.hpp"
-#include "../Unity/Vector2.hpp"
 #include "../Unity/Vector4.hpp"
 #include "../Unity/Quaternion.hpp"
-#include "../Unity/Color.hpp"
 
 #define TAG "NINLITE_DAEMON"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -704,14 +702,42 @@ int main(int argc, char* argv[]) {
                 res.Success = true;
 
                 if (req.Mode == Mode::InitMode) {
-                    res.Success = true;
+                    if (g_target_pid <= 0 || kill(g_target_pid, 0) != 0 || g_mem_fd <= 0 || g_libAddress == 0) {
+                        g_target_pid = ScanTargetGamePid();
+                        if (g_target_pid > 0) {
+                            if (g_mem_fd > 0) close(g_mem_fd);
+                            char memPath[64];
+                            snprintf(memPath, sizeof(memPath), "/proc/%d/mem", g_target_pid);
+                            g_mem_fd = open(memPath, O_RDWR);
+                            if (g_mem_fd < 0) {
+                                g_mem_fd = open(memPath, O_RDONLY);
+                            }
+                            g_libAddress = FindCorrectLibBase(g_target_pid);
+                            LOGI("[DAEMON] Attached to Game PID: %d, libil2cpp: 0x%lx, MemFD: %d",
+                                 g_target_pid, (unsigned long)g_libAddress, g_mem_fd);
+                            LogToDownload("Attached to Game PID: %d, libil2cpp: 0x%lx, MemFD: %d",
+                                          g_target_pid, (unsigned long)g_libAddress, g_mem_fd);
+                        }
+                    }
+                    res.Success = (g_target_pid > 0 && g_mem_fd > 0 && g_libAddress > 0);
                 } else if (req.Mode == Mode::HackMode) {
                     res.Success = true;
                 } else if (req.Mode == Mode::EspMode) {
+                    if (g_target_pid <= 0 || kill(g_target_pid, 0) != 0 || g_mem_fd <= 0 || g_libAddress == 0) {
+                        g_target_pid = ScanTargetGamePid();
+                        if (g_target_pid > 0) {
+                            if (g_mem_fd > 0) close(g_mem_fd);
+                            char memPath[64];
+                            snprintf(memPath, sizeof(memPath), "/proc/%d/mem", g_target_pid);
+                            g_mem_fd = open(memPath, O_RDWR);
+                            if (g_mem_fd < 0) g_mem_fd = open(memPath, O_RDONLY);
+                            g_libAddress = FindCorrectLibBase(g_target_pid);
+                        }
+                    }
                     g_screenWidth = req.ScreenWidth;
                     g_screenHeight = req.ScreenHeight;
                     CreateDataList(res);
-                    res.Success = true;
+                    res.Success = (g_target_pid > 0 && g_mem_fd > 0);
                 } else if (req.Mode == 3) {
                     Actived.activar = req.m_IsOn;
                     res.Success = true;

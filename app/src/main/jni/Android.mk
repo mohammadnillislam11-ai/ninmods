@@ -7,6 +7,8 @@ LOCAL_MODULE    := ninmods
 
 LOCAL_SRC_FILES := \
     src/Client.cpp \
+    src/Engine/NinliteEngine.cpp \
+    src/Bridge/SecurityVaultJNI.cpp \
     src/imgui/imgui.cpp \
     src/imgui/imgui_draw.cpp \
     src/imgui/imgui_tables.cpp \
@@ -24,6 +26,8 @@ LOCAL_SRC_FILES := \
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH) \
     $(LOCAL_PATH)/src \
+    $(LOCAL_PATH)/src/Engine \
+    $(LOCAL_PATH)/src/Bridge \
     $(LOCAL_PATH)/src/imgui \
     $(LOCAL_PATH)/src/Includes \
     $(LOCAL_PATH)/src/Includes/glm \

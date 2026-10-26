@@ -521,66 +521,83 @@ public class NinLiteFloatingMenuView {
             public void run() {
                 if (sSettingsDismissed) return;
 
-                // Query C++ Real Engine
-                int pid = NativeBridge.getDetectedGamePid();
-                String gameTitle = NativeBridge.getDetectedGameTitle();
-                boolean isEmu = NativeBridge.isEmulatorDetected();
-                String connMode = NativeBridge.getConnectionMode();
-                boolean daemonRunning = NativeBridge.isShellDaemonRunning();
-                boolean driverConnected = NativeBridge.isKernelDriverConnected();
+                // Query C++ Real Engine for unified state
+                String stateJsonStr = NativeBridge.getNinliteStateJson();
+                try {
+                    org.json.JSONObject state = new org.json.JSONObject(stateJsonStr);
+                    boolean isStarting = state.optBoolean("isStarting", false);
+                    boolean shellActive = state.optBoolean("shellActive", false);
+                    boolean gameDetected = state.optBoolean("gameDetected", false);
+                    int pid = state.optInt("gamePid", 0);
+                    String gameTitle = state.optString("gameTitle", "Waiting for Game...");
+                    boolean isEmu = state.optBoolean("isEmulator", false);
+                    String connMode = state.optString("connectionMode", "Phantom");
+                    String statusText = state.optString("statusText", "");
+                    String buttonText = state.optString("buttonText", "Start");
+                    boolean readyToDismiss = state.optBoolean("readyToDismiss", false);
 
-                if (mEmulatorValView != null) {
-                    mEmulatorValView.setText(isEmu ? "true" : "false");
-                    mEmulatorValView.setTextColor(isEmu ? COLOR_CYAN : COLOR_GREEN);
-                }
-                if (mConnectionValView != null) {
-                    mConnectionValView.setText(connMode);
-                }
-                if (mGameValView != null) {
-                    if (pid > 0) {
-                        mGameValView.setText(gameTitle + " (PID: " + pid + ")");
-                        mGameValView.setTextColor(COLOR_GREEN);
-                    } else {
-                        mGameValView.setText("Waiting for Game...");
-                        mGameValView.setTextColor(COLOR_TEXT_MUTED);
+                    if (mEmulatorValView != null) {
+                        mEmulatorValView.setText(isEmu ? "true" : "false");
+                        mEmulatorValView.setTextColor(isEmu ? COLOR_CYAN : COLOR_GREEN);
                     }
-                }
-
-                if (mIsEngineStarting || mIsEngineStarted) {
-                    boolean shellActive = daemonRunning || driverConnected;
-                    boolean gameDetected = (pid > 0);
-
-                    if (shellActive) {
-                        mIsEngineStarted = true;
-                        mIsEngineStarting = false;
-                        if (mStatusValView != null) {
-                            if (gameDetected) {
-                                mStatusValView.setText("Connected: " + gameTitle + " (PID " + pid + ")");
-                            } else {
-                                mStatusValView.setText("Root Daemon Online (Ready for Game)");
-                            }
-                            mStatusValView.setTextColor(COLOR_GREEN);
+                    if (mConnectionValView != null) {
+                        mConnectionValView.setText(connMode);
+                    }
+                    if (mGameValView != null) {
+                        if (pid > 0) {
+                            mGameValView.setText(gameTitle + " (PID: " + pid + ")");
+                            mGameValView.setTextColor(COLOR_GREEN);
+                        } else {
+                            mGameValView.setText("Waiting for Game...");
+                            mGameValView.setTextColor(COLOR_TEXT_MUTED);
                         }
-                        if (mStartBtnView != null) {
-                            mStartBtnView.setText(gameDetected ? "Connected ✓" : "Started ✓");
+                    }
+
+                    if (mStatusValView != null) {
+                        mStatusValView.setText(statusText);
+                        if (readyToDismiss) {
+                            mStatusValView.setTextColor(COLOR_GREEN);
+                        } else if (shellActive) {
+                            mStatusValView.setTextColor(COLOR_CYAN);
+                        } else if (isStarting) {
+                            mStatusValView.setTextColor(COLOR_CYAN_LIGHT);
+                        } else {
+                            mStatusValView.setTextColor(COLOR_TEXT_MUTED);
+                        }
+                    }
+
+                    if (mStartBtnView != null) {
+                        mStartBtnView.setText(buttonText);
+                        if (readyToDismiss) {
                             mStartBtnView.setTextColor(Color.WHITE);
                             GradientDrawable greenBg = new GradientDrawable();
                             greenBg.setColor(COLOR_GREEN);
                             greenBg.setCornerRadius(dp(10));
                             mStartBtnView.setBackground(greenBg);
-                        }
-
-                        // Shell running & started: dismiss settings setup page permanently!
-                        mMainHandler.postDelayed(() -> {
-                            dismissSettingsTabPermanently();
-                        }, 700);
-                        return; // Stop poller
-                    } else {
-                        if (mStatusValView != null) {
-                            mStatusValView.setText("Starting Shell Daemon...");
-                            mStatusValView.setTextColor(COLOR_CYAN_LIGHT);
+                            mStartBtnView.setClickable(false);
+                        } else if (shellActive) {
+                            mStartBtnView.setTextColor(COLOR_CYAN);
+                            GradientDrawable cyanBg = new GradientDrawable();
+                            cyanBg.setColor(Color.parseColor("#102525"));
+                            cyanBg.setStroke(dp(1), COLOR_CYAN);
+                            cyanBg.setCornerRadius(dp(10));
+                            mStartBtnView.setBackground(cyanBg);
+                            mStartBtnView.setClickable(false);
+                        } else if (isStarting) {
+                            mStartBtnView.setClickable(false);
+                        } else {
+                            mStartBtnView.setClickable(true);
                         }
                     }
+
+                    if (readyToDismiss) {
+                        mIsEngineStarted = true;
+                        mIsEngineStarting = false;
+                        dismissSettingsTabPermanently();
+                        return; // Stop poller
+                    }
+                } catch (Throwable t) {
+                    AppLogger.logE(TAG, "Error parsing native engine state: " + t.getMessage(), t);
                 }
 
                 if (mIsAttached && mExpandedView != null && mExpandedView.getVisibility() == View.VISIBLE && !sSettingsDismissed) {
@@ -607,7 +624,7 @@ public class NinLiteFloatingMenuView {
         mIsEngineStarting = true;
 
         if (mStatusValView != null) {
-            mStatusValView.setText("Launching Root Shell & Daemon...");
+            mStatusValView.setText("Injecting Root Shell & Daemon...");
             mStatusValView.setTextColor(COLOR_CYAN_LIGHT);
         }
         if (mStartBtnView != null) {
@@ -615,63 +632,9 @@ public class NinLiteFloatingMenuView {
             mStartBtnView.setClickable(false);
         }
 
-        // Execute root daemon launch and injection via su shell (100% genuine root daemon)
-        new Thread(() -> {
-            try {
-                // 1. Request root shell
-                Process suProcess = Runtime.getRuntime().exec("su");
-                java.io.DataOutputStream os = new java.io.DataOutputStream(suProcess.getOutputStream());
-
-                // 2. SELinux policy permissive setup for memfd / /proc/<pid>/mem read access
-                String[] selinuxRules = {
-                    "allow su untrusted_app process ptrace",
-                    "allow su untrusted_app_32 process ptrace",
-                    "allow su untrusted_app_30 process ptrace",
-                    "allow su untrusted_app_29 process ptrace",
-                    "allow su priv_app process ptrace",
-                    "allow su untrusted_app file { read write open getattr }",
-                    "allow su untrusted_app_32 file { read write open getattr }",
-                    "allow su untrusted_app_30 file { read write open getattr }",
-                    "allow su priv_app file { read write open getattr }",
-                    "allow su su file { execute execute_no_trans open read write }"
-                };
-
-                StringBuilder script = new StringBuilder();
-                script.append("killall -9 ninlite_daemon >/dev/null 2>&1\n");
-                script.append("setenforce 0 >/dev/null 2>&1\n");
-                script.append("if command -v magiskpolicy >/dev/null 2>&1; then\n");
-                for (String rule : selinuxRules) {
-                    script.append("    magiskpolicy --live \"").append(rule).append("\" >/dev/null 2>&1\n");
-                }
-                script.append("elif command -v supolicy >/dev/null 2>&1; then\n");
-                for (String rule : selinuxRules) {
-                    script.append("    supolicy --live \"").append(rule).append("\" >/dev/null 2>&1\n");
-                }
-                script.append("fi\n");
-
-                // 3. Locate compiled daemon binary from app native library directory and deploy to /data/local/tmp (STORM_MODS method)
-                String nativeLibDir = mContext.getApplicationInfo().nativeLibraryDir;
-                java.io.File daemonBin = new java.io.File(nativeLibDir, "libninlite_daemon.so");
-                String finalExecPath = "/data/local/tmp/ninlite_daemon";
-                if (daemonBin.exists()) {
-                    script.append("cp ").append(daemonBin.getAbsolutePath()).append(" ").append(finalExecPath).append("\n");
-                }
-                script.append("chmod 777 ").append(finalExecPath).append("\n");
-                script.append("nohup ").append(finalExecPath).append(" >/dev/null 2>&1 &\n");
-
-                os.writeBytes(script.toString());
-                os.writeBytes("exit\n");
-                os.flush();
-                suProcess.waitFor();
-                AppLogger.log(TAG, "Root daemon and SELinux shell script injected successfully");
-            } catch (Throwable t) {
-                AppLogger.logE(TAG, "Error executing su root shell script: " + t.getMessage(), t);
-            }
-
-            // 4. Activate native C++ features
-            NativeBridge.setFeatureEnabled(1, 1);   // Actived.activar = true
-            NativeBridge.setFeatureEnabled(999, 1); // Root Engine Online
-        }).start();
+        // Delegate 100% of root shell, SELinux policy, and daemon execution to C++
+        String nativeLibDir = mContext.getApplicationInfo().nativeLibraryDir;
+        NativeBridge.startNinliteEngineNative(nativeLibDir);
     }
 
 

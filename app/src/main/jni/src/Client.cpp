@@ -55,6 +55,7 @@
 #include "UI/MenuRouter.h"
 #include "UI/NativeOverlayController.h"
 #include "UI/Popups/LicensePopup.h"
+#include "Engine/NinliteEngine.h"
 #if __has_include(<imgui.h>)
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
@@ -1634,99 +1635,33 @@ Java_com_ninmods_main_core_NativeBridge_isLiveGameDetected(JNIEnv *env, jclass c
   return (target_pid > 0) ? JNI_TRUE : JNI_FALSE;
 }
 
-static bool g_ninlite_setup_done_flag = false;
-
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getNinliteStateJson(JNIEnv *env, jclass clazz) {
-  // Check daemon/socket connection
-  bool shellOk = false;
-  {
-    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sock >= 0) {
-      struct sockaddr_un addr;
-      memset(&addr, 0, sizeof(addr));
-      addr.sun_family = AF_UNIX;
-      strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-      if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
-        shellOk = true;
-      }
-      close(sock);
-    }
-  }
-
-  // Check driver/engine
-  bool connected = (driver && driver->isConnected() && driver->getFd() >= 0);
-  if (!connected && driver) {
-    connected = driver->initDriver();
-  }
-
-  // Check game
-  pid_t pid = (target_pid > 0 && kill(target_pid, 0) == 0) ? target_pid : FindGamePid();
-  if (pid > 0) target_pid = pid;
-  bool gameDetected = (pid > 0);
-  const char *gameName = "Free Fire Max";
-  if (pid > 0) {
-    char cmdline[256] = {0};
-    char path[64];
-    snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
-    FILE* f = fopen(path, "r");
-    if (f) {
-      fgets(cmdline, sizeof(cmdline), f);
-      fclose(f);
-    }
-    if (strstr(cmdline, "com.dts.freefireth") || strstr(cmdline, "com.dts.freefirein")) {
-      gameName = "Free Fire Normal";
-    } else if (strstr(cmdline, "com.dts.freefiremax")) {
-      gameName = "Free Fire Max";
-    } else if (gameDetected) {
-      gameName = "Free Fire Active";
-    }
-  }
-
-  // Emulator rough check via build props not available here but keep false from engine side
-  bool isEmu = false;
-  const char *conn = "Phantom";
-  const char *mode = connected ? "External (Root)" : "External (Root)";
-  const char *status = (shellOk && connected && Actived.activar) ? "connected" : (shellOk ? "connecting" : "disconnected");
-
-  bool readyToHide = shellOk && gameDetected && Actived.activar && connected;
-  if (readyToHide) {
-    g_ninlite_setup_done_flag = true;
-  }
-
-  char buf[1024];
-  snprintf(buf, sizeof(buf),
-           "{\"emulator\":%s,\"conn\":\"%s\",\"mode\":\"%s\",\"status\":\"%s\",\"game\":\"%s\",\"gameDetected\":%s,\"shellOk\":%s,\"readyToHide\":%s}",
-           isEmu ? "true" : "false",
-           conn,
-           mode,
-           status,
-           gameName,
-           gameDetected ? "true" : "false",
-           shellOk ? "true" : "false",
-           readyToHide ? "true" : "false");
-  return env->NewStringUTF(buf);
+  std::string json = NinliteEngine::GetStateJson();
+  return env->NewStringUTF(json.c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_core_NativeBridge_startNinliteEngineNative(JNIEnv *env, jclass clazz) {
-  // Trigger real engine start via existing ninlite daemon sync
-  SyncWithNinLiteDaemon(3, true, 0);
-  if (driver) {
-    driver->initDriver();
+Java_com_ninmods_main_core_NativeBridge_startNinliteEngineNative(JNIEnv *env, jclass clazz, jstring jNativeLibDir) {
+  std::string nativeLibDir = "";
+  if (jNativeLibDir) {
+    const char *chars = env->GetStringUTFChars(jNativeLibDir, nullptr);
+    if (chars) {
+      nativeLibDir = chars;
+      env->ReleaseStringUTFChars(jNativeLibDir, chars);
+    }
   }
-  Actived.activar = true;
+  NinliteEngine::StartEngine(nativeLibDir);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_stopNinliteEngineNative(JNIEnv *env, jclass clazz) {
-  SyncWithNinLiteDaemon(3, false, 0);
-  Actived.activar = false;
+  NinliteEngine::StopEngine();
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isNinliteSetupDone(JNIEnv *env, jclass clazz) {
-  return g_ninlite_setup_done_flag ? JNI_TRUE : JNI_FALSE;
+  return NinliteEngine::IsSetupDone() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1755,93 +1690,17 @@ Java_com_ninmods_main_core_NativeBridge_getDetectedGameTitle(JNIEnv *env, jclass
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isEmulatorDetected(JNIEnv *env, jclass clazz) {
-  if (access("/dev/qemu_pipe", F_OK) == 0 ||
-      access("/dev/vboxguest", F_OK) == 0 ||
-      access("/dev/vboxuser", F_OK) == 0 ||
-      access("/system/bin/nox-prop", F_OK) == 0 ||
-      access("/system/bin/androVM-prop", F_OK) == 0) {
-    return JNI_TRUE;
-  }
-  FILE* f = fopen("/system/build.prop", "r");
-  if (f) {
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-      if (strstr(line, "ro.kernel.qemu") ||
-          strstr(line, "vbox") ||
-          strstr(line, "goldfish") ||
-          strstr(line, "genymotion") ||
-          strstr(line, "bluestacks")) {
-        fclose(f);
-        return JNI_TRUE;
-      }
-    }
-    fclose(f);
-  }
-  return JNI_FALSE;
+  return NinliteEngine::CheckEmulatorDetected() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getConnectionMode(JNIEnv *env, jclass clazz) {
-  if (driver && driver->isConnected()) {
-    return env->NewStringUTF(driver->getDriverModeName());
-  }
-  if (driver && driver->initDriver()) {
-    return env->NewStringUTF(driver->getDriverModeName());
-  }
-  int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-  if (sock >= 0) {
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    addr.sun_path[0] = '\0';
-    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-    struct timeval tv{0, 150000};
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-    if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
-      close(sock);
-      return env->NewStringUTF("Phantom IPC (Daemon)");
-    }
-    close(sock);
-  }
-  return env->NewStringUTF("Phantom (Standby)");
+  return env->NewStringUTF(NinliteEngine::GetConnectionModeStr());
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isShellDaemonRunning(JNIEnv *env, jclass clazz) {
-  int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-  if (sock >= 0) {
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    addr.sun_path[0] = '\0';
-    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-    struct timeval tv{0, 150000};
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-    bool ok = (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0);
-    close(sock);
-    if (ok) return JNI_TRUE;
-  }
-  DIR* dir = opendir("/proc");
-  if (!dir) return JNI_FALSE;
-  struct dirent* entry;
-  while ((entry = readdir(dir)) != nullptr) {
-    if (entry->d_type == DT_DIR && isdigit(entry->d_name[0])) {
-      char cmdPath[64];
-      snprintf(cmdPath, sizeof(cmdPath), "/proc/%s/cmdline", entry->d_name);
-      FILE* f = fopen(cmdPath, "r");
-      if (f) {
-        char cmdline[128] = {0};
-        fgets(cmdline, sizeof(cmdline), f);
-        fclose(f);
-        if (strstr(cmdline, "ninlite_daemon")) {
-          closedir(dir);
-          return JNI_TRUE;
-        }
-      }
-    }
-  }
-  closedir(dir);
-  return JNI_FALSE;
+  return NinliteEngine::CheckShellDaemonRunning() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1866,187 +1725,6 @@ Java_com_ninmods_main_core_ModeSelectActivity_setModeNative(JNIEnv *env,
                                                             jclass clazz,
                                                             jint mode) {
   g_hackVersion = (mode == 2) ? 2 : 1;
-}
-
-// ============================================================================
-// BANKING-GRADE APPLICATION SECURITY & DRIVER INQUIRY JNI EXPORTS
-// ============================================================================
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env,
-                                                               jclass clazz) {
-  bool is_active = false;
-  std::string active_node = "None";
-  int maj = 0;
-  int min = 0;
-  std::string dev_id_str = "None";
-  std::string perms_str = "Inaccessible";
-  std::string status_text = "Inactive";
-
-  // 1. Primary: Check Unified c_driver Engine
-  if (driver && (driver->isConnected() || driver->initDriver())) {
-    is_active = true;
-    active_node = (strlen(driver->getNodeName()) > 0) ? driver->getNodeName()
-                                                      : "/dev/BYNb";
-    int c_fd = driver->getFd();
-    struct stat st{};
-    if (stat(active_node.c_str(), &st) == 0) {
-      maj = major(st.st_rdev);
-      min = minor(st.st_rdev);
-      char dev_buf[64];
-      snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (0x%lX)", maj,
-               min, (unsigned long)st.st_rdev);
-      dev_id_str = dev_buf;
-    } else {
-      dev_id_str = "Ring-0 Device (" + active_node + ")";
-    }
-    perms_str = "rw-rw-rw- (FD: " + std::to_string(c_fd) + " Connected)";
-    status_text = std::string("ACTIVE & RESPONDING (") +
-                  driver->getDriverModeName() + ")";
-  }
-
-  // 2. Fallback: Check official character & proc nodes
-  if (!is_active) {
-    const char *candidate_nodes[] = {"/dev/BYNb", "/dev/mem_tool", "/dev/nh",
-                                     "/dev/wanbai", "/proc/uevents_records"};
-
-    for (const char *node : candidate_nodes) {
-      struct stat st;
-      if (stat(node, &st) == 0 &&
-          (S_ISCHR(st.st_mode) || S_ISREG(st.st_mode))) {
-        active_node = node;
-        is_active = true;
-        maj = major(st.st_rdev);
-        min = minor(st.st_rdev);
-        char dev_buf[64];
-        snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (0x%lX)", maj,
-                 min, (unsigned long)st.st_rdev);
-        dev_id_str = dev_buf;
-
-        int test_fd = open(node, O_RDWR);
-        if (test_fd >= 0) {
-          perms_str = "rw-rw-rw- (FD Open OK)";
-          status_text = "ACTIVE & RESPONDING (Ring 0)";
-          close(test_fd);
-        } else {
-          perms_str = "Node exists (Restricted permission)";
-          status_text = "Node detected, run chmod 666 in loader";
-        }
-        break;
-      }
-    }
-  }
-
-  std::string json = "{";
-  json += "\"is_active\":" + std::string(is_active ? "true" : "false") + ",";
-  json += "\"active_node\":\"" + active_node + "\",";
-  json += "\"major\":" + std::to_string(maj) + ",";
-  json += "\"minor\":" + std::to_string(min) + ",";
-  json += "\"device_id\":\"" + dev_id_str + "\",";
-  json += "\"permissions\":\"" + perms_str + "\",";
-  json += "\"status_text\":\"" + status_text + "\"";
-  json += "}";
-
-  return env->NewStringUTF(json.c_str());
-}
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_ninmods_main_auth_SecurityVault_nativeSignRequest(
-    JNIEnv *env, jclass clazz, jstring jPayload, jlong timestamp,
-    jstring jNonce, jstring jHwid) {
-  const char *payload =
-      jPayload ? env->GetStringUTFChars(jPayload, nullptr) : "";
-  const char *nonce = jNonce ? env->GetStringUTFChars(jNonce, nullptr) : "";
-  const char *hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : "";
-
-  std::string data = std::string(payload) + "|" + std::to_string(timestamp) +
-                     "|" + nonce + "|" + hwid;
-  std::string sig =
-      NativeCrypto::Sha256(data + "N1N_B4NK1NG_S3CUR1TY_V90_K3RN3L");
-
-  if (jPayload)
-    env->ReleaseStringUTFChars(jPayload, payload);
-  if (jNonce)
-    env->ReleaseStringUTFChars(jNonce, nonce);
-  if (jHwid)
-    env->ReleaseStringUTFChars(jHwid, hwid);
-
-  return env->NewStringUTF(sig.c_str());
-}
-
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_ninmods_main_auth_SecurityVault_nativeVerifyIntegrity(
-    JNIEnv *env, jclass clazz, jobject context, jstring certDigest) {
-  // 1. Anti-Debugging Check (/proc/self/status TracerPid)
-  FILE *fp = fopen("/proc/self/status", "r");
-  if (fp) {
-    char line[256];
-    while (fgets(line, sizeof(line), fp)) {
-      if (strncmp(line, "TracerPid:", 10) == 0) {
-        int tracerPid = atoi(line + 10);
-        if (tracerPid != 0) {
-          fclose(fp);
-          NIN_LOGE("SECURITY",
-                   ">>> [TAMPER_DETECTED] Active TracerPid=%d attached <<<",
-                   tracerPid);
-          return JNI_FALSE;
-        }
-      }
-    }
-    fclose(fp);
-  }
-
-  // 2. Anti-Hook Framework Check (/proc/self/maps)
-  FILE *mf = fopen("/proc/self/maps", "r");
-  if (mf) {
-    char mapLine[512];
-    while (fgets(mapLine, sizeof(mapLine), mf)) {
-      if (strstr(mapLine, "frida-agent") || strstr(mapLine, "libfrida") ||
-          strstr(mapLine, "libxposed") || strstr(mapLine, "libsubstrate")) {
-        fclose(mf);
-        NIN_LOGE("SECURITY",
-                 ">>> [TAMPER_DETECTED] Hooking library mapped: %s <<<",
-                 mapLine);
-        return JNI_FALSE;
-      }
-    }
-    fclose(mf);
-  }
-
-  return JNI_TRUE;
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_auth_SecurityVault_nativeSetSession(
-    JNIEnv *env, jclass clazz, jstring jToken, jstring jHwid, jlong expirySec) {
-  const char *token =
-      jToken ? env->GetStringUTFChars(jToken, nullptr) : nullptr;
-  const char *hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : nullptr;
-
-  g_session_verified = false;
-  memset(g_security_session, 0, sizeof(g_security_session));
-  memset(g_security_hwid, 0, sizeof(g_security_hwid));
-
-  if (token && strlen(token) > 0 && hwid && strlen(hwid) > 0 && expirySec > 0) {
-    strncpy(g_security_session, token, sizeof(g_security_session) - 1);
-    strncpy(g_security_hwid, hwid, sizeof(g_security_hwid) - 1);
-    g_session_verified = true;
-    NIN_LOGI(
-        "SECURITY",
-        ">>> [VAULT_UNLOCKED] Verified session active. Expiry: %lld sec. <<<",
-        (long long)expirySec);
-  }
-
-  if (token)
-    env->ReleaseStringUTFChars(jToken, token);
-  if (hwid)
-    env->ReleaseStringUTFChars(jHwid, hwid);
-}
-
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_ninmods_main_auth_SecurityVault_nativeIsSessionValid(JNIEnv *env,
-                                                              jclass clazz) {
-  return g_session_verified ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JavaVM *g_JavaVM = nullptr;

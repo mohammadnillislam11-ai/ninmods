@@ -274,6 +274,7 @@ static auto WorldToScreenPoint(D3DMatrix viewMatrix, Vector3 ScreenPos) {
 
         result.X = v13 + (v13 * v9) / v12;
         result.Y = v14 - (v14 * v10) / v12;
+        result.Z = v12;
     }
     return result;
 }
@@ -553,9 +554,13 @@ inline float FastRandomFloat() {
     return (normalized - 0.5f) * 2.0f * 0.033;
 }
 
-inline void ContinuousAim(uintptr_t oneself) {
+inline void ContinuousAim(uintptr_t oneself = 0) {
     while (keepAiming.load()) {
-        if (!IsValidUserPointer64(oneself)) break;
+        uintptr_t currentSelf = IsValidPlayerObject(ShareLocalPlayer) ? ShareLocalPlayer : (IsValidUserPointer64(oneself) ? oneself : 0);
+        if (!IsValidUserPointer64(currentSelf)) {
+            usleep(10000);
+            continue;
+        }
 
         Vector3 targetPos = Vector3::Zero();
         uintptr_t targetObj = 0;
@@ -570,9 +575,9 @@ inline void ContinuousAim(uintptr_t oneself) {
             continue;
         }
 
-        int mIsFiring = Read<int>(oneself + Offsets::IsFiring);
-        if (mIsFiring <= 0) mIsFiring = Read<int>(oneself + Offsets::IsFiringOld);
-        if (mIsFiring <= 0) mIsFiring = Read<bool>(oneself + Offsets::Player_FiringStateAlt) ? 1 : 0;
+        int mIsFiring = Read<int>(currentSelf + Offsets::IsFiring);
+        if (mIsFiring <= 0) mIsFiring = Read<int>(currentSelf + Offsets::IsFiringOld);
+        if (mIsFiring <= 0) mIsFiring = Read<bool>(currentSelf + Offsets::Player_FiringStateAlt) ? 1 : 0;
 
         bool shouldLock = pPlayer.aimbotlock || (mIsFiring > 0);
 
@@ -580,10 +585,10 @@ inline void ContinuousAim(uintptr_t oneself) {
         if ((pPlayer.aimbot || pPlayer.aimbotlock) && shouldLock) {
             Vector3 camPos = MainCameraTransformPos;
             if (camPos == Vector3::Zero()) {
-                uintptr_t myCam = GetPlayerMainCamera(oneself);
+                uintptr_t myCam = GetPlayerMainCamera(currentSelf);
                 if (IsValidUserPointer64(myCam)) camPos = GetPosition(myCam);
             }
-            if (camPos == Vector3::Zero()) camPos = GetNodePosition(oneself) + Vector3(0, 1.85f, 0);
+            if (camPos == Vector3::Zero()) camPos = GetNodePosition(currentSelf) + Vector3(0, 1.85f, 0);
 
             // Dynamic bone height adjustment
             float aimHeight = 0.0f;
@@ -594,28 +599,28 @@ inline void ContinuousAim(uintptr_t oneself) {
             Quaternion targetRot = GetRotationToTheLocation(targetPos, aimHeight, camPos);
 
             // Write character orientation (Normal: 0x61C / MAX: 0x214)
-            Write<Quaternion>(oneself + Offsets::PlayerRotation, targetRot);
-            Write<Quaternion>(oneself + Offsets::PlayerRotationOld, targetRot);
+            Write<Quaternion>(currentSelf + Offsets::PlayerRotation, targetRot);
+            Write<Quaternion>(currentSelf + Offsets::PlayerRotationOld, targetRot);
 
             // Write primary camera view rotation (MAX: 0x214)
-            Write<Quaternion>(oneself + Offsets::Player_ViewRotation, targetRot);
+            Write<Quaternion>(currentSelf + Offsets::Player_ViewRotation, targetRot);
 
             // Increment aim rotation counter to register in Unity engine (0x810)
-            int rotCount = Read<int>(oneself + Offsets::CallSetAimRotationCount);
+            int rotCount = Read<int>(currentSelf + Offsets::CallSetAimRotationCount);
             if (rotCount >= 0) {
-                Write<int>(oneself + Offsets::CallSetAimRotationCount, rotCount + 1);
+                Write<int>(currentSelf + Offsets::CallSetAimRotationCount, rotCount + 1);
             }
-            int rotCountAlt = Read<int>(oneself + Offsets::CallSetAimRotationCountAlt);
+            int rotCountAlt = Read<int>(currentSelf + Offsets::CallSetAimRotationCountAlt);
             if (rotCountAlt >= 0) {
-                Write<int>(oneself + Offsets::CallSetAimRotationCountAlt, rotCountAlt + 1);
+                Write<int>(currentSelf + Offsets::CallSetAimRotationCountAlt, rotCountAlt + 1);
             }
         }
 
         // 2. Silent Bullet Ray Redirection (BulletInfo: Normal 0xE60 / MAX 0xE58)
         if (pPlayer.silen4a && shouldLock) {
-            uint64_t aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfo);
-            if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfoAlt);
-            if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(oneself + Offsets::AimingInfoOld);
+            uint64_t aimingInfo = Read<uint64_t>(currentSelf + Offsets::AimingInfo);
+            if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(currentSelf + Offsets::AimingInfoAlt);
+            if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(currentSelf + Offsets::AimingInfoOld);
             if (IsValidUserPointer64(aimingInfo)) {
                 Vector3 rayStart = Read<Vector3>(aimingInfo + Offsets::AimingStartPos);
                 if (rayStart == Vector3::Zero()) rayStart = Read<Vector3>(aimingInfo + Offsets::AimingStartPosAlt);
@@ -737,13 +742,24 @@ inline void UpdateAimMagnetFast() {
             auto p3 = Read<uintptr_t>(trVal + Offsets::TransformObj);
             auto transformPtr = Read<uintptr_t>(p3 + Offsets::TransformMatrix);
             if (transformPtr) {
+                {
+                    std::lock_guard<std::mutex> lock(g_aimStateMutex);
+                    if (BasePosMap.find(enemy) == BasePosMap.end()) {
+                        BasePosMap[enemy] = currentRootPos;
+                    }
+                }
                 Write<Vector3>(transformPtr + Offsets::EnemyPosForce, newRootPos);
             }
         }
     }
 }
 
-
+inline void EnsureAimMagnetThreadStarted() {
+    static std::atomic<bool> s_started{false};
+    if (!s_started.exchange(true)) {
+        std::thread([]() { UpdateAimMagnetFast(); }).detach();
+    }
+}
 
 inline void CreateDataList(Response& SendResponse) {
     SendResponse.Success = true;
@@ -1135,6 +1151,11 @@ inline void CreateDataList(Response& SendResponse) {
 
         if (EnemyPosition == Vector3::Zero() || EnemyPositionPe == Vector3::Zero()) continue;
 
+        float distanceToEnemy = (LocalPosition != Vector3::Zero()) ? Vector3::Distance(LocalPosition, EnemyPosition) : 999.0f;
+        if (distanceToEnemy <= 20.0f) {
+            SendResponse.ProximityEnemyCount++;
+        }
+
         // Screen projection
         auto LocationHeadBox = WorldToScreenPoint(matrix, EnemyPosition);
         auto LocationToeBox = WorldToScreenPoint(matrix, EnemyPositionPe);
@@ -1148,7 +1169,6 @@ inline void CreateDataList(Response& SendResponse) {
             LocationToeBox.Y += 30.0f;
         }
 
-        float distanceToEnemy = Vector3::Distance(LocalPosition, EnemyPosition);
         float fovRadius = (pPlayer.AimFov / 180.0f) * (g_screenHeight / 2.0f);
 
         // Populate Response
@@ -1213,20 +1233,21 @@ inline void CreateDataList(Response& SendResponse) {
 
     ShareLocalPlayer = localPlayer;
     if (pPlayer.aimMagnet && hasValidTarget) {
+        EnsureAimMagnetThreadStarted();
         ShareEnemy = bestTargetObj;
     } else {
         ShareEnemy = 0;
         if (!hasValidTarget || mIsFiring <= 0) {
-            BasePosMap.clear();
+            RestoreAllPositions();
         }
     }
 
-    // Threat Counter calculations
+    // Threat Counter calculations (Visible on screen and near off-screen)
     const float offScreenMargin = 40.0f;
-    const float PROXIMITY_DISTANCE = 20.0f;
     for (int i = 0; i < SendResponse.PlayerCount; i++) {
         const PlayerData& player = SendResponse.Players[i];
         Vector3 head = player.Head;
+        if (head.Z <= 0.0f) continue;
         bool onScreen = (head.X >= 0 && head.X <= g_screenWidth &&
                          head.Y >= 0 && head.Y <= g_screenHeight);
         if (onScreen) {
@@ -1237,9 +1258,6 @@ inline void CreateDataList(Response& SendResponse) {
             if (nearOffScreen) {
                 SendResponse.VisibleNearOffScreenEnemyCount++;
             }
-        }
-        if (player.Distancia <= PROXIMITY_DISTANCE) {
-            SendResponse.ProximityEnemyCount++;
         }
     }
 
