@@ -602,6 +602,11 @@ static void LogToDownload(const char* fmt, ...) {
     }
 }
 
+static bool DaemonReadBytes(uintptr_t addr, void* buf, size_t n) {
+    if (addr == 0 || g_mem_fd <= 0) return false;
+    return pread64(g_mem_fd, buf, n, (off64_t)addr) == (ssize_t)n;
+}
+
 static bool IsElfHeader(uintptr_t addr) {
     if (addr == 0 || g_mem_fd <= 0) return false;
     unsigned char magic[4];
