@@ -30,6 +30,11 @@ import com.ninmods.main.R;
 
 public class MainActivity extends BaseActivity {
 
+    @Override
+    protected boolean enableParticleBackground() {
+        return false;
+    }
+
     private static final int REQUEST_LEGACY_STORAGE_PERMISSION = 1003;
 
     // Sequential Permission States
@@ -41,6 +46,7 @@ public class MainActivity extends BaseActivity {
     private boolean isNavigatingAway = false;
     private boolean hasAutoPromptedOverlay = false;
     private boolean isAppStarted = false;
+    private boolean userBypassedStorage = false;
 
     private TextView tvStatus;
     private Button btnAction;
@@ -76,6 +82,8 @@ public class MainActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (isAppStarted || isFinishing()) return;
+
         if (isNavigatingAway) {
             isNavigatingAway = false;
             // Delay check by 250ms to allow Android OS AppOps service to commit permission state
@@ -83,10 +91,10 @@ public class MainActivity extends BaseActivity {
                 if (isFinishing() || isAppStarted) return;
                 if (currentStep == STEP_OVERLAY) {
                     if (isOverlayGranted()) {
-                        currentStep = STEP_STORAGE;
+                        currentStep = userBypassedStorage || isStorageGranted() ? STEP_DONE : STEP_STORAGE;
                     }
                 } else if (currentStep == STEP_STORAGE) {
-                    if (isStorageGranted()) {
+                    if (isStorageGranted() || userBypassedStorage) {
                         currentStep = STEP_DONE;
                     }
                 }
@@ -95,9 +103,9 @@ public class MainActivity extends BaseActivity {
         } else {
             // Check in case user returned without isNavigatingAway trigger or state changed
             if (currentStep == STEP_OVERLAY && isOverlayGranted()) {
-                currentStep = STEP_STORAGE;
+                currentStep = userBypassedStorage || isStorageGranted() ? STEP_DONE : STEP_STORAGE;
                 executeCurrentStep();
-            } else if (currentStep == STEP_STORAGE && isStorageGranted()) {
+            } else if (currentStep == STEP_STORAGE && (isStorageGranted() || userBypassedStorage)) {
                 currentStep = STEP_DONE;
                 executeCurrentStep();
             }
@@ -178,6 +186,7 @@ public class MainActivity extends BaseActivity {
         btnContinueWithoutStorage.setBackgroundColor(Color.TRANSPARENT);
         btnContinueWithoutStorage.setVisibility(View.GONE);
         btnContinueWithoutStorage.setOnClickListener(v -> {
+            userBypassedStorage = true;
             currentStep = STEP_DONE;
             executeCurrentStep();
         });
@@ -305,10 +314,12 @@ public class MainActivity extends BaseActivity {
                 Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
                 intent.setData(Uri.parse("package:" + getPackageName()));
                 startActivity(intent);
-            } catch (Exception e) {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                startActivity(intent);
-            }
+             } catch (Exception e) {
+                 try {
+                     Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                     startActivity(intent);
+                 } catch (Exception ignored) {}
+             }
         } else {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE},
@@ -362,20 +373,22 @@ public class MainActivity extends BaseActivity {
     public static boolean requestSuperUser() {
         Process process = null;
         try {
-            process = Runtime.getRuntime().exec("su");
-            java.io.DataOutputStream os = new java.io.DataOutputStream(process.getOutputStream());
-            os.writeBytes("id\n");
-            os.writeBytes("setenforce 0 2>/dev/null\n");
-            os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /dev/nh* /dev/wanbai* /proc/uevents_records 2>/dev/null\n");
-            os.writeBytes("exit\n");
-            os.flush();
-
+            // Use su -c to execute commands in a single atomic batch without hanging standard input streams
+            process = Runtime.getRuntime().exec(new String[]{"su", "-c", "id; setenforce 0 2>/dev/null; chmod 666 /dev/BYNb* /dev/mem_tool* /dev/nh* /dev/wanbai* /proc/uevents_records 2>/dev/null; true"});
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                boolean finished = process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS);
+                boolean finished = process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS);
                 return finished && process.exitValue() == 0;
             } else {
-                int exitCode = process.waitFor();
-                return exitCode == 0;
+                boolean finished = process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS);
+                if (!finished) {
+                    process.destroy();
+                    return false;
+                }
+                try {
+                    return process.exitValue() == 0;
+                } catch (Throwable t) {
+                    return false;
+                }
             }
         } catch (Throwable t) {
             return false;
