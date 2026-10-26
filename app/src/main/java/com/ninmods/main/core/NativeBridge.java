@@ -98,6 +98,7 @@ public final class NativeBridge {
         startNinliteEngineNative("");
     }
     public static native void stopNinliteEngineNative();
+    public static native String getEngineLiveStatus();
     public static native boolean isNinliteSetupDone();
 
 
