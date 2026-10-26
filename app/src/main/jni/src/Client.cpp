@@ -28,6 +28,13 @@
 #include <sys/sysmacros.h>
 #include <thread>
 #include <unistd.h>
+#if __has_include(<sys/socket.h>)
+#include <sys/socket.h>
+#include <sys/un.h>
+#else
+#include "Includes/android_ide_stubs/sys/socket.h"
+#include "Includes/android_ide_stubs/sys/un.h"
+#endif
 
 
 #include "BooleanClient.h"
@@ -1330,6 +1337,34 @@ Java_com_ninmods_main_core_NativeBridge_closeOverlay(JNIEnv *env,
   NativeOverlayController::s_MenuOpen = false;
 }
 
+static void SyncWithNinLiteDaemon(int mode, bool isOn, int value) {
+  int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (sock < 0) return;
+  sockaddr_un addr{};
+  addr.sun_family = AF_UNIX;
+  addr.sun_path[0] = '\0';
+  strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
+  struct timeval tv{0, 150000};
+  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+  if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
+    struct {
+      int Mode;
+      bool m_IsOn;
+      int value;
+      int ScreenWidth;
+      int ScreenHeight;
+    } req{};
+    req.Mode = mode;
+    req.m_IsOn = isOn;
+    req.value = value;
+    uint32_t len = htonl(sizeof(req));
+    send(sock, &len, sizeof(len), 0);
+    send(sock, &req, sizeof(req), 0);
+  }
+  close(sock);
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
                                                         jclass clazz,
@@ -1340,6 +1375,7 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
   // ESP Features
   case 1:
     Actived.activar = bState;
+    SyncWithNinLiteDaemon(3, bState, 0);
     break;
   case 2:
     pEspPlayer.espCaixa = bState;
@@ -1420,12 +1456,15 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
   case 301:
     pPlayer.silen4a = bState;
     pPlayer.aimbot = bState;
+    SyncWithNinLiteDaemon(57, bState, 0);
     break;
   case 302:
     pPlayer.ignoreKnocked = bState;
+    SyncWithNinLiteDaemon(55, bState, 0);
     break;
   case 999:
     Actived.activar = bState;
+    SyncWithNinLiteDaemon(3, bState, 0);
     NIN_LOGI("NINLITE", "Root Engine state toggled: %d", bState ? 1 : 0);
     break;
 
@@ -1460,13 +1499,16 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env,
     break;
   case 303:
     pPlayer.AimFov = fVal;
+    SyncWithNinLiteDaemon(58, true, (int)fVal);
     break;
   case 304:
     pPlayer.AimFovScale = 1.0f + (fVal * 0.1f);
+    SyncWithNinLiteDaemon(62, true, (int)fVal);
     break;
   case 305:
     // Silent Target: 0 = Legit, 1 = Head, 2 = Chest, 3 = Neck
     pPlayer.silentAimHead = ((int)fVal == 1 || (int)fVal == 0);
+    SyncWithNinLiteDaemon(70, true, ((int)fVal == 1) ? 100 : 0);
     break;
   default:
     break;
@@ -1572,6 +1614,234 @@ Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env,
            entities, visible, espActive ? "ACTIVE" : "STANDBY",
            aimActive ? "ENABLED" : "OFF");
   return env->NewStringUTF(buf);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ninmods_main_core_NativeBridge_getDetectedGamePid(JNIEnv *env, jclass clazz) {
+  if (target_pid > 0 && kill(target_pid, 0) == 0) {
+    return (jint)target_pid;
+  }
+  target_pid = FindGamePid();
+  return (jint)target_pid;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_isLiveGameDetected(JNIEnv *env, jclass clazz) {
+  if (target_pid > 0 && kill(target_pid, 0) == 0) {
+    return JNI_TRUE;
+  }
+  target_pid = FindGamePid();
+  return (target_pid > 0) ? JNI_TRUE : JNI_FALSE;
+}
+
+static bool g_ninlite_setup_done_flag = false;
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ninmods_main_core_NativeBridge_getNinliteStateJson(JNIEnv *env, jclass clazz) {
+  // Check daemon/socket connection
+  bool shellOk = false;
+  {
+    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sock >= 0) {
+      struct sockaddr_un addr;
+      memset(&addr, 0, sizeof(addr));
+      addr.sun_family = AF_UNIX;
+      strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
+      if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
+        shellOk = true;
+      }
+      close(sock);
+    }
+  }
+
+  // Check driver/engine
+  bool connected = (driver && driver->isConnected() && driver->getFd() >= 0);
+  if (!connected && driver) {
+    connected = driver->initDriver();
+  }
+
+  // Check game
+  pid_t pid = (target_pid > 0 && kill(target_pid, 0) == 0) ? target_pid : FindGamePid();
+  if (pid > 0) target_pid = pid;
+  bool gameDetected = (pid > 0);
+  const char *gameName = "Free Fire Max";
+  if (pid > 0) {
+    char cmdline[256] = {0};
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+    FILE* f = fopen(path, "r");
+    if (f) {
+      fgets(cmdline, sizeof(cmdline), f);
+      fclose(f);
+    }
+    if (strstr(cmdline, "com.dts.freefireth") || strstr(cmdline, "com.dts.freefirein")) {
+      gameName = "Free Fire Normal";
+    } else if (strstr(cmdline, "com.dts.freefiremax")) {
+      gameName = "Free Fire Max";
+    } else if (gameDetected) {
+      gameName = "Free Fire Active";
+    }
+  }
+
+  // Emulator rough check via build props not available here but keep false from engine side
+  bool isEmu = false;
+  const char *conn = "Phantom";
+  const char *mode = connected ? "External (Root)" : "External (Root)";
+  const char *status = (shellOk && connected && Actived.activar) ? "connected" : (shellOk ? "connecting" : "disconnected");
+
+  bool readyToHide = shellOk && gameDetected && Actived.activar && connected;
+  if (readyToHide) {
+    g_ninlite_setup_done_flag = true;
+  }
+
+  char buf[1024];
+  snprintf(buf, sizeof(buf),
+           "{\"emulator\":%s,\"conn\":\"%s\",\"mode\":\"%s\",\"status\":\"%s\",\"game\":\"%s\",\"gameDetected\":%s,\"shellOk\":%s,\"readyToHide\":%s}",
+           isEmu ? "true" : "false",
+           conn,
+           mode,
+           status,
+           gameName,
+           gameDetected ? "true" : "false",
+           shellOk ? "true" : "false",
+           readyToHide ? "true" : "false");
+  return env->NewStringUTF(buf);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_startNinliteEngineNative(JNIEnv *env, jclass clazz) {
+  // Trigger real engine start via existing ninlite daemon sync
+  SyncWithNinLiteDaemon(3, true, 0);
+  if (driver) {
+    driver->initDriver();
+  }
+  Actived.activar = true;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_stopNinliteEngineNative(JNIEnv *env, jclass clazz) {
+  SyncWithNinLiteDaemon(3, false, 0);
+  Actived.activar = false;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_isNinliteSetupDone(JNIEnv *env, jclass clazz) {
+  return g_ninlite_setup_done_flag ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ninmods_main_core_NativeBridge_getDetectedGameTitle(JNIEnv *env, jclass clazz) {
+  pid_t pid = (target_pid > 0 && kill(target_pid, 0) == 0) ? target_pid : FindGamePid();
+  if (pid > 0) {
+    target_pid = pid;
+    char cmdline[256] = {0};
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+    FILE* f = fopen(path, "r");
+    if (f) {
+      fgets(cmdline, sizeof(cmdline), f);
+      fclose(f);
+    }
+    if (strstr(cmdline, "com.dts.freefiremax")) {
+      return env->NewStringUTF("Free Fire Max");
+    } else if (strstr(cmdline, "com.dts.freefireth") || strstr(cmdline, "com.dts.freefirein")) {
+      return env->NewStringUTF("Free Fire Normal");
+    } else {
+      return env->NewStringUTF("Free Fire Active");
+    }
+  }
+  return env->NewStringUTF("Waiting for Game...");
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_isEmulatorDetected(JNIEnv *env, jclass clazz) {
+  if (access("/dev/qemu_pipe", F_OK) == 0 ||
+      access("/dev/vboxguest", F_OK) == 0 ||
+      access("/dev/vboxuser", F_OK) == 0 ||
+      access("/system/bin/nox-prop", F_OK) == 0 ||
+      access("/system/bin/androVM-prop", F_OK) == 0) {
+    return JNI_TRUE;
+  }
+  FILE* f = fopen("/system/build.prop", "r");
+  if (f) {
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+      if (strstr(line, "ro.kernel.qemu") ||
+          strstr(line, "vbox") ||
+          strstr(line, "goldfish") ||
+          strstr(line, "genymotion") ||
+          strstr(line, "bluestacks")) {
+        fclose(f);
+        return JNI_TRUE;
+      }
+    }
+    fclose(f);
+  }
+  return JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ninmods_main_core_NativeBridge_getConnectionMode(JNIEnv *env, jclass clazz) {
+  if (driver && driver->isConnected()) {
+    return env->NewStringUTF(driver->getDriverModeName());
+  }
+  if (driver && driver->initDriver()) {
+    return env->NewStringUTF(driver->getDriverModeName());
+  }
+  int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (sock >= 0) {
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    addr.sun_path[0] = '\0';
+    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
+    struct timeval tv{0, 150000};
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
+      close(sock);
+      return env->NewStringUTF("Phantom IPC (Daemon)");
+    }
+    close(sock);
+  }
+  return env->NewStringUTF("Phantom (Standby)");
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_core_NativeBridge_isShellDaemonRunning(JNIEnv *env, jclass clazz) {
+  int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (sock >= 0) {
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    addr.sun_path[0] = '\0';
+    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
+    struct timeval tv{0, 150000};
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    bool ok = (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0);
+    close(sock);
+    if (ok) return JNI_TRUE;
+  }
+  DIR* dir = opendir("/proc");
+  if (!dir) return JNI_FALSE;
+  struct dirent* entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (entry->d_type == DT_DIR && isdigit(entry->d_name[0])) {
+      char cmdPath[64];
+      snprintf(cmdPath, sizeof(cmdPath), "/proc/%s/cmdline", entry->d_name);
+      FILE* f = fopen(cmdPath, "r");
+      if (f) {
+        char cmdline[128] = {0};
+        fgets(cmdline, sizeof(cmdline), f);
+        fclose(f);
+        if (strstr(cmdline, "ninlite_daemon")) {
+          closedir(dir);
+          return JNI_TRUE;
+        }
+      }
+    }
+  }
+  closedir(dir);
+  return JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL

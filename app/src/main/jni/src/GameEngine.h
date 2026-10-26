@@ -1280,14 +1280,111 @@ inline void CreateDataList(Response& SendResponse) {
 inline std::mutex g_engineTransactionMutex;
 inline Response s_cachedResponse{};
 
+struct DaemonPlayerData {
+    Vector3 Head;
+    Vector3 Toe;
+    bool IsCaido;
+    float Distancia;
+    int Health;
+    bool Name;
+    char PlayerName[64];
+    int SpecialAbilities;
+    short WeaponId;
+};
+
+struct DaemonResponse {
+    bool Success;
+    int PlayerCount;
+    int EnemiesInFront;
+    int EnemiesBehind;
+    DaemonPlayerData Players[100];
+};
+
+inline bool isNinLiteDaemonAvailable() {
+    int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sock < 0) return false;
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    addr.sun_path[0] = '\0';
+    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
+    struct timeval tv{0, 50000};
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    bool connected = (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0);
+    close(sock);
+    return connected;
+}
+
+inline Response RequestDaemonESP(int screenWidth, int screenHeight) {
+    Response result{};
+    int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sock < 0) return result;
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    addr.sun_path[0] = '\0';
+    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
+    struct timeval tv{0, 100000};
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
+        struct {
+            int Mode;
+            bool m_IsOn;
+            int value;
+            int ScreenWidth;
+            int ScreenHeight;
+        } req{99, true, 0, screenWidth, screenHeight}; // Mode 99 = EspMode
+        
+        uint32_t len = htonl(sizeof(req));
+        if (send(sock, &len, sizeof(len), 0) > 0 && send(sock, &req, sizeof(req), 0) > 0) {
+            uint32_t respLen = 0;
+            if (recv(sock, &respLen, sizeof(respLen), MSG_WAITALL) == sizeof(respLen)) {
+                respLen = ntohl(respLen);
+                DaemonResponse dResp{};
+                if (respLen <= sizeof(dResp) && recv(sock, &dResp, respLen, MSG_WAITALL) == (ssize_t)respLen) {
+                    result.Success = dResp.Success;
+                    result.PlayerCount = dResp.PlayerCount;
+                    result.VisibleEnemyCount = dResp.EnemiesInFront;
+                    result.VisibleNearOffScreenEnemyCount = dResp.EnemiesBehind;
+                    for (int i = 0; i < dResp.PlayerCount && i < maxplayerCount; i++) {
+                        result.Players[i].Head = dResp.Players[i].Head;
+                        result.Players[i].Toe = dResp.Players[i].Toe;
+                        result.Players[i].IsCaido = dResp.Players[i].IsCaido;
+                        result.Players[i].Distancia = dResp.Players[i].Distancia;
+                        result.Players[i].Health = dResp.Players[i].Health;
+                        result.Players[i].Name = dResp.Players[i].Name;
+                        strncpy(result.Players[i].PlayerName, dResp.Players[i].PlayerName, sizeof(result.Players[i].PlayerName) - 1);
+                    }
+                }
+            }
+        }
+    }
+    close(sock);
+    return result;
+}
+
 inline Response getData(int screenWidth, int screenHeight) {
     std::lock_guard<std::mutex> lock(g_engineTransactionMutex);
     g_screenWidth = screenWidth;
     g_screenHeight = screenHeight;
+
+    if (driver && driver->isConnected()) {
+        CreateDataList(s_cachedResponse);
+        return s_cachedResponse;
+    }
+
+    Response daemonResponse = RequestDaemonESP(screenWidth, screenHeight);
+    if (daemonResponse.Success) {
+        return daemonResponse;
+    }
+
     CreateDataList(s_cachedResponse);
     return s_cachedResponse;
 }
 
 inline bool isConnected() {
-    return (driver && (driver->isConnected() || driver->initDriver()));
+    if (driver && (driver->isConnected() || driver->initDriver())) {
+        return true;
+    }
+    return isNinLiteDaemonAvailable();
 }

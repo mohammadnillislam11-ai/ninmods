@@ -87,6 +87,13 @@ public final class NativeBridge {
     public static native boolean getFeatureState(int featId);
     public static native boolean isKernelDriverConnected();
     public static native String getEngineLiveStatus();
+    public static native int getDetectedGamePid();
+    public static native String getDetectedGameTitle();
+    public static native boolean isEmulatorDetected();
+    public static native String getConnectionMode();
+    public static native boolean isShellDaemonRunning();
+    public static native boolean isLiveGameDetected();
+
 
     /**
      * Invoked directly from C++ LicensePopup modal when user clicks "VERIFY LICENSE".
