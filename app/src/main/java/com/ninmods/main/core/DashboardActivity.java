@@ -263,7 +263,7 @@ public class DashboardActivity extends BaseActivity {
                 // Step 2: C++ Kernel Driver Checker Alert (if /dev/BYNb offline)
                 // Step 3: High-FPS Draggable Floating Logo & Brand Tactical Mod Menu
                 if ("ninlite".equals(menu.getId())) {
-                    com.ninmods.main.menu.ninlite.NinLiteOverlayManager.start(DashboardActivity.this, menu.getId());
+                    com.ninmods.main.menu.ninlite.NinLiteOverlayManager.start(DashboardActivity.this);
                 } else {
                     com.ninmods.main.overlay.NativeOverlayManager.start(DashboardActivity.this, menu.getId());
                 }
