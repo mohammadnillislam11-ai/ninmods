@@ -1,0 +1,37 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Outer Cybernetic Shield -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF00E5FF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M24,3 L39,10 L39,26 C39,35 24,45 24,45 C24,45 9,35 9,26 L9,10 Z"/>
+
+    <!-- Inner Glowing Ninja Visor / Stealth Mask -->
+    <path
+        android:fillColor="#FF00E5FF"
+        android:pathData="M15,19 L33,19 L31,25 L24,29 L17,25 Z"/>
+
+    <!-- Cyber Horns / Tactical Headpiece -->
+    <path
+        android:fillColor="#FF00B0FF"
+        android:pathData="M17,14 L14,7 L19,10 Z M31,14 L34,7 L29,10 Z"/>
+
+    <!-- Electric Neon Center Core -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M24,20 L26.5,23.5 L24,27 L21.5,23.5 Z"/>
+
+    <!-- Tech Circuit Accent Lines -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF80D8FF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M16,30 L20,34 L24,34 M32,30 L28,34 L24,34"/>
+</vector>

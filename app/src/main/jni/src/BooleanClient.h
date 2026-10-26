@@ -22,6 +22,7 @@ enum LineType {
 
 inline struct PlayerState {
     bool aimbot = false;
+    bool aimhard = false;
     bool fovawm = false;
     bool selectTarget = false;
     bool silen4a = false; 

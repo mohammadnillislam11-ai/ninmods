@@ -1396,12 +1396,39 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
   case 41:
     pPlayer.SpeedHackV2 = bState;
     break;
-  case 42:
-    pPlayer.PlayerToMe = bState;
+  // NINLITE Checkbox & Switch Features
+  case 101:
+    pEspPlayer.espCaixa = bState;
+    Actived.activar = true;
     break;
-  case 43:
-    pPlayer.undercam = bState;
+  case 102:
+    pEspPlayer.espLinha = bState;
+    Actived.activar = true;
     break;
+  case 103:
+    pEspPlayer.espHealth = bState;
+    Actived.activar = true;
+    break;
+  case 104:
+    pEspPlayer.espDistance = bState;
+    Actived.activar = true;
+    break;
+  case 105:
+    pEspPlayer.espName = bState;
+    Actived.activar = true;
+    break;
+  case 301:
+    pPlayer.silen4a = bState;
+    pPlayer.aimbot = bState;
+    break;
+  case 302:
+    pPlayer.ignoreKnocked = bState;
+    break;
+  case 999:
+    Actived.activar = bState;
+    NIN_LOGI("NINLITE", "Root Engine state toggled: %d", bState ? 1 : 0);
+    break;
+
   default:
     break;
   }
@@ -1422,6 +1449,24 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env,
     break;
   case 102:
     pPlayer.gameSpeed = fVal;
+    break;
+
+  // NINLITE Sliders & Dropdown Values
+  case 201:
+    pEspPlayer.boxType = (BoxType)((int)fVal);
+    break;
+  case 202:
+    pEspPlayer.lineType = (LineType)((int)fVal);
+    break;
+  case 303:
+    pPlayer.AimFov = fVal;
+    break;
+  case 304:
+    pPlayer.AimFovScale = 1.0f + (fVal * 0.1f);
+    break;
+  case 305:
+    // Silent Target: 0 = Legit, 1 = Head, 2 = Chest, 3 = Neck
+    pPlayer.silentAimHead = ((int)fVal == 1 || (int)fVal == 0);
     break;
   default:
     break;

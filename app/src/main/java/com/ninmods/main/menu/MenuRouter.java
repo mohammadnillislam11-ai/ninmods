@@ -28,9 +28,10 @@ public class MenuRouter {
     private static final Map<String, IMenuProject> REGISTRY = new LinkedHashMap<>();
 
     static {
-        // Register exclusively NINMODS tactical menu project (single active brand isolation)
+        // 1. Primary NINMODS Tactical Menu (Kernel Mode)
         register(new NinMenuProject());
-        // Other sub-brands (Bull, Cross, Delta) are dormant and reserved for future white-label modules
+        // 2. NINLITE Cyberpunk Menu (Pure Root Daemon Mode - Sidebar UI)
+        register(new com.ninmods.main.menu.ninlite.NinLiteMenuProject());
     }
 
     private static synchronized void register(IMenuProject menu) {

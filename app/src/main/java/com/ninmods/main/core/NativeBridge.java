@@ -80,6 +80,10 @@ public final class NativeBridge {
      */
     public static native void setFeatureState(int featId, boolean state);
     public static native void setFeatureFloat(int featId, float value);
+    public static void setFeatureEnabled(int featId, int value) {
+        setFeatureFloat(featId, (float) value);
+        setFeatureState(featId, value != 0);
+    }
     public static native boolean getFeatureState(int featId);
     public static native boolean isKernelDriverConnected();
     public static native String getEngineLiveStatus();

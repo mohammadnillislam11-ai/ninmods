@@ -44,3 +44,15 @@ LOCAL_LDLIBS    := -llog -landroid -lGLESv3 -lEGL -lz
 LOCAL_ARM_MODE  := arm
 include $(BUILD_SHARED_LIBRARY)
 
+# --- Module: ninlite_daemon (Pure Root Daemon Engine matching STORM_MODS architecture) ---
+include $(CLEAR_VARS)
+LOCAL_MODULE    := ninlite_daemon
+LOCAL_SRC_FILES := src/ninlite_daemon/ninlite_daemon.cpp src/ninlite_daemon/Namegun.cpp
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/src $(LOCAL_PATH)/src/Includes $(LOCAL_PATH)/src/Unity $(LOCAL_PATH)/src/ninlite_daemon
+LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti
+LOCAL_CFLAGS    := -Wno-error=format-security -fpermissive -fvisibility=hidden -fexceptions -frtti -DNDEBUG
+LOCAL_LDFLAGS   := -Wl,--exclude-libs,ALL -s
+LOCAL_LDLIBS    := -llog -lz
+LOCAL_ARM_MODE  := arm
+include $(BUILD_EXECUTABLE)
+
