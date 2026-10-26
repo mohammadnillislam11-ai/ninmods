@@ -17,6 +17,8 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
