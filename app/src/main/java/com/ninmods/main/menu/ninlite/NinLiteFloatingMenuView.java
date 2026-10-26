@@ -76,6 +76,7 @@ public class NinLiteFloatingMenuView {
     private int mSelectedTabIndex = 0;
     private boolean mIsAttached = false;
     private boolean mIsEngineStarted = false;
+    private boolean mSetupComplete = false;
 
     // References for dynamic UI updates
     private TextView mStatusValView;
@@ -324,6 +325,7 @@ public class NinLiteFloatingMenuView {
     }
 
     private void selectTab(int index) {
+        if (mSetupComplete && index == 0) index = 1;
         mSelectedTabIndex = index;
         for (int i = 0; i < mContentSections.length; i++) {
             mContentSections[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
@@ -580,6 +582,21 @@ public class NinLiteFloatingMenuView {
                 // 4. Activate native C++ features
                 NativeBridge.setFeatureEnabled(1, 1);   // Actived.activar = true
                 NativeBridge.setFeatureEnabled(999, 1); // Root Engine Online
+
+                // After successful start: hide setup layer permanently
+                mMainHandler.post(() -> {
+                    mSetupComplete = true;
+                    if (mSidebarButtons != null && mSidebarButtons.length > 0 && mSidebarButtons[0] != null) {
+                        mSidebarButtons[0].setVisibility(View.GONE);
+                    }
+                    if (mContentSections != null && mContentSections.length > 0 && mContentSections[0] != null) {
+                        mContentSections[0].setVisibility(View.GONE);
+                    }
+                    // Switch to first feature tab
+                    if (mContentSections != null && mContentSections.length > 1) {
+                        selectTab(1);
+                    }
+                });
             }).start();
         } else {
             mStatusValView.setText("Disconnected");
