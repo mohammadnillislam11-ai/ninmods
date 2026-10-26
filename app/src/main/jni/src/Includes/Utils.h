@@ -269,7 +269,7 @@ T Read(uintptr_t address) {
 
 // Pure Kernel Driver String Read via IOCTL_RT_READ (Ring 0)
 template<>
-std::string Read<std::string>(uintptr_t address) {
+inline std::string Read<std::string>(uintptr_t address) {
     std::string result;
     if (address == 0) return result;
     const size_t max_len = 4096;
