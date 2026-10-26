@@ -550,15 +550,19 @@ public class NinLiteFloatingMenuView {
                     boolean shellActive = daemonRunning || driverConnected;
                     boolean gameDetected = (pid > 0);
 
-                    if (shellActive && gameDetected) {
+                    if (shellActive) {
                         mIsEngineStarted = true;
                         mIsEngineStarting = false;
                         if (mStatusValView != null) {
-                            mStatusValView.setText("Connected: " + gameTitle + " (PID " + pid + ")");
+                            if (gameDetected) {
+                                mStatusValView.setText("Connected: " + gameTitle + " (PID " + pid + ")");
+                            } else {
+                                mStatusValView.setText("Root Daemon Online (Ready for Game)");
+                            }
                             mStatusValView.setTextColor(COLOR_GREEN);
                         }
                         if (mStartBtnView != null) {
-                            mStartBtnView.setText("Connected ✓");
+                            mStartBtnView.setText(gameDetected ? "Connected ✓" : "Started ✓");
                             mStartBtnView.setTextColor(Color.WHITE);
                             GradientDrawable greenBg = new GradientDrawable();
                             greenBg.setColor(COLOR_GREEN);
@@ -566,16 +570,11 @@ public class NinLiteFloatingMenuView {
                             mStartBtnView.setBackground(greenBg);
                         }
 
-                        // Shell running AND live game detected: dismiss settings page permanently!
+                        // Shell running & started: dismiss settings setup page permanently!
                         mMainHandler.postDelayed(() -> {
                             dismissSettingsTabPermanently();
-                        }, 600);
+                        }, 700);
                         return; // Stop poller
-                    } else if (shellActive) {
-                        if (mStatusValView != null) {
-                            mStatusValView.setText("Shell Active (Waiting for Game...)");
-                            mStatusValView.setTextColor(COLOR_CYAN);
-                        }
                     } else {
                         if (mStatusValView != null) {
                             mStatusValView.setText("Starting Shell Daemon...");
