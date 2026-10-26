@@ -58,18 +58,16 @@ jobs:
           $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V${APP_VER}.apk" main_aligned.apk
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V${APP_VER}.apk"
 
-      - name: Fetch Latest Loader APK
+      - name: Fetch Latest Loader APK (Preserve Original Version)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p loader_tmp
-          APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
-          if [ -z "$APP_VER" ]; then APP_VER="90.2"; fi
-          gh release download --repo mohammadnillislam11-ai/ninmods-kernel-builder --pattern "*.apk" --dir loader_tmp 2>/dev/null || curl -sL --fail "https://github.com/mohammadnillislam11-ai/ninmods-kernel-builder/releases/latest/download/NINMODS_Driver_Loader.apk" -o "loader_tmp/NINMODS_Driver_Loader.apk" || echo "Loader download fallback"
-          LOADER_FILE=$(find loader_tmp -type f -name "*.apk" | head -n 1)
+          gh release download --repo mohammadnillislam11-ai/ninmods-kernel-builder --pattern "Loader_V*.apk" --dir loader_tmp 2>/dev/null || echo "Loader download fallback"
+          LOADER_FILE=$(find loader_tmp -type f -name "Loader_V*.apk" | head -n 1)
           if [ -n "$LOADER_FILE" ]; then
-            cp -f "$LOADER_FILE" "Loader_V${APP_VER}.apk"
-            cp -f "$LOADER_FILE" "Loader_V45.apk"
+            # Copy keeping its original filename and version intact
+            cp -f "$LOADER_FILE" "./"
           fi
           ls -la *.apk
 
@@ -77,30 +75,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NINMODS-Release-APKs
-          path: |
-            Main_V*.apk
-            Loader_*.apk
+          path: "*.apk"
 
-      - name: Create GitHub Release and Upload Both APKs
+      - name: Create GitHub Release and Upload APKs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
-          if [ -z "$APP_VER" ]; then APP_VER="90.2"; fi
+          if [ -z "$APP_VER" ]; then APP_VER="90.58"; fi
           echo "Cleaning up all older releases..."
           for old_tag in $(gh release list --limit 50 --json tagName -q '.[].tagName'); do
             echo "Deleting old release: $old_tag"
             gh release delete "$old_tag" --yes --cleanup-tag || true
           done
 
-          RELEASE_TAG="v${APP_VER}-$(date +'%Y%m%d%H%M%S')"
-          ASSETS="Main_V${APP_VER}.apk"
-          if [ -f "Loader_V${APP_VER}.apk" ]; then
-            ASSETS="Main_V${APP_VER}.apk Loader_V${APP_VER}.apk"
-          elif [ -f "Loader_V45.apk" ]; then
-            ASSETS="Main_V${APP_VER}.apk Loader_V45.apk"
-          fi
+          RELEASE_TAG="V${APP_VER}-$(date +'%Y%m%d%H%M%S')"
+          ASSETS=$(find . -maxdepth 1 -type f -name "*.apk")
           gh release create "$RELEASE_TAG" \
             $ASSETS \
-            --title "Release $RELEASE_TAG" \
-            --notes "NINMODS Release $RELEASE_TAG with Permanent 90.X Architecture"
+            --title "Main V${APP_VER}" \
+            --notes "NINMODS Main App V${APP_VER} (100% Kernel Driver Architecture)"
