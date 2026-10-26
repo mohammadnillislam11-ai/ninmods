@@ -572,9 +572,9 @@ public class NinLiteFloatingMenuView {
                     os.writeBytes("exit\n");
                     os.flush();
                     suProcess.waitFor();
-                    AppLogger.i(TAG, "Root daemon and SELinux shell script injected successfully");
+                    AppLogger.log(TAG, "Root daemon and SELinux shell script injected successfully");
                 } catch (Throwable t) {
-                    AppLogger.e(TAG, "Error executing su root shell script: " + t.getMessage());
+                    AppLogger.logE(TAG, "Error executing su root shell script: " + t.getMessage());
                 }
 
                 // 4. Activate native C++ features
