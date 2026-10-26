@@ -32,6 +32,12 @@ import com.ninmods.main.core.Prefs;
 
 public class LoginActivity extends BaseActivity {
 
+    @Override
+    protected boolean enableSecureScreen() {
+        return true;
+    }
+
+
     private static final String PREF_REMEMBER_ME = "pref_auth_remember_me";
     private static final String PREF_SAVED_USERNAME = "pref_auth_saved_username";
     private static final String PREF_SAVED_PASSWORD = "pref_auth_saved_password";
@@ -303,7 +309,7 @@ public class LoginActivity extends BaseActivity {
                 if (!username.contains("@") || Prefs.with(LoginActivity.this).readString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_USERNAME, "").isEmpty()) {
                     Prefs.with(LoginActivity.this).writeString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_USERNAME, username);
                 }
-                Prefs.with(LoginActivity.this).writeString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_PASSWORD, password);
+                AuthManager.setActivePasswordHash(LoginActivity.this, AuthManager.hashPassword(password));
 
                 AuthManager.setLoggedIn(LoginActivity.this, true);
                 Toast.makeText(LoginActivity.this, message, Toast.LENGTH_SHORT).show();

@@ -2,7 +2,6 @@ package com.ninmods.main.core;
 
 import android.content.Context;
 import android.os.Build;
-import android.os.Environment;
 import android.util.Log;
 
 import java.io.File;
@@ -17,12 +16,11 @@ import java.util.Locale;
 /**
  * Standard Diagnostics & Telemetry Logger for NINMODS.
  * 
- * Strict Download Folder Policy (Rule 15 of GEMINI.md):
- * - Absolutely NEVER saves loose files to root SDCard (/sdcard/) or app internal data.
- * - Automatically creates a dedicated 'ninmods' directory inside the default Download folder:
- *   /storage/emulated/0/Download/ninmods/ninmods.log
+ * Strict Private Storage Policy:
+ * - Logs are written to the app's private files directory (files/logs/ninmods.log).
+ * - Not in public Download, so other apps and users cannot read device, HWID, or session data.
  * - All runtime errors, kernel driver status, memory inquiries, and system events
- *   are comprehensively captured here for effortless inspection via Android default Files app.
+ *   are captured here for inspection from within the app.
  */
 public final class AppLogger {
     private static final String TAG = "NINMODS_LOG";
@@ -59,34 +57,28 @@ public final class AppLogger {
     }
 
     /**
-     * Resolves the dedicated log file located strictly inside Download/ninmods/ directory.
+     * Resolves the log file inside the app's PRIVATE files directory.
+     * Not under public Download, so other apps and users cannot read device/session data.
      */
     private static File getDedicatedLogFile() {
-        try {
-            File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-            if (downloadDir != null) {
-                File ninmodsFolder = new File(downloadDir, "ninmods");
-                if (!ninmodsFolder.exists()) {
-                    ninmodsFolder.mkdirs();
-                }
-                return new File(ninmodsFolder, "ninmods.log");
-            }
-        } catch (Throwable ignored) {}
-
-        // Direct standard fallback strictly inside the official Download folder
-        File fallbackDir = new File("/storage/emulated/0/Download/ninmods");
-        if (!fallbackDir.exists()) {
-            fallbackDir.mkdirs();
+        File base = (sContext != null) ? sContext.getFilesDir() : null;
+        if (base == null) {
+            return null;
         }
-        return new File(fallbackDir, "ninmods.log");
+        File logDir = new File(base, "logs");
+        if (!logDir.exists()) {
+            logDir.mkdirs();
+        }
+        return new File(logDir, "ninmods.log");
     }
 
     /**
-     * Automatically ensures the 'ninmods' subfolder and log file exist inside the Download folder.
+     * Ensures the private log directory and file exist, with owner-only permissions.
      */
     private static void ensureLogFolderAndFile() {
         try {
             File logFile = getDedicatedLogFile();
+            if (logFile == null) return;
             File parentDir = logFile.getParentFile();
             if (parentDir != null && !parentDir.exists()) {
                 parentDir.mkdirs();
@@ -94,10 +86,10 @@ public final class AppLogger {
             if (!logFile.exists()) {
                 logFile.createNewFile();
             }
-            logFile.setReadable(true, false);
-            logFile.setWritable(true, false);
+            logFile.setReadable(true, true);
+            logFile.setWritable(true, true);
         } catch (Throwable t) {
-            Log.w(TAG, "Notice: Download/ninmods folder creation deferral: " + t.getMessage());
+            Log.w(TAG, "Log folder creation deferred: " + t.getMessage());
         }
     }
 
@@ -113,7 +105,7 @@ public final class AppLogger {
         log("SYSTEM", "Hardware: " + Build.HARDWARE + " | Board: " + Build.BOARD);
         log("SYSTEM", "Primary ABI: " + (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "arm64-v8a"));
         log("SYSTEM", "Android OS: Android " + Build.VERSION.RELEASE + " (API Level " + Build.VERSION.SDK_INT + ")");
-        log("SYSTEM", "Log Directory: /storage/emulated/0/Download/ninmods/ninmods.log");
+        log("SYSTEM", "Log Directory: app private storage (files/logs/ninmods.log)");
         log("SYSTEM", "SELinux State: " + getSelinuxStatus());
         log("SYSTEM", "SuperUser Binary: " + (new File("/system/bin/su").exists() || new File("/system/xbin/su").exists() ? "DETECTED" : "STANDARD"));
         log("SYSTEM", "Kernel Driver Node: /dev/BYNb (Ring 0 IOCTL 0x801/0x802/0x803)");
@@ -141,6 +133,7 @@ public final class AppLogger {
             synchronized (LOCK) {
                 try {
                     File logFile = getDedicatedLogFile();
+                    if (logFile == null) return;
                     File parentDir = logFile.getParentFile();
                     if (parentDir != null && !parentDir.exists()) {
                         parentDir.mkdirs();
@@ -149,8 +142,8 @@ public final class AppLogger {
                     fw.write(formattedLine + "\n");
                     fw.flush();
                     fw.close();
-                    logFile.setReadable(true, false);
-                    logFile.setWritable(true, false);
+                    logFile.setReadable(true, true);
+                    logFile.setWritable(true, true);
                 } catch (Throwable ignored) {}
             }
         });
@@ -189,7 +182,7 @@ public final class AppLogger {
         synchronized (LOCK) {
             List<String> result = new ArrayList<>();
             if (sMemoryLogBuffer.isEmpty()) {
-                result.add("No live memory logs recorded yet. Telemetry streaming to Download/ninmods/ninmods.log.");
+                result.add("No live memory logs recorded yet. Telemetry streaming to app private storage (files/logs/ninmods.log).");
                 return result;
             }
             int start = Math.max(0, sMemoryLogBuffer.size() - maxLines);

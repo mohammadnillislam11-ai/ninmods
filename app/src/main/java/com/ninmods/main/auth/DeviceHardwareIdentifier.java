@@ -117,44 +117,6 @@ public final class DeviceHardwareIdentifier {
     }
 
     /**
-     * Reads hardware serial number from /proc/cpuinfo.
-     */
-    private static String getCpuSerialFromProc() {
-        File cpuInfo = new File("/proc/cpuinfo");
-        if (!cpuInfo.exists() || !cpuInfo.canRead()) {
-            return "UNKNOWN_CPU";
-        }
-        try (BufferedReader br = new BufferedReader(new FileReader(cpuInfo))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                line = line.trim();
-                if (line.toLowerCase(Locale.US).startsWith("serial") && line.contains(":")) {
-                    String[] parts = line.split(":", 2);
-                    if (parts.length > 1 && !parts[1].trim().isEmpty() && !parts[1].trim().equals("0000000000000000")) {
-                        return parts[1].trim();
-                    }
-                }
-            }
-        } catch (Throwable ignored) {}
-        return "UNKNOWN_CPU";
-    }
-
-    /**
-     * Queries internal Android SystemProperties via reflection.
-     */
-    private static String getSystemProperty(String key, String defaultValue) {
-        try {
-            Class<?> spClass = Class.forName("android.os.SystemProperties");
-            Method getMethod = spClass.getMethod("get", String.class, String.class);
-            Object result = getMethod.invoke(null, key, defaultValue);
-            if (result instanceof String) {
-                return (String) result;
-            }
-        } catch (Throwable ignored) {}
-        return defaultValue;
-    }
-
-    /**
      * Computes SHA-256 hexadecimal string of raw hardware parameters.
      */
     private static String computeSha256(String input) {

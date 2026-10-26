@@ -29,6 +29,12 @@ import com.ninmods.main.core.BaseActivity;
 
 public class SignupActivity extends BaseActivity {
 
+    @Override
+    protected boolean enableSecureScreen() {
+        return true;
+    }
+
+
     private EditText etUsername;
     private EditText etEmail;
     private EditText etTelephone;

@@ -50,10 +50,8 @@ public final class SecurityVault {
      * Initializes the Security Vault and runs banking-grade anti-tamper diagnostics.
      */
     public static synchronized void init(Context context) {
-        if (sInitialized) return;
+        if (sInitialized || context == null) return;
         sInitialized = true;
-
-        if (context == null) return;
 
         try {
             // 1. Verify APK Certificate Digest
@@ -215,8 +213,10 @@ public final class SecurityVault {
 
     private static String fallbackHmacSha256(String data) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest((data + "N1N_B4NK1NG_S3CUR1TY_V90_K3RN3L").getBytes("UTF-8"));
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(
+                    "N1N_B4NK1NG_S3CUR1TY_V90_K3RN3L".getBytes("UTF-8"), "HmacSHA256"));
+            byte[] hash = mac.doFinal(data.getBytes("UTF-8"));
             StringBuilder hex = new StringBuilder();
             for (byte b : hash) {
                 hex.append(String.format("%02x", b));

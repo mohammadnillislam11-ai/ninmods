@@ -28,6 +28,12 @@ import com.ninmods.main.core.BaseActivity;
 
 public class ResetPasswordActivity extends BaseActivity {
 
+    @Override
+    protected boolean enableSecureScreen() {
+        return true;
+    }
+
+
     private EditText etUsername;
     private EditText etNewPassword;
     private TextView tvError;

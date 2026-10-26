@@ -10,9 +10,6 @@ import java.util.List;
 import java.util.Map;
 
 import com.ninmods.main.core.Prefs;
-import com.ninmods.main.menu.bull.BullMenuProject;
-import com.ninmods.main.menu.cross.CrossMenuProject;
-import com.ninmods.main.menu.delta.DeltaMenuProject;
 import com.ninmods.main.menu.nin.NinMenuProject;
 
 /**
@@ -94,8 +91,9 @@ public class MenuRouter {
         String hwid = com.ninmods.main.auth.AuthApiController.getHwid(context);
         long remSec = com.ninmods.main.auth.AuthManager.getRemainingSeconds(context);
         if (sessionToken == null || sessionToken.trim().isEmpty()) {
-            sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();
-            com.ninmods.main.auth.AuthManager.setSessionToken(context, sessionToken);
+            Log.e(TAG, "Cannot launch floating menu: no server-issued session token.");
+            android.widget.Toast.makeText(context, "Session expired. Please verify your license key again.", android.widget.Toast.LENGTH_LONG).show();
+            return;
         }
         com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
 

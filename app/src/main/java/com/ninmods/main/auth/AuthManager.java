@@ -3,6 +3,9 @@ package com.ninmods.main.auth;
 import android.content.Context;
 import com.ninmods.main.core.Prefs;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 /**
  * Session State & Authentication Persistence Handler.
  * Professional Multi-Account Session Architecture:
@@ -89,7 +92,9 @@ public final class AuthManager {
         Prefs.with(context).writeString(scope + "email", email != null ? email : "");
         Prefs.with(context).writeString(scope + "phone", phone != null ? phone : "");
         Prefs.with(context).writeString(scope + "role", role != null ? role : "");
-        Prefs.with(context).writeString(scope + "password", password != null ? password : "");
+        // Never persist the raw password; store a salted SHA-256 hash only (used solely for the
+        // local "current password" re-entry check before a password-change request is sent).
+        Prefs.with(context).writeString(scope + "password_hash", hashPassword(password));
         Prefs.with(context).writeFloat(scope + "balance", balance);
         Prefs.with(context).writeString(scope + "currency", currency != null ? currency : "BDT");
         Prefs.with(context).writeString(scope + "session_token", sessionToken != null ? sessionToken : "");
@@ -143,7 +148,7 @@ public final class AuthManager {
         Prefs.with(context).writeString("active_email", Prefs.with(context).readString(scope + "email", ""));
         Prefs.with(context).writeString("active_phone", Prefs.with(context).readString(scope + "phone", ""));
         Prefs.with(context).writeString("active_role", Prefs.with(context).readString(scope + "role", ""));
-        Prefs.with(context).writeString("active_password", Prefs.with(context).readString(scope + "password", ""));
+        Prefs.with(context).writeString("active_password_hash", Prefs.with(context).readString(scope + "password_hash", ""));
         Prefs.with(context).writeFloat("auth_balance", Prefs.with(context).readFloat(scope + "balance", 0.0f));
         Prefs.with(context).writeString("auth_currency", Prefs.with(context).readString(scope + "currency", "BDT"));
         Prefs.with(context).writeString(PREF_KEY_ACTIVE_TOKEN, Prefs.with(context).readString(scope + "session_token", ""));
@@ -290,7 +295,14 @@ public final class AuthManager {
 
     public static boolean isLoggedIn(Context context) {
         if (context == null) return false;
-        return Prefs.with(context).readBoolean(PREF_KEY_AUTH_STATUS, false);
+        if (!Prefs.with(context).readBoolean(PREF_KEY_AUTH_STATUS, false)) return false;
+        // A logged-in flag without a server-issued session token is not a valid session.
+        String scope = getActiveUserScope(context);
+        String token = Prefs.with(context).readString(scope + "session_token", "");
+        if (token.isEmpty()) {
+            token = Prefs.with(context).readString(PREF_KEY_ACTIVE_TOKEN, "");
+        }
+        return !token.isEmpty();
     }
 
     public static void setSessionToken(Context context, String token) {
@@ -508,7 +520,7 @@ public final class AuthManager {
             Prefs.with(context).writeString("active_email", "");
             Prefs.with(context).writeString("active_phone", "");
             Prefs.with(context).writeString("active_role", "");
-            Prefs.with(context).writeString("active_password", "");
+            Prefs.with(context).writeString("active_password_hash", "");
             Prefs.with(context).writeFloat("auth_balance", 0.0f);
             Prefs.with(context).writeString("auth_currency", "BDT");
             Prefs.with(context).writeString("auth_api_key", "");
@@ -517,6 +529,55 @@ public final class AuthManager {
             try {
                 SecurityVault.resetNativeSession();
             } catch (Throwable ignored) {}
+        }
+    }
+
+    /**
+     * Updates the password hash for the active account scope and the legacy global key together,
+     * so the scoped value never goes stale after a password change.
+     */
+    public static void setActivePasswordHash(Context context, String hash) {
+        if (context == null) return;
+        String scope = getActiveUserScope(context);
+        String value = hash != null ? hash : "";
+        Prefs.with(context).writeString(scope + "password_hash", value);
+        Prefs.with(context).writeString("active_password_hash", value);
+    }
+
+    /**
+     * Returns the stored salted SHA-256 password hash for the active account scope.
+     * Falls back to the legacy global "active_password_hash" key for compatibility.
+     */
+    public static String getActivePasswordHash(Context context) {
+        if (context == null) return "";
+        String scope = getActiveUserScope(context);
+        String hash = Prefs.with(context).readString(scope + "password_hash", "");
+        if (hash.isEmpty()) {
+            hash = Prefs.with(context).readString("active_password_hash", "");
+        }
+        return hash;
+    }
+
+    /**
+     * Computes a salted SHA-256 hash of a password. Never reversible, never logged.
+     * Returns "" for a null/blank password so an empty hash is never treated as "no password set".
+     */
+    public static String hashPassword(String password) {
+        // Normalize exactly like the server does (login/register/reset all send password.trim()).
+        if (password == null) return "";
+        password = password.trim();
+        if (password.isEmpty()) return "";
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            md.update("NIN_PWD_SALT_V1:".getBytes(StandardCharsets.UTF_8));
+            byte[] digest = md.digest(password.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(64);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            return "";
         }
     }
 }

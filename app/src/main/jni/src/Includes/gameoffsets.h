@@ -324,4 +324,19 @@ constexpr uintptr_t WeaponId = 0x40;
 constexpr uintptr_t EnemyPosForce = 0x900;
 constexpr uintptr_t StringLen = 0x10;
 constexpr uintptr_t StringChars = 0x14;
+
+// Elimination, Knocked & State Offsets
+constexpr uintptr_t isDead = 0x7C;
+constexpr uintptr_t isDeadAlt = 0x6C;
+constexpr uintptr_t ShadowState = 0x24C0;
+constexpr uintptr_t XPose = 0x80;
+constexpr uintptr_t TransformType = 0x1294; // Wukong (1), Orion (2), Ball (3), WukongSpecial (4)
+constexpr uintptr_t isTeam = 0x81;
+constexpr uintptr_t PlayerData_HP = 0x70;
+constexpr uintptr_t HP_Offset = 0x18;
+
+// Weapon Inventory Combined Offsets
+constexpr uintptr_t IsCombined = 0x148;
+constexpr uintptr_t CombinedWeapon = 0xA8;
 } // namespace Offsets
+

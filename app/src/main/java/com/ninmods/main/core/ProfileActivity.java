@@ -37,10 +37,17 @@ import com.ninmods.main.ui.PasswordEyeHelper;
 
 public class ProfileActivity extends BaseActivity {
 
+    @Override
+    protected boolean enableSecureScreen() {
+        return true;
+    }
+
+
     public static final String PREF_ACTIVE_USERNAME = "active_username";
     public static final String PREF_ACTIVE_EMAIL = "active_email";
     public static final String PREF_ACTIVE_PHONE = "active_phone";
-    public static final String PREF_ACTIVE_PASSWORD = "active_password";
+    /** Stores a salted SHA-256 hash of the password, never the raw password. */
+    public static final String PREF_ACTIVE_PASSWORD_HASH = "active_password_hash";
     public static final String PREF_ACTIVE_ROLE = "active_role";
     public static final String PREF_AUTH_BALANCE = "auth_balance";
     public static final String PREF_AUTH_CURRENCY = "auth_currency";
@@ -817,8 +824,16 @@ public class ProfileActivity extends BaseActivity {
             return;
         }
 
-        String savedPass = Prefs.with(this).readString(PREF_ACTIVE_PASSWORD, "");
-        if (!savedPass.isEmpty() && !savedPass.equals(currentPass)) {
+        // Fail-closed current-password check: compare against the locally stored salted hash.
+        // If no hash is on record (e.g. storage was cleared outside of a normal login), do NOT
+        // silently skip verification — require the user to re-authenticate instead of allowing
+        // an unverified password change.
+        String savedHash = AuthManager.getActivePasswordHash(this);
+        if (savedHash.isEmpty()) {
+            showError("Session credentials not found. Please log out and log back in before changing your password.");
+            return;
+        }
+        if (!savedHash.equals(AuthManager.hashPassword(currentPass))) {
             showError("Current password is incorrect.");
             return;
         }
@@ -844,7 +859,7 @@ public class ProfileActivity extends BaseActivity {
                 etNewPassword.setText("");
                 etConfirmNewPassword.setText("");
 
-                Prefs.with(ProfileActivity.this).writeString(PREF_ACTIVE_PASSWORD, newPass);
+                AuthManager.setActivePasswordHash(ProfileActivity.this, AuthManager.hashPassword(newPass));
 
                 AlertDialog.Builder b = new AlertDialog.Builder(ProfileActivity.this);
                 b.setTitle("Password Updated");

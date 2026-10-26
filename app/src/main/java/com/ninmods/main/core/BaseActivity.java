@@ -32,10 +32,23 @@ public abstract class BaseActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         if (getWindow() != null) {
-            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            if (enableSecureScreen()) {
+                getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            } else {
+                getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            }
         }
         ensureBaseWrapper();
     }
+
+    /**
+     * Subclasses holding sensitive input (login, password, profile) override this to block
+     * screenshots and screen recording. Defaults to false.
+     */
+    protected boolean enableSecureScreen() {
+        return false;
+    }
+
 
     private void ensureBaseWrapper() {
         if (baseRoot == null) {
@@ -198,7 +211,11 @@ public abstract class BaseActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (getWindow() != null) {
-            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            if (enableSecureScreen()) {
+                getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            } else {
+                getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            }
         }
         if (particleBg != null && enableParticleBackground()) {
             particleBg.start();

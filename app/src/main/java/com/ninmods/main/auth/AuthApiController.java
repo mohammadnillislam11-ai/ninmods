@@ -47,7 +47,9 @@ public final class AuthApiController {
     public static final String ENDPOINT_HEARTBEAT = "/api/v2/app/heartbeat";
     public static final String ENDPOINT_PROFILE = "/api/v2/profile";
 
-    private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+    // Small pool so one slow request (bounded by 15s connect/read timeouts) does not queue
+    // every other auth call behind it.
+    private static final ExecutorService executor = Executors.newFixedThreadPool(3);
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public interface ApiCallback {
@@ -314,7 +316,10 @@ public final class AuthApiController {
                             } catch (Exception ignored) {}
                         }
                         if (remainingSec <= 0) {
-                            remainingSec = 86400 * 30; // 30 days fallback
+                            // No trusted expiry from server: refuse to grant a license instead of inventing one.
+                            AuthManager.setActiveLicenseKey(context, "");
+                            mainHandler.post(() -> callback.onError("License server returned no valid expiry. Please contact support."));
+                            return;
                         }
 
                         String sessionToken = resJson.optString("session_token", resJson.optString("token", ""));
@@ -322,7 +327,10 @@ public final class AuthApiController {
                         AuthManager.updateActiveLicense(context, key, durationType, expiresAt, remainingSec);
                         AuthManager.setRememberedKey(context, key, true);
                         if (sessionToken.isEmpty()) {
-                            sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();
+                            // No server session token: do not fabricate one locally.
+                            AuthManager.setActiveLicenseKey(context, "");
+                            mainHandler.post(() -> callback.onError("Session could not be verified by server. Please try again."));
+                            return;
                         }
                         AuthManager.setSessionToken(context, sessionToken);
                         // Bind verified session to native C++ memory engine
@@ -393,6 +401,9 @@ public final class AuthApiController {
                 }
             } catch (Exception e) {
                 Log.d(TAG, "Heartbeat check warning: " + e.getMessage());
+                if (callback != null) {
+                    mainHandler.post(() -> callback.onError("Could not verify license. Check your connection."));
+                }
             }
         });
     }
@@ -519,16 +530,21 @@ public final class AuthApiController {
 
         int code = conn.getResponseCode();
         InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-        if (is == null) return null;
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            sb.append(line);
+        if (is == null) {
+            conn.disconnect();
+            return null;
         }
-        String raw = sb.toString();
-        return sanitizeResponse(raw);
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            return sanitizeResponse(sb.toString());
+        } finally {
+            conn.disconnect();
+        }
     }
 
     /**
@@ -581,16 +597,21 @@ public final class AuthApiController {
 
         int code = conn.getResponseCode();
         InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-        if (is == null) return null;
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            sb.append(line);
+        if (is == null) {
+            conn.disconnect();
+            return null;
         }
-        String raw = sb.toString();
-        return sanitizeResponse(raw);
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            return sanitizeResponse(sb.toString());
+        } finally {
+            conn.disconnect();
+        }
     }
 
     /**

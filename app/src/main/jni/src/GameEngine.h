@@ -39,6 +39,8 @@ struct PlayerData {
     int Health;
     bool Name;
     char PlayerName[64];
+    short WeaponId;
+    int SpecialAbilities;
 };
 
 struct Response {
@@ -556,9 +558,39 @@ inline float FastRandomFloat() {
     return (normalized - 0.5f) * 2.0f * 0.033;
 }
 
-inline void ContinuousAim(uintptr_t oneself = 0) {
-    while (keepAiming.load()) {
-        uintptr_t currentSelf = IsValidPlayerObject(ShareLocalPlayer) ? ShareLocalPlayer : (IsValidUserPointer64(oneself) ? oneself : 0);
+inline uint64_t ReadWeaponShortId(uintptr_t weapon) {
+    if (!IsValidUserPointer64(weapon)) return 0;
+    uintptr_t itemData = Read<uintptr_t>(weapon + Offsets::ItemData);
+    if (!IsValidUserPointer64(itemData)) return 0;
+    return Read<uint64_t>(itemData + Offsets::WeaponId);
+}
+
+inline uint64_t ReadCurrentWeapon(uintptr_t player) {
+    if (!IsValidUserPointer64(player)) return 0;
+    uintptr_t inventoryManager = Read<uintptr_t>(player + Offsets::InventoryManager);
+    if (!IsValidUserPointer64(inventoryManager)) inventoryManager = Read<uintptr_t>(player + Offsets::InventoryManagerOld);
+    if (!IsValidUserPointer64(inventoryManager)) return 0;
+
+    uintptr_t weapon = 0;
+    bool isCombined = Read<bool>(inventoryManager + Offsets::IsCombined);
+    if (isCombined) {
+        weapon = Read<uintptr_t>(inventoryManager + Offsets::CombinedWeapon);
+    } else {
+        weapon = Read<uintptr_t>(inventoryManager + Offsets::InventoryItem);
+    }
+    if (!IsValidUserPointer64(weapon)) return 0;
+    return ReadWeaponShortId(weapon);
+}
+
+inline void ContinuousAimWorker() {
+    while (true) {
+        bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock;
+        if (!anyAimActive) {
+            usleep(20000);
+            continue;
+        }
+
+        uintptr_t currentSelf = IsValidPlayerObject(ShareLocalPlayer) ? ShareLocalPlayer : 0;
         if (!IsValidUserPointer64(currentSelf)) {
             usleep(10000);
             continue;
@@ -572,7 +604,7 @@ inline void ContinuousAim(uintptr_t oneself = 0) {
             targetObj = currentBestTargetObj;
         }
 
-        if (targetPos == Vector3::Zero()) {
+        if (targetPos == Vector3::Zero() || !IsValidUserPointer64(targetObj)) {
             usleep(5000);
             continue;
         }
@@ -592,7 +624,6 @@ inline void ContinuousAim(uintptr_t oneself = 0) {
             }
             if (camPos == Vector3::Zero()) camPos = GetNodePosition(currentSelf) + Vector3(0, 1.85f, 0);
 
-            // Dynamic bone height adjustment
             float aimHeight = 0.0f;
             if (!pPlayer.silentAimHead && (rand() % 100) >= pPlayer.headshotRate) {
                 aimHeight = -0.35f; // Chest / Neck level
@@ -600,14 +631,10 @@ inline void ContinuousAim(uintptr_t oneself = 0) {
 
             Quaternion targetRot = GetRotationToTheLocation(targetPos, aimHeight, camPos);
 
-            // Write character orientation (Normal: 0x61C / MAX: 0x214)
             Write<Quaternion>(currentSelf + Offsets::PlayerRotation, targetRot);
             Write<Quaternion>(currentSelf + Offsets::PlayerRotationOld, targetRot);
-
-            // Write primary camera view rotation (MAX: 0x214)
             Write<Quaternion>(currentSelf + Offsets::Player_ViewRotation, targetRot);
 
-            // Increment aim rotation counter to register in Unity engine (0x810)
             int rotCount = Read<int>(currentSelf + Offsets::CallSetAimRotationCount);
             if (rotCount >= 0) {
                 Write<int>(currentSelf + Offsets::CallSetAimRotationCount, rotCount + 1);
@@ -618,7 +645,7 @@ inline void ContinuousAim(uintptr_t oneself = 0) {
             }
         }
 
-        // 2. Silent Bullet Ray Redirection (BulletInfo: Normal 0xE60 / MAX 0xE58)
+        // 2. Silent Bullet Ray Redirection
         if (pPlayer.silen4a && shouldLock) {
             uint64_t aimingInfo = Read<uint64_t>(currentSelf + Offsets::AimingInfo);
             if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(currentSelf + Offsets::AimingInfoAlt);
@@ -639,11 +666,15 @@ inline void ContinuousAim(uintptr_t oneself = 0) {
             }
         }
 
-        // 3. Head Collider Lock (Player_AimTargetWrite = 0x80 from ff max 5_6246536088102380429.h)
+        // 3. Head Collider & Native AimAssist Lock
         if ((pPlayer.aimbotlock || pPlayer.silen4a || pPlayer.aimbot) && shouldLock && IsValidUserPointer64(targetObj)) {
             uintptr_t headCollider = Read<uintptr_t>(targetObj + Offsets::Player_HeadCollider);
             if (IsValidUserPointer64(headCollider)) {
                 Write<uintptr_t>(targetObj + Offsets::Player_AimTargetWrite, headCollider);
+            }
+            if (IsValidUserPointer64(currentSelf)) {
+                Write<uintptr_t>(currentSelf + Offsets::AimTarget, targetObj);
+                Write<int>(currentSelf + Offsets::EAimAssistState, 1);
             }
         }
 
@@ -651,40 +682,16 @@ inline void ContinuousAim(uintptr_t oneself = 0) {
     }
 }
 
-inline float Map(float value, float inMin, float inMax, float outMin, float outMax) {
-    return outMin + (value - inMin) * (outMax - outMin) / (inMax - inMin);
-}
-
-// Helper to get the target bone based on fixed setting (Old Silent Aim style)
-inline uintptr_t GetTargetBone(uintptr_t enemy) {
-    if (pPlayer.silentAimHead) {
-        return GetPlayerHeadTF(enemy); // Head
-    } else {
-        return GetPlayerSpineTF(enemy); // Body
+inline void EnsureContinuousAimThreadStarted() {
+    static std::atomic<bool> s_started{false};
+    if (!s_started.exchange(true)) {
+        std::thread([]() { ContinuousAimWorker(); }).detach();
     }
-}
-
-inline int GetWeaponId(uintptr_t player) {
-    // InventoryManager
-    uintptr_t inventoryManager = Read<uintptr_t>(player + Offsets::InventoryManager);
-    if (!inventoryManager) inventoryManager = Read<uintptr_t>(player + Offsets::InventoryManagerOld);
-    if (!inventoryManager) return 0;
-    
-    // Current weapon item at 0xA0
-    uintptr_t item = Read<uintptr_t>(inventoryManager + Offsets::InventoryItem);
-    if (!item) return 0;
-    
-    // ItemData at 0x28
-    uintptr_t itemData = Read<uintptr_t>(item + Offsets::ItemData);
-    if (!itemData) return 0;
-    
-    // Weapon ID at 0x40
-    return Read<int>(itemData + Offsets::WeaponId);
 }
 
 inline void UpdateAimMagnetFast() {
     while (true) {
-        if (!pPlayer.aimMagnet) {
+        if (!pPlayer.aimMagnet && !pPlayer.PlayerToMe) {
             usleep(100000);  // 100ms idle sleep to save CPU and memory bandwidth
             continue;
         }
@@ -695,9 +702,11 @@ inline void UpdateAimMagnetFast() {
         
         if (!localP || !enemy) continue;
         
-        int mIsFiring = Read<int>(localP + Offsets::IsFiring);
-        if (mIsFiring <= 0) mIsFiring = Read<int>(localP + Offsets::IsFiringOld);
-        if (mIsFiring <= 0) continue;
+        if (pPlayer.aimMagnet) {
+            int mIsFiring = Read<int>(localP + Offsets::IsFiring);
+            if (mIsFiring <= 0) mIsFiring = Read<int>(localP + Offsets::IsFiringOld);
+            if (mIsFiring <= 0 && !pPlayer.PlayerToMe) continue;
+        }
         
         auto headTF = GetPlayerHeadTF(enemy);
         auto feetTF = GetPlayerPeTF(enemy);
@@ -709,35 +718,52 @@ inline void UpdateAimMagnetFast() {
         
         if (currentHeadPos == Vector3::Zero() || currentRootPos == Vector3::Zero()) continue;
         
-        Vector3 vForward;  // ← 'forward' ki jagah 'vForward' use kiya (std::forward conflict se bachne ke liye)
-        vForward.X = ViewMatrix._13;
-        vForward.Y = ViewMatrix._23;
-        vForward.Z = ViewMatrix._33;
-        
-        float len = sqrtf(vForward.X * vForward.X + vForward.Y * vForward.Y + vForward.Z * vForward.Z);
-        if (len < 0.001f) continue;
-        
-        vForward.X /= len;
-        vForward.Y /= len;
-        vForward.Z /= len;
-        
-        float depth = Vector3::Distance(MainCameraTransformPos, currentHeadPos);
-        if (depth < 0.1f) continue;
-        
-        Vector3 targetHeadPos;
-        targetHeadPos.X = MainCameraTransformPos.X + vForward.X * depth;
-        targetHeadPos.Y = MainCameraTransformPos.Y + vForward.Y * depth;
-        targetHeadPos.Z = MainCameraTransformPos.Z + vForward.Z * depth;
-        
-        Vector3 offset;
-        offset.X = targetHeadPos.X - currentHeadPos.X;
-        offset.Y = targetHeadPos.Y - currentHeadPos.Y;
-        offset.Z = targetHeadPos.Z - currentHeadPos.Z;
-        
         Vector3 newRootPos;
-        newRootPos.X = currentRootPos.X + offset.X;
-        newRootPos.Y = currentRootPos.Y + offset.Y;
-        newRootPos.Z = currentRootPos.Z + offset.Z;
+        if (pPlayer.PlayerToMe) {
+            Vector3 localPos = GetNodePosition(localP);
+            Vector3 vForward;
+            vForward.X = ViewMatrix._13;
+            vForward.Y = 0.0f;
+            vForward.Z = ViewMatrix._33;
+            float fLen = sqrtf(vForward.X * vForward.X + vForward.Z * vForward.Z);
+            if (fLen > 0.001f) {
+                vForward.X /= fLen;
+                vForward.Z /= fLen;
+            } else {
+                vForward.Z = 1.0f;
+            }
+            newRootPos = localPos + (vForward * 1.8f);
+            newRootPos.Y = localPos.Y;
+        } else {
+            Vector3 vForward;  // 'vForward' avoids std::forward conflict
+            vForward.X = ViewMatrix._13;
+            vForward.Y = ViewMatrix._23;
+            vForward.Z = ViewMatrix._33;
+            
+            float len = sqrtf(vForward.X * vForward.X + vForward.Y * vForward.Y + vForward.Z * vForward.Z);
+            if (len < 0.001f) continue;
+            
+            vForward.X /= len;
+            vForward.Y /= len;
+            vForward.Z /= len;
+            
+            float depth = Vector3::Distance(MainCameraTransformPos, currentHeadPos);
+            if (depth < 0.1f) continue;
+            
+            Vector3 targetHeadPos;
+            targetHeadPos.X = MainCameraTransformPos.X + vForward.X * depth;
+            targetHeadPos.Y = MainCameraTransformPos.Y + vForward.Y * depth;
+            targetHeadPos.Z = MainCameraTransformPos.Z + vForward.Z * depth;
+            
+            Vector3 offset;
+            offset.X = targetHeadPos.X - currentHeadPos.X;
+            offset.Y = targetHeadPos.Y - currentHeadPos.Y;
+            offset.Z = targetHeadPos.Z - currentHeadPos.Z;
+            
+            newRootPos.X = currentRootPos.X + offset.X;
+            newRootPos.Y = currentRootPos.Y + offset.Y;
+            newRootPos.Z = currentRootPos.Z + offset.Z;
+        }
         
         auto trVal = Read<uintptr_t>(feetTF + Offsets::TransformObj);
         if (trVal) {
@@ -875,12 +901,21 @@ inline void CreateDataList(Response& SendResponse) {
     }
 
     // TimeService Speedhack ONLY if explicitly enabled
-    if (speedHackEnabled && IsValidUserPointer64(BaseGame)) {
+    static bool speedWasActive = false;
+    if ((speedHackEnabled || pPlayer.SpeedHackV2) && IsValidUserPointer64(BaseGame)) {
         uintptr_t timeService = Read<uintptr_t>(BaseGame + Offsets::BaseGameTimeService);
         if (IsValidUserPointer64(timeService)) {
-            float speedVal = 0.03299999982f * pPlayer.gameSpeed;
+            float mult = (pPlayer.gameSpeed > 0.1f) ? pPlayer.gameSpeed : 1.5f;
+            float speedVal = 0.03299999982f * mult;
             Write<float>(timeService + Offsets::TimeServiceSpeed, speedVal);
+            speedWasActive = true;
         }
+    } else if (speedWasActive && IsValidUserPointer64(BaseGame)) {
+        uintptr_t timeService = Read<uintptr_t>(BaseGame + Offsets::BaseGameTimeService);
+        if (IsValidUserPointer64(timeService)) {
+            Write<float>(timeService + Offsets::TimeServiceSpeed, 0.03299999982f);
+        }
+        speedWasActive = false;
     }
 
     // PlayerAttributes / NoReload (Triggered strictly when pPlayer.NoRecoil is enabled)
@@ -983,10 +1018,15 @@ inline void CreateDataList(Response& SendResponse) {
     if (myCamPos.X == 0 && myCamPos.Y == 0 && myCamPos.Z == 0) {
         myCamPos = GetNodePosition(localPlayer) + Vector3(0, 1.9f, 0);
     }
+    if (pPlayer.undercam) {
+        myCamPos.Y -= 3.5f;
+    }
     if (!IsValidViewMatrix(matrix)) {
         Quaternion myCamRot = GetTransformRotation(myCam);
         float aspect = (g_screenHeight > 0) ? ((float)g_screenWidth / (float)g_screenHeight) : 1.777778f;
         matrix = BuildViewMatrix(myCamPos, myCamRot, 60.0f, aspect);
+    } else if (pPlayer.undercam) {
+        matrix._42 += 3.5f;
     }
     ViewMatrix = matrix;
     MainCameraTransformPos = myCamPos;
@@ -1126,6 +1166,39 @@ inline void CreateDataList(Response& SendResponse) {
 
         if (!IsValidUserPointer64(enemyList) || enemyList == localPlayer) continue;
 
+        // 1. Skip eliminated / dead players immediately
+        if (Read<bool>(enemyList + Offsets::isDead) || Read<bool>(enemyList + Offsets::isDeadAlt)) {
+            continue;
+        }
+
+        // 2. Skip friendly teammates in Duo / Squad
+        uintptr_t avatarManager = Read<uintptr_t>(enemyList + Offsets::Avatar_Uma);
+        if (IsValidUserPointer64(avatarManager)) {
+            uintptr_t umaAvatarSimple = Read<uintptr_t>(avatarManager + Offsets::Avatar_Uma);
+            if (IsValidUserPointer64(umaAvatarSimple)) {
+                uintptr_t umaData = Read<uintptr_t>(umaAvatarSimple + Offsets::Uma_Data);
+                if (IsValidUserPointer64(umaData)) {
+                    if (Read<bool>(umaData + Offsets::isTeam)) {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // 3. Special Active Skill transformations (Wukong, Orion, Ball)
+        int specialStatus = Read<int>(enemyList + Offsets::TransformType);
+        bool isSpecial = (specialStatus >= 1 && specialStatus <= 4);
+
+        // 4. Knocked State Detection
+        bool isKnocked = false;
+        uintptr_t shadowState = Read<uintptr_t>(enemyList + Offsets::ShadowState);
+        if (IsValidUserPointer64(shadowState)) {
+            int xPose = Read<int>(shadowState + Offsets::XPose);
+            if (xPose == 8) {
+                isKnocked = true;
+            }
+        }
+
         auto isClientBot = Read<bool>(enemyList + Offsets::IsClientBot);
         if (isClientBot != 1 && isClientBot != 0) {
             isClientBot = Read<bool>(enemyList + Offsets::IsClientBotOld);
@@ -1161,15 +1234,7 @@ inline void CreateDataList(Response& SendResponse) {
         // Screen projection
         auto LocationHeadBox = WorldToScreenPoint(matrix, EnemyPosition);
         auto LocationToeBox = WorldToScreenPoint(matrix, EnemyPositionPe);
-        if (LocationHeadBox.X <= 0.0f && LocationHeadBox.Y <= 0.0f && LocationToeBox.X <= 0.0f && LocationToeBox.Y <= 0.0f) continue;
-        if (LocationHeadBox.X <= 0.0f && LocationHeadBox.Y <= 0.0f) {
-            LocationHeadBox = LocationToeBox;
-            LocationHeadBox.Y -= 30.0f;
-        }
-        if (LocationToeBox.X <= 0.0f && LocationToeBox.Y <= 0.0f) {
-            LocationToeBox = LocationHeadBox;
-            LocationToeBox.Y += 30.0f;
-        }
+        if (LocationHeadBox.X < 0 || LocationToeBox.X < 0 || LocationHeadBox.Z <= 0.0f) continue;
 
         float fovRadius = (pPlayer.AimFov / 180.0f) * (g_screenHeight / 2.0f);
 
@@ -1179,22 +1244,29 @@ inline void CreateDataList(Response& SendResponse) {
         data->Toe = LocationToeBox;
         data->Distancia = distanceToEnemy;
         data->Name = isClientBot;
-        data->IsCaido = false;
+        data->IsCaido = isKnocked;
+        data->SpecialAbilities = specialStatus;
 
-        // Health
+        // Genuine Health reading
         int Health = 100;
-        auto IPRIDataPool = Read<uintptr_t>(enemyList + Offsets::DataPool);
-        if (IPRIDataPool != 0) {
-            auto ReplicationData = Read<uintptr_t>(IPRIDataPool + Offsets::ReplicationData);
-            if (ReplicationData != 0) {
-                uintptr_t items = ReplicationData + Offsets::ReplicationItems;
-                auto element = Read<uintptr_t>(items + 0 * sizeof(uintptr_t));
-                if (element != 0) {
-                    Health = Read<int>(element + Offsets::Health);
+        uintptr_t curHPObj = Read<uintptr_t>(enemyList + Offsets::PlayerData_HP);
+        if (!IsValidUserPointer64(curHPObj)) curHPObj = Read<uintptr_t>(enemyList + Offsets::DataPool);
+        if (IsValidUserPointer64(curHPObj)) {
+            uintptr_t cur = Read<uintptr_t>(curHPObj + 0x10);
+            if (IsValidUserPointer64(cur)) {
+                uintptr_t hpArr = Read<uintptr_t>(cur + 0x20);
+                if (IsValidUserPointer64(hpArr)) {
+                    short hpVal = Read<short>(hpArr + Offsets::HP_Offset);
+                    if (hpVal > 0 && hpVal <= 500) {
+                        Health = (int)hpVal;
+                    }
                 }
             }
         }
-        data->Health = (Health > 0 && Health <= 500) ? Health : 100;
+        data->Health = Health;
+
+        // Weapon reading
+        data->WeaponId = (short)ReadCurrentWeapon(enemyList);
 
         // Name
         memset(data->PlayerName, 0, 64);
@@ -1211,8 +1283,9 @@ inline void CreateDataList(Response& SendResponse) {
 
         // Silent Aim & Aimbot evaluation
         bool aimActive = (pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock);
+        bool shouldIgnoreForAim = (pPlayer.ignoreKnocked && isKnocked);
         float screenDist = sqrt(pow(LocationHeadBox.X - g_screenWidth/2, 2) + pow(LocationHeadBox.Y - g_screenHeight/2, 2));
-        if (aimActive && isWithinFOV(LocationHeadBox, fovRadius) && distanceToEnemy <= pPlayer.AimDistance) {
+        if (aimActive && !shouldIgnoreForAim && isWithinFOV(LocationHeadBox, fovRadius) && distanceToEnemy <= pPlayer.AimDistance) {
             float priorityValue = pPlayer.targetByDistance ? distanceToEnemy : screenDist;
             if (priorityValue < bestPriority) {
                 bestPriority = priorityValue;
@@ -1234,12 +1307,12 @@ inline void CreateDataList(Response& SendResponse) {
     }
 
     ShareLocalPlayer = localPlayer;
-    if (pPlayer.aimMagnet && hasValidTarget) {
+    if ((pPlayer.aimMagnet || pPlayer.PlayerToMe) && hasValidTarget) {
         EnsureAimMagnetThreadStarted();
         ShareEnemy = bestTargetObj;
     } else {
         ShareEnemy = 0;
-        if (!hasValidTarget || mIsFiring <= 0) {
+        if (!hasValidTarget || (mIsFiring <= 0 && !pPlayer.PlayerToMe)) {
             RestoreAllPositions();
         }
     }
@@ -1264,20 +1337,12 @@ inline void CreateDataList(Response& SendResponse) {
     }
 
     bool aimActive = (pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock);
+    EnsureContinuousAimThreadStarted();
     if (aimActive && hasValidTarget) {
-        {
-            std::lock_guard<std::mutex> lock(g_aimStateMutex);
-            currentBestTargetPos = bestTargetPos;
-            currentBestTargetObj = bestTargetObj;
-        }
-        if (!keepAiming.load()) {
-            keepAiming.store(true);
-            if (aimThread.joinable()) aimThread.join();
-            aimThread = std::thread([localPlayer]() { ContinuousAim(localPlayer); });
-        }
-    } else if (keepAiming.load()) {
-        keepAiming.store(false);
-        if (aimThread.joinable()) aimThread.join();
+        std::lock_guard<std::mutex> lock(g_aimStateMutex);
+        currentBestTargetPos = bestTargetPos;
+        currentBestTargetObj = bestTargetObj;
+    } else {
         std::lock_guard<std::mutex> lock(g_aimStateMutex);
         currentBestTargetPos = Vector3::Zero();
         currentBestTargetObj = 0;
@@ -1373,6 +1438,8 @@ inline Response RequestDaemonESP(int screenWidth, int screenHeight) {
                         result.Players[i].Distancia = dResp.Players[i].Distancia;
                         result.Players[i].Health = dResp.Players[i].Health;
                         result.Players[i].Name = dResp.Players[i].Name;
+                        result.Players[i].WeaponId = dResp.Players[i].WeaponId;
+                        result.Players[i].SpecialAbilities = dResp.Players[i].SpecialAbilities;
                         strncpy(result.Players[i].PlayerName, dResp.Players[i].PlayerName, sizeof(result.Players[i].PlayerName) - 1);
                     }
                 }

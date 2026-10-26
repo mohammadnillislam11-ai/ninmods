@@ -722,8 +722,8 @@ public class DashboardActivity extends BaseActivity {
         String hwid = AuthApiController.getHwid(this);
         long remSec = AuthManager.getRemainingSeconds(this);
         if (sessionToken == null || sessionToken.trim().isEmpty()) {
-            sessionToken = "sess_" + (hwid.isEmpty() ? "device" : hwid) + "_" + System.currentTimeMillis();
-            AuthManager.setSessionToken(this, sessionToken);
+            Toast.makeText(this, "Session expired. Please verify your license key again.", Toast.LENGTH_LONG).show();
+            return;
         }
         SecurityVault.setNativeSession(sessionToken, hwid, remSec);
 

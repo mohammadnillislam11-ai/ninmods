@@ -19,7 +19,6 @@ public class Prefs {
     private static final float DEFAULT_FLOAT_VALUE = -1f;
     private static final long DEFAULT_LONG_VALUE = -1L;
     private static final boolean DEFAULT_BOOLEAN_VALUE = false;
-    private static Prefs prefsInstance;
     private SharedPreferences sharedPreferences;
 
     public static int dp(int dp, final Context _context) {
@@ -70,34 +69,38 @@ public class Prefs {
         );
     }
 
-    public static Prefs with(Context context) {
-        if (prefsInstance == null) {
-            prefsInstance = new Prefs(context);
+    private static final java.util.Map<String, Prefs> sInstances = new java.util.HashMap<>();
+
+    private static String defaultPrefsName(Context context) {
+        return context.getPackageName() + "_preferences";
+    }
+
+    private static synchronized Prefs cached(Context context, String preferencesName, boolean force) {
+        Prefs existing = sInstances.get(preferencesName);
+        if (existing == null || force) {
+            existing = new Prefs(context, preferencesName);
+            sInstances.put(preferencesName, existing);
         }
-        return prefsInstance;
+        return existing;
+    }
+
+    public static Prefs with(Context context) {
+        return cached(context, defaultPrefsName(context), false);
     }
 
     public static Prefs with(Context context, boolean forceInstantiation) {
-        if (forceInstantiation) {
-            prefsInstance = new Prefs(context);
-        }
-        return prefsInstance;
+        return cached(context, defaultPrefsName(context), forceInstantiation);
     }
 
     public static Prefs with(Context context, String preferencesName) {
-        if (prefsInstance == null) {
-            prefsInstance = new Prefs(context, preferencesName);
-        }
-        return prefsInstance;
+        return cached(context, preferencesName, false);
     }
 
     public static Prefs with(Context context, String preferencesName,
                              boolean forceInstantiation) {
-        if (forceInstantiation) {
-            prefsInstance = new Prefs(context, preferencesName);
-        }
-        return prefsInstance;
+        return cached(context, preferencesName, forceInstantiation);
     }
+
 
     // String related methods
 

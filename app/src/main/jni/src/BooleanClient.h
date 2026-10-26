@@ -27,7 +27,7 @@ inline struct PlayerState {
     bool selectTarget = false;
     bool silen4a = false; 
     float AimFov = 60;
-    float AimDistance = 30;
+    float AimDistance = 150.0f;
     bool NoRecoil = false;
     bool aimbotlock = false;
     bool SpeedHackV2 = false;

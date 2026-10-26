@@ -21,7 +21,8 @@ LOCAL_SRC_FILES := \
     src/UI/Brands/BullMenu.cpp \
     src/UI/Brands/CrossMenu.cpp \
     src/UI/Brands/DeltaMenu.cpp \
-    src/Icon/TextureLoader.cpp
+    src/Icon/TextureLoader.cpp \
+    src/ninlite_daemon/Namegun.cpp
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH) \
@@ -35,7 +36,9 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/src/UI \
     $(LOCAL_PATH)/src/UI/Brands \
     $(LOCAL_PATH)/src/UI/Popups \
-    $(LOCAL_PATH)/src/Icon
+    $(LOCAL_PATH)/src/Icon \
+    $(LOCAL_PATH)/src/ninlite_daemon
+
 
 # Added -frtti to fix the dynamic_cast error
 LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti

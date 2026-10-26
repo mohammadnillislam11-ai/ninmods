@@ -39,6 +39,7 @@
 
 #include "BooleanClient.h"
 #include "GameEngine.h"
+#include "ninlite_daemon/Namegun.h"
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
 #include "Includes/obfuscate.h"
@@ -224,7 +225,8 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
       continue;
 
     float distance = player.Distancia;
-    if (distance < 0.1f || distance > 150.0f)
+    float maxDist = (pPlayer.AimDistance > 150.0f) ? pPlayer.AimDistance : 350.0f;
+    if (distance < 0.1f || distance > maxDist)
       continue;
 
     float headToFeetHeight = std::abs(player.Toe.Y - player.Head.Y);
@@ -355,14 +357,14 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
     // --- ESP NAME / DISTANCE ---
     if (pEspPlayer.espName || pEspPlayer.espDistance) {
       char labelBuf[64];
+      const char *nameLabel = (strlen(player.PlayerName) > 0) ? player.PlayerName : (player.Name ? "BOT" : "ENEMY");
       if (pEspPlayer.espName && pEspPlayer.espDistance) {
         snprintf(labelBuf, sizeof(labelBuf), "%s [%dm]",
-                 player.Name ? "BOT" : "ENEMY", (int)distance);
+                 nameLabel, (int)distance);
       } else if (pEspPlayer.espDistance) {
         snprintf(labelBuf, sizeof(labelBuf), "[%dm]", (int)distance);
       } else {
-        snprintf(labelBuf, sizeof(labelBuf), "%s",
-                 player.Name ? "BOT" : "ENEMY");
+        snprintf(labelBuf, sizeof(labelBuf), "%s", nameLabel);
       }
 
       ImVec2 txtSz = ImGui::CalcTextSize(labelBuf);
@@ -371,6 +373,23 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
 
       draw->AddText(ImVec2(txtX + 1, txtY + 1), shadowCol, labelBuf);
       draw->AddText(ImVec2(txtX, txtY), IM_COL32(255, 255, 255, 255), labelBuf);
+    }
+
+    // --- ESP WEAPON NAME ---
+    if (player.WeaponId > 0) {
+      static bool s_namegunInited = false;
+      if (!s_namegunInited) {
+        Namegun::Init();
+        s_namegunInited = true;
+      }
+      std::string gunName = Namegun::GetGunName(player.WeaponId);
+      if (!gunName.empty()) {
+        ImVec2 gunSz = ImGui::CalcTextSize(gunName.c_str());
+        float gunX = boxX + (width - gunSz.x) * 0.5f;
+        float gunY = boxY + boxHeight + 2.0f;
+        draw->AddText(ImVec2(gunX + 1, gunY + 1), shadowCol, gunName.c_str());
+        draw->AddText(ImVec2(gunX, gunY), IM_COL32(255, 230, 100, 255), gunName.c_str());
+      }
     }
   }
 }
@@ -1432,6 +1451,13 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
     break;
   case 41:
     pPlayer.SpeedHackV2 = bState;
+    speedHackEnabled = bState;
+    break;
+  case 42:
+    pPlayer.PlayerToMe = bState;
+    break;
+  case 43:
+    pPlayer.undercam = bState;
     break;
   // NINLITE Checkbox & Switch Features
   case 101:
