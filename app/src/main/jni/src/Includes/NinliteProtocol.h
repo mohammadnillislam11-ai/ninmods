@@ -98,6 +98,7 @@ enum RequestMode : int32_t {
     MODE_HEAD_RATE    = 70,   /* head shot rate (0..3)                    */
     MODE_AIM_DISTANCE = 60,   /* max target distance (metres)             */
     MODE_LEGIT_DELAY  = 59,   /* legit / smooth delay (milliseconds)      */
+    MODE_KILL_IN_CHEST = 61,  /* aim into the chest of a weak target      */
     MODE_DETECT       = 100,  /* ask the daemon for the game process      */
 };
 
@@ -142,6 +143,14 @@ struct Response {
     int32_t  visibleEnemyCount;
     int32_t  visibleNearOffScreenEnemyCount;
     int32_t  proximityEnemyCount;
+    /* THE THREAT COUNTER
+     * The reference engine splits the enemies into the ones in front of the
+     * camera and the ones behind it. The kernel engine (GameEngine.h)
+     * already computed both, but the Daemon did not - so the counter was
+     * always empty in the NINLITE mode. Both sides now report them.
+     * The App copies them into Response::EnemiesInFront / EnemiesBehind. */
+    int32_t  enemiesInFront;
+    int32_t  enemiesBehind;
     PlayerData players[kMaxPlayers];
     /* The game process the Daemon (root) has detected. The App cannot find
      * it on its own since Android 9, so the Daemon reports it. */
@@ -155,7 +164,10 @@ static_assert(sizeof(Request) == 20, "Ninlite::Request layout drifted");
  * weaponId(2)+reserved(2) = 44, playerName[64] = 108, already 4 byte
  * aligned because of #pragma pack(4). */
 static_assert(sizeof(PlayerData) == 108, "Ninlite::PlayerData layout drifted");
-static_assert(sizeof(Response) == 20 + sizeof(PlayerData) * kMaxPlayers + 68,
+/* 6 int32 counters (success, playerCount, visible, nearOffScreen, proximity,
+ * enemiesInFront, enemiesBehind) = 7 * 4 = 28 bytes, then the player array,
+ * then detectedPid (4) + detectedPackage (64) = 68 bytes. */
+static_assert(sizeof(Response) == 28 + sizeof(PlayerData) * kMaxPlayers + 68,
                "Ninlite::Response layout drifted");
 
 /* ------------------------------------------------------- frame transport */

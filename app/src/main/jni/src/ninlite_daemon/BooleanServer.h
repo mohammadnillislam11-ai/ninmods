@@ -15,10 +15,13 @@
  */
 inline struct DaemonPlayerState {
     std::atomic<bool> aimhard{false};
-    std::atomic<bool> selectTarget{false};
     std::atomic<bool> silen4a{false};
-    std::atomic<float> AimFov{0.0f};
-    std::atomic<float> AimDistance{250.0f};
+    /* The aim defaults have to match the kernel engine (BooleanClient.h).
+     * They used to differ (AimFov 0 vs 60, AimDistance 250 vs 150), so the
+     * Daemon aimed at a completely different range than the kernel engine
+     * until the first request reached it. */
+    std::atomic<float> AimFov{60.0f};
+    std::atomic<float> AimDistance{150.0f};
     std::atomic<bool> aimbotlock{false};
     std::atomic<bool> aimlock{false};
     std::atomic<bool> pullenemy{false};
@@ -27,7 +30,11 @@ inline struct DaemonPlayerState {
     // Legit / smooth delay applied between two aim writes (milliseconds).
     std::atomic<float> LegitDelay{0.0f};
     std::atomic<bool> DiveKill{false};
-    std::atomic<bool> IgnoreKnock{false};
+    /* The default has to match the kernel engine (BooleanClient.h), where
+     * ignoreKnocked starts as true. With false here the Daemon aimed at
+     * knocked players until the first MODE_IGNORE_KNOCK request arrived,
+     * so the two engines behaved differently on a fresh start. */
+    std::atomic<bool> IgnoreKnock{true};
     std::atomic<bool> SpeedTimer{false};
     std::atomic<bool> ScaleDown{false};
     std::atomic<bool> WallBug{false};

@@ -74,6 +74,8 @@ constexpr uintptr_t EAimAssistState = 0x668;
 constexpr uintptr_t AimTarget = 0x670;
 constexpr uintptr_t WeaponRelated = 0x680;
 constexpr uintptr_t Player_BulletInfo = 0xE60;
+constexpr uintptr_t Player_HedColider = 0x740;
+constexpr uintptr_t Player_ColWrite = 0x80;
 } // namespace Normal
 
 namespace Max {

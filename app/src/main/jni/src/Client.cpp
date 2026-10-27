@@ -81,6 +81,7 @@ inline bool NativeIsLoggedIn() { return SecurityVault_IsSessionValid(); }
 
 float g_espLeftAdjust = 0.0f;
 float g_espRightAdjust = 0.0f;
+static std::string g_espWatermark = "";
 
 static int g_ScreenWidth = 0;
 static int g_ScreenHeight = 0;
@@ -101,161 +102,508 @@ inline ImU32 ToImU32(const Color &c, float alphaMultiplier = 1.0f) {
 static void EnsureDriverConnected() {
   /* Rate limited: the discovery probe costs several hundred syscalls and this
    * function runs once per rendered frame. */
-  EnsureDriverConnectedThrottled();
+   EnsureDriverConnectedThrottled();
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_overlay_Floater_ChangesID(JNIEnv *env, jclass clazz,
-                                                jint id, jint value) {
-  bool enabled = (value != 0);
+void DrawFOVCircle(ESP esp, float fov, Color color) {
+  if (fov <= 0)
+    return;
 
-  if (!isButrulVersion()) {
-    switch (id) {
-    case 2:
-    case 3:
-    case 8:
-    case 9:
-    case 10:
-    case 25:
-    case 33:
-    case 34:
-    case 62:
-    case 63:
-      LOGD("BLOCKED: write feature on safe mode (ID: %d)", id);
-      return;
-    default:
-      break;
+  auto screenHeight = esp.getHeight();
+  auto screenWidth = esp.getWidth();
+
+  float centerX = screenWidth / 2.0f;
+  float centerY = screenHeight / 2.0f;
+
+  /* THE AIM RADIUS - ONE FORMULA FOR THE WHOLE PROJECT
+   * --------------------------------------------------
+   * The circle that is drawn and the circle that the engine uses to gate
+   * the target selection have to be the SAME circle, otherwise the user
+   * sees a target inside the circle and the aim does not take it.
+   *
+   * The reference formula is a share of the screen WIDTH:
+   *
+   *     radius = (AimFov / 180) * (screenWidth * 0.55)
+   *
+   * The screen height was used here before, and the daemon used a third
+   * variant (screenHeight * 0.55). Both were wrong in a different way:
+   * on a 20:9 phone the width based circle is noticeably larger than
+   * the height based one, so the drawn circle and the real aim radius
+   * drifted apart depending on the aspect ratio of the device.
+   *
+   * GameEngine.h uses exactly the same expression for the FOV gate, so
+   * the two now agree for every screen size.
+   */
+  float radius = (fov / 180.0f) * (screenWidth * 0.55f);
+  if (radius < 40.0f)
+    radius = 40.0f;
+
+  Vector2 centerPos(centerX, centerY);
+  esp.DrawCircle(color, 2.0f, centerPos, radius);
+
+  float crossSize = 15.0f;
+  esp.DrawLine(color, 1.5f, Vector3(centerX - crossSize, centerY, 0),
+               Vector3(centerX + crossSize, centerY, 0));
+  esp.DrawLine(color, 1.5f, Vector3(centerX, centerY - crossSize, 0),
+               Vector3(centerX, centerY + crossSize, 0));
+}
+
+void DrawESP(ESP esp) {
+  auto screenHeight = esp.getHeight();
+  auto screenWidth = esp.getWidth();
+
+  if (!isConnected())
+    return;
+
+  if (!g_espWatermark.empty()) {
+    float wmSize = 13.0f;
+    Color wmColor = Color(255, 255, 255, 220);
+    Color stroke = Color(0, 0, 0, 200);
+    float wmX = screenWidth / 2.0f;
+    float wmY = 45.0f;
+    esp.DrawText(stroke, g_espWatermark.c_str(), Vector2(wmX - 1, wmY - 1), wmSize);
+    esp.DrawText(stroke, g_espWatermark.c_str(), Vector2(wmX + 1, wmY + 1), wmSize);
+    esp.DrawText(wmColor, g_espWatermark.c_str(), Vector2(wmX, wmY), wmSize);
+  }
+
+  bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock || pPlayer.aimMagnet;
+  if (Actived.activar && anyAimActive && showFOVCircle &&
+      pPlayer.AimFov > 0) {
+    DrawFOVCircle(esp, pPlayer.AimFov, pEspPlayer.espColor);
+  }
+
+  auto response = getData(screenWidth, screenHeight);
+  if (!response.Success)
+    return;
+
+  if (response.PlayerCount <= 0)
+    return;
+
+  // Draw Live Threat Counter HUD once per frame if enabled
+  if (Actived.activar && (pEspPlayer.espDrawCount || pEspPlayer.espCount)) {
+    const bool showOnScreen = response.VisibleEnemyCount > 0;
+    const bool showNearScreen = response.VisibleNearOffScreenEnemyCount > 0;
+    const bool showProximity = response.ProximityEnemyCount > 0;
+    const bool noThreatVisible =
+        !showOnScreen && !showNearScreen && !showProximity;
+
+    std::string onScreenLabel = std::to_string(response.VisibleEnemyCount);
+    std::string nearScreenLabel =
+        std::to_string(response.VisibleNearOffScreenEnemyCount);
+    std::string proximityLabel = std::to_string(response.ProximityEnemyCount);
+
+    float countSize = pEspPlayer.textSize + 10.0f;
+    if (countSize < 24.0f)
+      countSize = 24.0f;
+
+    float topMargin = 80.0f;
+    float sectionWidth = 120.0f;
+    float sectionHeight = countSize + 22.0f;
+    float sectionGap = 14.0f;
+
+    int activeSections = (showOnScreen ? 1 : 0) + (showNearScreen ? 1 : 0) +
+                         (showProximity ? 1 : 0);
+    float totalWidth =
+        sectionWidth * activeSections + sectionGap * (activeSections - 1);
+    float startX = (screenWidth - totalWidth) / 2.0f;
+
+    float backgroundY = topMargin;
+    float countY = backgroundY + sectionHeight / 2.0f;
+    float cornerRadius = sectionHeight * 0.30f;
+    Color outlineColor = Color(0, 0, 0, 220);
+    Color textColor = Color::White();
+
+    auto DrawRoundedPanel = [&](float x, float y, float width, float height,
+                                float radius, Color color) {
+      float clampedRadius =
+          std::max(1.0f, std::min(radius, std::min(width, height) * 0.5f));
+      esp.DrawFilledRect(color, Vector3(x + clampedRadius, y, 0),
+                         width - (clampedRadius * 2.0f), height);
+      esp.DrawFilledRect(color, Vector3(x, y + clampedRadius, 0),
+                         clampedRadius, height - (clampedRadius * 2.0f));
+      esp.DrawFilledRect(
+          color, Vector3(x + width - clampedRadius, y + clampedRadius, 0),
+          clampedRadius, height - (clampedRadius * 2.0f));
+      esp.DrawFilledCircle(color,
+                           Vector2(x + clampedRadius, y + clampedRadius),
+                           clampedRadius);
+      esp.DrawFilledCircle(
+          color, Vector2(x + width - clampedRadius, y + clampedRadius),
+          clampedRadius);
+      esp.DrawFilledCircle(
+          color, Vector2(x + clampedRadius, y + height - clampedRadius),
+          clampedRadius);
+      esp.DrawFilledCircle(
+          color,
+          Vector2(x + width - clampedRadius, y + height - clampedRadius),
+          clampedRadius);
+    };
+
+    if (noThreatVisible) {
+      float safeWidth = 200.0f;
+      float safeX = (screenWidth - safeWidth) / 2.0f;
+      DrawRoundedPanel(safeX, backgroundY, safeWidth, sectionHeight,
+                       cornerRadius, Color(22, 165, 70, 235));
+      const char *safeLabel = "SAFE";
+      float safeTextX = safeX + (safeWidth * 0.5f);
+      esp.DrawText(outlineColor, safeLabel,
+                   Vector2(safeTextX - 1, countY - 1), countSize - 2.0f);
+      esp.DrawText(outlineColor, safeLabel,
+                   Vector2(safeTextX + 1, countY + 1), countSize - 2.0f);
+      esp.DrawText(textColor, safeLabel, Vector2(safeTextX, countY),
+                   countSize - 2.0f);
+    } else {
+      Color onScreenBg = Color(255, 215, 0, 230);   // Yellow
+      Color nearScreenBg = Color(235, 30, 30, 230); // Red
+      Color proximityBg = Color(255, 140, 0, 230);  // Orange
+      float nextSectionX = startX;
+
+      if (showOnScreen) {
+        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
+                         sectionHeight, cornerRadius, onScreenBg);
+        float centerX = nextSectionX + (sectionWidth * 0.5f);
+        esp.DrawText(outlineColor, onScreenLabel.c_str(),
+                     Vector2(centerX - 1, countY - 1), countSize);
+        esp.DrawText(outlineColor, onScreenLabel.c_str(),
+                     Vector2(centerX + 1, countY + 1), countSize);
+        esp.DrawText(textColor, onScreenLabel.c_str(),
+                     Vector2(centerX, countY), countSize);
+        nextSectionX += sectionWidth + sectionGap;
+      }
+
+      if (showNearScreen) {
+        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
+                         sectionHeight, cornerRadius, nearScreenBg);
+        float centerX = nextSectionX + (sectionWidth * 0.5f);
+        esp.DrawText(outlineColor, nearScreenLabel.c_str(),
+                     Vector2(centerX - 1, countY - 1), countSize);
+        esp.DrawText(outlineColor, nearScreenLabel.c_str(),
+                     Vector2(centerX + 1, countY + 1), countSize);
+        esp.DrawText(textColor, nearScreenLabel.c_str(),
+                     Vector2(centerX, countY), countSize);
+        nextSectionX += sectionWidth + sectionGap;
+      }
+
+      if (showProximity) {
+        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
+                         sectionHeight, cornerRadius, proximityBg);
+        float centerX = nextSectionX + (sectionWidth * 0.5f);
+        esp.DrawText(outlineColor, proximityLabel.c_str(),
+                     Vector2(centerX - 1, countY - 1), countSize);
+        esp.DrawText(outlineColor, proximityLabel.c_str(),
+                     Vector2(centerX + 1, countY + 1), countSize);
+        esp.DrawText(textColor, proximityLabel.c_str(),
+                     Vector2(centerX, countY), countSize);
+      }
     }
   }
 
-  switch (id) {
-  case 1:
-    Actived.activar = enabled;
-    break;
-  case 2:
-    pPlayer.aimbot = enabled;
-    break;
-  case 3:
-    pPlayer.fovawm = enabled;
-    break;
-  case 6:
-    pPlayer.aimbotlock = enabled;
-    break;
-  case 8:
-    pPlayer.silen4a = enabled;
-    break;
-  case 61:
-    /* Legacy id. Was inverted relative to every other entry point, so the
-     * same switch could turn head aim on when it was off. */
-    pPlayer.silentAimHead = (value != 0);
-    break;
-  case 62:
-    pPlayer.targetByDistance = (value == 1);
-    break;
-  case 63:
-    pPlayer.aimMagnet = enabled;
-    break;
-  case 9:
-    pPlayer.AimFov = (float)value;
-    break;
-  case 10:
-    pPlayer.AimDistance = (float)value;
-    break;
-  case 70:
-    pPlayer.headshotRate = value;
-    break;
-  case 71:
-    pPlayer.ignoreBots = enabled;
-    break;
-  case 72:
-    pPlayer.ignoreKnocked = enabled;
-    break;
-  case 11:
-    pEspPlayer.espLinha = enabled;
-    break;
-  case 12:
-    pEspPlayer.espCaixa = enabled;
-    break;
-  case 13:
-    pEspPlayer.espDistance = enabled;
-    break;
-  case 14:
-    pEspPlayer.espSkeleton = enabled;
-    break;
-  case 15:
-    pEspPlayer.espIden360 = enabled;
-    break;
-  case 16:
-    if (value == 0)
-      pEspPlayer.espColor = Color(255, 255, 255, 255);
-    else if (value == 1)
-      pEspPlayer.espColor = Color(0, 255, 0, 255);
-    else if (value == 2)
-      pEspPlayer.espColor = Color(0, 0, 255, 255);
-    else if (value == 3)
-      pEspPlayer.espColor = Color(255, 0, 0, 255);
-    else if (value == 4)
-      pEspPlayer.espColor = Color(0, 0, 0, 255);
-    else if (value == 5)
-      pEspPlayer.espColor = Color(255, 255, 0, 255);
-    else if (value == 6)
-      pEspPlayer.espColor = Color(0, 255, 255, 255);
-    else if (value == 7)
-      pEspPlayer.espColor = Color(255, 0, 255, 255);
-    else if (value == 8)
-      pEspPlayer.espColor = Color(128, 128, 128, 255);
-    else if (value == 9)
-      pEspPlayer.espColor = Color(160, 32, 240, 255);
-    break;
-  case 17:
-    pEspPlayer.boxType = static_cast<BoxType>(value);
-    break;
-  case 18:
-    pEspPlayer.lineType = static_cast<LineType>(value);
-    break;
-  case 19:
-    pEspPlayer.espHealth = enabled;
-    break;
-  case 20:
-    pEspPlayer.textSize = (float)value;
-    break;
-  case 21:
-    pEspPlayer.espName = enabled;
-    break;
-  case 22:
-    pEspPlayer.thickness = (float)value;
-    break;
-  case 23:
-    pEspPlayer.espDrawCount = enabled;
-    break;
-  case 25:
-    pPlayer.gameSpeed = (float)value / 10.0f;
-    break;
-  case 60:
-    pPlayer.SpeedHackV2 = enabled;
-    break;
-  case 27:
-    showFOVCircle = enabled;
-    break;
-  case 30:
-    g_espLeftAdjust = (float)value;
-    break;
-  case 31:
-    g_espRightAdjust = (float)value;
-    break;
-  case 32:
-    g_espLeftAdjust = 0.0f;
-    g_espRightAdjust = 0.0f;
-    break;
-  case 33:
-    pPlayer.NoRecoil = enabled;
-    break;
-  case 34:
-    break;
-  default:
-    break;
+  float globalThickness = pEspPlayer.thickness.load(std::memory_order_relaxed);
+
+  for (int i = 0; i < response.PlayerCount; i++) {
+    auto player = response.Players[i];
+    if (player.Head.Z <= 0.0f)
+      continue;
+    if (!Actived.activar)
+      continue;
+
+    Vector3 headPos = player.Head;
+    Vector3 toePos = player.Toe;
+    if (toePos.Z <= 0.0f)
+      toePos = headPos;
+
+    float distance = player.Distancia;
+    if (distance < 0.1f || distance > 150.0f)
+      continue;
+
+    // Dynamic distance scaling for clean visuals
+    float thickness = (distance > 70.0f) ? 1.0f : globalThickness;
+    float textSizeVal = pEspPlayer.textSize.load(std::memory_order_relaxed);
+    float fSize = (distance > 70.0f) ? 10.0f : textSizeVal;
+
+    float headToFeetHeight = std::abs(toePos.Y - headPos.Y);
+    if (headToFeetHeight < 3.0f)
+      headToFeetHeight = 3.0f;
+    float boxHeight = headToFeetHeight * 1.15f;
+    float width = boxHeight * 0.48f;
+
+    float totalXAdjust = g_espRightAdjust - g_espLeftAdjust;
+
+    float boxY = headPos.Y - (boxHeight * 0.12f);
+    float boxX = headPos.X - (width / 2.0f) + totalXAdjust;
+
+    Color currentBoxColor = pEspPlayer.espColor;
+    if (player.Name)
+      currentBoxColor = Color::Red(); // player.Name == true -> bot
+    if (player.IsCaido)
+      currentBoxColor = Color::Red(); // knocked (changed from Yellow to Red)
+    Color strokeColor = Color(0, 0, 0, 255);
+
+    float adjustedHeadX = headPos.X + totalXAdjust;
+
+    if (pEspPlayer.espLinha) {
+      Vector3 lineStart, lineEnd;
+      if (pEspPlayer.lineType == LINE_TOP)
+        lineStart = Vector3(screenWidth / 2, 0, 0);
+      else if (pEspPlayer.lineType == LINE_CENTER)
+        lineStart = Vector3(screenWidth / 2, screenHeight / 2, 0);
+      else
+        lineStart = Vector3(screenWidth / 2, screenHeight, 0);
+
+      lineEnd = (pEspPlayer.lineType == LINE_BOTTOM)
+                    ? Vector3(adjustedHeadX, boxY + boxHeight, 0)
+                    : Vector3(adjustedHeadX, boxY, 0);
+      esp.DrawLine(currentBoxColor, thickness, lineStart, lineEnd);
+    }
+
+    if (pEspPlayer.espCaixa) {
+      Rect playerRect(boxX, boxY, width, boxHeight);
+      if (pEspPlayer.boxType == BOX_FILLED ||
+          pEspPlayer.boxType == BOX_ROUNDED) {
+        Color fill = currentBoxColor;
+        fill.a = 70;
+        esp.DrawFilledRect(fill, Vector3(boxX, boxY, 0), width, boxHeight);
+      }
+      if (pEspPlayer.boxType == BOX_CORNER)
+        esp.DrawBox4Line(boxX, boxY, width, boxHeight, currentBoxColor,
+                         thickness);
+      else
+        esp.DrawBox(currentBoxColor, thickness, playerRect);
+    }
+
+    if (pEspPlayer.espName || pEspPlayer.espDistance || pEspPlayer.espHealth) {
+      std::string drawName;
+      if (pEspPlayer.espName) {
+        if (player.Name)
+          drawName = "Bot";
+        else if (player.PlayerName[0] != '\0')
+          drawName = player.PlayerName;
+        else
+          drawName = "Unknown";
+      }
+
+      std::string dStr;
+      if (pEspPlayer.espDistance)
+        dStr = std::to_string((int)distance) + "M";
+
+      const bool hasName = pEspPlayer.espName && !drawName.empty();
+      const bool hasDistance = pEspPlayer.espDistance && !dStr.empty();
+      const bool hasHealth = pEspPlayer.espHealth && player.Health > 0;
+
+      if (hasName || hasDistance || hasHealth) {
+        float fontSize = std::max(10.0f, fSize - 1.0f);
+        float spacing = 6.0f;        // gap between name and distance segments
+        float segmentPadding = 6.0f; // internal padding inside each segment
+        float layoutPadding = 6.0f;  // padding around the whole panel
+        float textHeight = fontSize + 5.0f; // height of text background
+
+        // Calculate name text width (approximate)
+        float nameTextWidth =
+            hasName ? (drawName.length() * (fontSize * 0.56f)) : 0.0f;
+        float rawNameSegmentWidth =
+            (nameTextWidth > 0.0f) ? (nameTextWidth + segmentPadding * 2.0f)
+                                   : 0.0f;
+        float nameSegmentWidth = rawNameSegmentWidth;
+
+        // Fixed width for distance segment
+        const float fixedDistWidth = 80.0f; // adjust as needed
+        const float defaultHealthWidth =
+            60.0f; // default health bar width when no name/distance
+
+        float distSegmentWidth = hasDistance ? fixedDistWidth : 0.0f;
+
+        // ----- SYNCHRONIZE NAME BACKGROUND AND HEALTH BAR WIDTHS (existing logic) -----
+        float healthBarWidth;
+        if (hasName) {
+          float baseHealthWidth =
+              hasDistance ? fixedDistWidth : defaultHealthWidth;
+          healthBarWidth = std::max(nameSegmentWidth, baseHealthWidth);
+          nameSegmentWidth =
+              healthBarWidth; // name background expands to match health bar
+        } else {
+          healthBarWidth = hasDistance ? fixedDistWidth : defaultHealthWidth;
+        }
+
+        // ----- NEW LOGIC: When all three are present, unify total name+distance width with health bar -----
+        if (hasName && hasDistance && hasHealth) {
+          float combinedWidth =
+              nameSegmentWidth + distSegmentWidth + spacing;
+          if (combinedWidth > healthBarWidth) {
+            float excess = combinedWidth - healthBarWidth;
+            float newNameWidth = nameSegmentWidth - excess;
+            float minNameWidth = rawNameSegmentWidth;
+            if (newNameWidth < minNameWidth) {
+              float nameDeficit = minNameWidth - newNameWidth;
+              newNameWidth = minNameWidth;
+              float newDistWidth = distSegmentWidth - nameDeficit;
+              const float minDistWidth = 30.0f;
+              if (newDistWidth < minDistWidth) {
+                newDistWidth = minDistWidth;
+              }
+              distSegmentWidth = newDistWidth;
+            }
+            nameSegmentWidth = newNameWidth;
+            combinedWidth = nameSegmentWidth + distSegmentWidth + spacing;
+          } else if (combinedWidth < healthBarWidth) {
+            healthBarWidth = combinedWidth;
+          }
+        }
+
+        const float healthBarHeight = 6.0f; // constant height
+
+        // Total width required for text segments (name + distance + spacing)
+        float contentWidth = nameSegmentWidth + distSegmentWidth;
+        if (nameSegmentWidth > 0.0f && distSegmentWidth > 0.0f)
+          contentWidth += spacing;
+
+        bool hasText = hasName || hasDistance;
+
+        // ----- TEXT PANEL WIDTH (adapts to name + distance) -----
+        float layoutInnerWidth;
+        if (hasText) {
+          layoutInnerWidth = contentWidth;
+        } else {
+          layoutInnerWidth = defaultHealthWidth; // health-only mode
+        }
+
+        // ----- TEXT PANEL POSITIONING -----
+        float layoutHeight = 0.0f;
+        float roundedPanelWidth = 0.0f;
+        float roundedPanelHeight = 0.0f;
+        float layoutX = 0.0f;
+        float layoutY = 0.0f;
+
+        if (hasText) {
+          layoutHeight = textHeight + layoutPadding * 2.0f;
+          roundedPanelWidth = layoutInnerWidth + layoutPadding * 2.0f;
+          roundedPanelHeight = layoutHeight;
+
+          layoutX = adjustedHeadX - (layoutInnerWidth * 0.5f) - layoutPadding;
+          layoutY = boxY - roundedPanelHeight - 8.0f;
+          if (layoutY < 2.0f)
+            layoutY = 2.0f;
+        }
+
+        // Helper to draw rounded panels
+        auto DrawRoundedPanel = [&](float x, float y, float width, float height,
+                                    float radius, Color color) {
+          float clampedRadius =
+              std::max(1.0f, std::min(radius, std::min(width, height) * 0.5f));
+          esp.DrawFilledRect(color, Vector3(x + clampedRadius, y, 0),
+                             width - clampedRadius * 2.0f, height);
+          esp.DrawFilledRect(color, Vector3(x, y + clampedRadius, 0),
+                             clampedRadius, height - clampedRadius * 2.0f);
+          esp.DrawFilledRect(
+              color, Vector3(x + width - clampedRadius, y + clampedRadius, 0),
+              clampedRadius, height - clampedRadius * 2.0f);
+          esp.DrawFilledCircle(color,
+                               Vector2(x + clampedRadius, y + clampedRadius),
+                               clampedRadius);
+          esp.DrawFilledCircle(
+              color, Vector2(x + width - clampedRadius, y + clampedRadius),
+              clampedRadius);
+          esp.DrawFilledCircle(
+              color, Vector2(x + clampedRadius, y + height - clampedRadius),
+              clampedRadius);
+          esp.DrawFilledCircle(
+              color,
+              Vector2(x + width - clampedRadius, y + height - clampedRadius),
+              clampedRadius);
+        };
+
+        // Draw main text panel background
+        if (hasText) {
+          DrawRoundedPanel(layoutX, layoutY, roundedPanelWidth,
+                           roundedPanelHeight, 4.0f, Color(0, 0, 0, 170));
+        }
+
+        // ----- DRAW TEXT SEGMENTS -----
+        if (hasText) {
+          float contentStartX = adjustedHeadX - (layoutInnerWidth * 0.5f);
+          float currentX = contentStartX;
+          float textCenterY = layoutY + layoutPadding + (textHeight * 0.5f);
+
+          // Name segment (width may have been adjusted)
+          if (nameSegmentWidth > 0.0f) {
+            DrawRoundedPanel(currentX, layoutY + layoutPadding,
+                             nameSegmentWidth, textHeight, 3.0f,
+                             Color(30, 30, 30, 210));
+            float nameCenterX = currentX + nameSegmentWidth * 0.5f;
+            esp.DrawText(strokeColor, drawName.c_str(),
+                         Vector2(nameCenterX - 1, textCenterY - 1), fontSize);
+            esp.DrawText(strokeColor, drawName.c_str(),
+                         Vector2(nameCenterX + 1, textCenterY + 1), fontSize);
+            esp.DrawText(Color::White(), drawName.c_str(),
+                         Vector2(nameCenterX, textCenterY), fontSize);
+            currentX +=
+                nameSegmentWidth + (distSegmentWidth > 0.0f ? spacing : 0.0f);
+          }
+
+          // Distance segment (width may have been adjusted if needed)
+          if (distSegmentWidth > 0.0f) {
+            DrawRoundedPanel(currentX, layoutY + layoutPadding,
+                             distSegmentWidth, textHeight, 3.0f,
+                             Color(30, 30, 30, 210));
+            float distCenterX = currentX + distSegmentWidth * 0.5f;
+            Color distColor = currentBoxColor;
+            esp.DrawText(strokeColor, dStr.c_str(),
+                         Vector2(distCenterX - 1, textCenterY - 1), fontSize);
+            esp.DrawText(strokeColor, dStr.c_str(),
+                         Vector2(distCenterX + 1, textCenterY + 1), fontSize);
+            esp.DrawText(distColor, dStr.c_str(),
+                         Vector2(distCenterX, textCenterY), fontSize);
+          }
+        }
+
+        // ----- DRAW HEALTH BAR (width may have been adjusted) -----
+        if (hasHealth) {
+          float hMax = player.Name ? 100.0f : 200.0f;
+          float hpPercent =
+              std::min(1.0f, std::max(0.0f, player.Health / hMax));
+
+          float healthY;
+          if (hasText) {
+            healthY = layoutY + roundedPanelHeight + 2.0f;
+          } else {
+            healthY = boxY - healthBarHeight - 8.0f;
+            if (healthY < 2.0f)
+              healthY = 2.0f;
+          }
+
+          float healthBarX = adjustedHeadX - healthBarWidth * 0.5f;
+
+          DrawRoundedPanel(healthBarX, healthY, healthBarWidth, healthBarHeight,
+                           healthBarHeight * 0.5f, Color(45, 45, 45, 210));
+
+          float hpWidth = healthBarWidth * hpPercent;
+          if (hpWidth > 0.0f) {
+            Color hpColor = Color(0, 255, 0, 220);
+            if (hpPercent <= 0.6f)
+              hpColor = Color(255, 210, 0, 220);
+            if (hpPercent < 0.4f)
+              hpColor = Color(255, 70, 70, 220);
+
+            DrawRoundedPanel(healthBarX, healthY, hpWidth, healthBarHeight,
+                             healthBarHeight * 0.5f, hpColor);
+          }
+        }
+      }
+    }
+
+    if (pEspPlayer.espWeapon && player.WeaponId > 0) {
+      std::string wName = Namegun::GetGunName(player.WeaponId);
+      if (!wName.empty()) {
+        float fontSize = std::max(10.0f, fSize - 2.0f);
+        float weaponY = boxY + boxHeight + 8.0f;
+        Color wColor = Color(240, 240, 240, 230);
+        esp.DrawText(strokeColor, wName.c_str(), Vector2(adjustedHeadX - 1, weaponY - 1), fontSize);
+        esp.DrawText(strokeColor, wName.c_str(), Vector2(adjustedHeadX + 1, weaponY + 1), fontSize);
+        esp.DrawText(wColor, wName.c_str(), Vector2(adjustedHeadX, weaponY), fontSize);
+      }
+    }
   }
 }
+
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_drawEspNative(JNIEnv *env, jclass type,
@@ -275,42 +623,6 @@ Java_com_ninmods_main_core_NativeBridge_drawEspNative(JNIEnv *env, jclass type,
   env->PopLocalFrame(nullptr);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_overlay_Floater_PxbftKZXivSr(JNIEnv *env, jclass type,
-                                                   jobject espView,
-                                                   jobject canvas, jint width,
-                                                   jint height) {
-  if (!SecurityVault_IsSessionValid()) {
-    return; // Zero ESP drawing if no genuine verified server session
-  }
-  if (env->PushLocalFrame(256) < 0) {
-    return;
-  }
-  ESP localEsp = ESP(env, espView, canvas);
-  if (localEsp.isValid()) {
-    DrawESP(localEsp);
-  }
-  env->PopLocalFrame(nullptr);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_overlay_Floater_ftKZXivSr(JNIEnv *env, jclass clazz,
-                                                jobject ctx) {
-  if (!SecurityVault_IsSessionValid()) {
-    NIN_LOGE("SECURITY", ">>> [ACCESS_DENIED] ftKZXivSr blocked: Unauthorized "
-                         "execution without server session <<<");
-    return;
-  }
-  NIN_LOGI("CLIENT", "ftKZXivSr invoked from Java overlay");
-  if (driver && !driver->isConnected()) {
-    driver->initDriver();
-  }
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_overlay_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
-  NIN_LOGI("CLIENT", "ftKwCvSr invoked from Java overlay");
-}
 
 // ========================================================
 // GLES3 JNI VIEW NATIVE BRIDGE (OpenGL ES 3.0 / ImGui ESP)
@@ -522,6 +834,40 @@ static void SetEspMasterSwitch(bool on) {
 }
 
 /*
+ * THE SAFE MODE GATE
+ * ------------------
+ * The user can pick between MODE_SAFE and MODE_EXTREME on the mode screen
+ * (ModeSelectActivity). In SAFE mode the features that alter the game
+ * memory the most aggressively are refused, so the menu can not switch
+ * them on.
+ *
+ * This gate used to live in a SECOND, parallel feature switch
+ * (the removed Floater_ChangesID writer). That switch is gone now, so the
+ * gate lives here - in the one writer that every menu uses. A gate in the
+ * dead switch protected nothing.
+ */
+static bool IsFeatureBlockedInSafeMode(int featId) {
+  if (isButrulVersion()) {
+    return false; /* EXTREME mode: nothing is blocked */
+  }
+  switch (featId) {
+  case 3:   /* ESP skeleton        */
+  case 20:  /* aim hard            */
+  case 22:  /* silent aim          */
+  case 23:  /* aim magnet          */
+  case 33:  /* no recoil           */
+  case 41:  /* speed movement      */
+  case 42:  /* player to me        */
+  case 43:  /* underground camera  */
+  case 44:  /* anticheat bypass    */
+  case 216: /* kill in chest       */
+    return true;
+  default:
+    return false;
+  }
+}
+
+/*
  * THE SINGLE ENGINE WRITER
  * ------------------------
  * Every menu of this app (the classic NativeBridge menu and the reference
@@ -529,6 +875,10 @@ static void SetEspMasterSwitch(bool on) {
  * there is exactly one switch that maps a feature id onto an engine flag.
  */
 void NinFeatureSetState(int featId, bool bState) {
+  if (IsFeatureBlockedInSafeMode(featId)) {
+    NIN_LOGI("CLIENT", "BLOCKED: feature %d is not available in SAFE mode", featId);
+    return;
+  }
   switch (featId) {
   // ESP Features
   case 1:
@@ -581,9 +931,11 @@ void NinFeatureSetState(int featId, bool bState) {
   // Aimbot Features
   case 20:
     pPlayer.aimbot = bState;
+    SyncWithNinLiteDaemon(Ninlite::MODE_AIM_HARD, bState, 0);
     break;
   case 21:
     pPlayer.aimbotlock = bState;
+    SyncWithNinLiteDaemon(Ninlite::MODE_AIM_LOCK, bState, 0);
     break;
   case 22:
     pPlayer.silen4a = bState;
@@ -622,6 +974,7 @@ void NinFeatureSetState(int featId, bool bState) {
     break;
   case 216:
     pPlayer.KillInChest = bState;
+    SyncWithNinLiteDaemon(Ninlite::MODE_KILL_IN_CHEST, bState, 0);
     break;
 
   // Combat / Memory Features
@@ -731,9 +1084,11 @@ void NinFeatureSetValue(int featId, float fVal) {
     break;
   case 214:
     pPlayer.HeadRate = (int)fVal;
+    SyncWithNinLiteDaemon(Ninlite::MODE_HEAD_RATE, true, (int)fVal);
     break;
   case 215:
     pPlayer.ChestRate = (int)fVal;
+    SyncWithNinLiteDaemon(Ninlite::MODE_CHEST_RATE, true, (int)fVal);
     break;
   case 303:
     pPlayer.AimFov = fVal;

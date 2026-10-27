@@ -174,7 +174,13 @@ public class ESPView extends View implements Runnable {
     public void DrawText(Canvas cvs, int a, int r, int g, int b, String txt, float posX, float posY, float size) {
         mTextPaint.setColor(Color.rgb(r, g, b));
         mTextPaint.setAlpha(a);
-        mTextPaint.setTextSize(size);
+        if (getRight() > 1920 || getBottom() > 1920) {
+            mTextPaint.setTextSize(4.0f + size);
+        } else if (getRight() == 1920 || getBottom() == 1920) {
+            mTextPaint.setTextSize(2.0f + size);
+        } else {
+            mTextPaint.setTextSize(size);
+        }
         cvs.drawText(txt, posX, posY, mTextPaint);
     }
 }

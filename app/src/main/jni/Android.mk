@@ -27,7 +27,7 @@ LOCAL_SRC_FILES := \
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH) \
     $(LOCAL_PATH)/src \
-    $(LOCAL_PATH)/src/Detector \
+    $(LOCAL_PATH)/src/Detection \
     $(LOCAL_PATH)/src/Engine \
     $(LOCAL_PATH)/src/Bridge \
     $(LOCAL_PATH)/src/imgui \
@@ -36,7 +36,6 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/src/Menu \
     $(LOCAL_PATH)/src/Unity \
     $(LOCAL_PATH)/src/UI \
-    $(LOCAL_PATH)/src/UI/Brands \
     $(LOCAL_PATH)/src/UI/Popups \
     $(LOCAL_PATH)/src/Icon \
     $(LOCAL_PATH)/src/ninlite_daemon

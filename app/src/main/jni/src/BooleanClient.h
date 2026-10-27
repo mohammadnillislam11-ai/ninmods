@@ -41,8 +41,6 @@ enum LineType {
 inline struct PlayerState {
     std::atomic<bool> aimbot{false};
     std::atomic<bool> aimhard{false};
-    std::atomic<bool> fovawm{false};
-    std::atomic<bool> selectTarget{false};
     std::atomic<bool> silen4a{false};
     std::atomic<float> AimFov{60.0f};
     std::atomic<float> AimDistance{150.0f};
@@ -51,8 +49,6 @@ inline struct PlayerState {
     std::atomic<bool> SpeedHackV2{false};
     std::atomic<bool> undercam{false};
     std::atomic<bool> PlayerToMe{false};
-    std::atomic<float> AimFovScale{1.20f};
-    std::atomic<bool> targetByDistance{false};
     std::atomic<bool> silentAimHead{true};
     std::atomic<float> gameSpeed{1.0f};
 

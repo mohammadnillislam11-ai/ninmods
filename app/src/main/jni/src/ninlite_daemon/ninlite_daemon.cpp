@@ -601,6 +601,44 @@ static void AimHardThread() {
     }
 }
 
+static void AimColliderThread() {
+    while (true) {
+        uintptr_t local = g_currentLocalPlayer.load(std::memory_order_relaxed);
+        if (pPlayer.aimbotlock && local != 0 && GameStillAlive()) {
+            uintptr_t firingOff = g_isGameMax.load(std::memory_order_relaxed)
+                                      ? Offsets::Max::Player_IsFiring
+                                      : Offsets::Normal::Player_IsFiring;
+            bool isFiring = DaemonRead<bool>(local + firingOff);
+            uintptr_t targetObj = 0;
+            Vector3 targetPos = Vector3::Zero();
+            {
+                std::lock_guard<std::mutex> lock(g_targetMutex);
+                targetObj = currentBestTargetObj;
+                targetPos = currentBestTargetPos;
+            }
+
+            if (isFiring && targetObj != 0 && targetPos != Vector3::Zero()) {
+                uintptr_t headCollider = DaemonRead<uintptr_t>(targetObj +
+                    (g_isGameMax.load(std::memory_order_relaxed)
+                         ? Offsets::Max::Player_HedColider
+                         : Offsets::Normal::Player_HedColider));
+                if (headCollider != 0) {
+                    uintptr_t colWriteOff = g_isGameMax.load(std::memory_order_relaxed)
+                                                ? Offsets::Max::Player_ColWrite
+                                                : Offsets::Normal::Player_ColWrite;
+                    DaemonWrite<uintptr_t>(targetObj + colWriteOff, headCollider);
+                }
+                int randomDelay = 20 + (rand() % 10);
+                std::this_thread::sleep_for(std::chrono::milliseconds(randomDelay));
+            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            }
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        }
+    }
+}
+
 /* ======================================================== scene rebuild == */
 
 static void SetEnemyScale(uintptr_t enemyObj, bool scaleDown) {
@@ -863,18 +901,63 @@ static void CreateDataList(Ninlite::Response& res) {
         }
         if (distance <= 30.0f) res.proximityEnemyCount++;
 
+        /* THE THREAT COUNTER - enemies in front of / behind the camera
+         * The kernel engine (GameEngine.h) computes this with the dot
+         * product of the view forward vector and the direction to the
+         * enemy. The Daemon used to skip it, so the counter stayed at
+         * zero in the NINLITE mode. The formula is the same one. */
+        {
+            Vector3 viewForward = {matrix._13, matrix._23, matrix._33};
+            Vector3 camForCounter = (camPos != Vector3::Zero()) ? camPos : localHead;
+            Vector3 toEnemy = headPos - camForCounter;
+            float dotProduct = toEnemy.X * viewForward.X + toEnemy.Y * viewForward.Y +
+                               toEnemy.Z * viewForward.Z;
+            if (dotProduct >= 0.0f) {
+                res.enemiesInFront++;
+            } else {
+                res.enemiesBehind++;
+            }
+        }
+
         /* target selection */
         bool aimActive = (pPlayer.silen4a || pPlayer.aimhard || pPlayer.aimbotlock);
         bool ignoreKnocked = pPlayer.IgnoreKnock.load(std::memory_order_relaxed) && isKnocked;
         const float aimFovVal = pPlayer.AimFov.load(std::memory_order_relaxed);
+        /* THE AIM RADIUS - ONE FORMULA FOR THE WHOLE PROJECT
+         * The circle that is drawn (Client.cpp DrawFOVCircle) and the circle
+         * that gates the target selection here have to be the same circle.
+         * The reference formula is a share of the screen WIDTH:
+         *     radius = (AimFov / 180) * (screenWidth * 0.55)
+         * The daemon used (screenHeight * 0.55) before, which made the
+         * NINLITE engine pick a different target than the kernel engine
+         * on the very same device. */
         float fovRadius = (aimFovVal > 0.0f)
-            ? (aimFovVal / 180.0f) * (screenH * 0.55f)
-            : (screenH * 0.55f);
+            ? (aimFovVal / 180.0f) * (screenW * 0.55f)
+            : (screenW * 0.55f);
 
-        if (aimActive && !ignoreKnocked && isWithinFOV(screenHead, fovRadius) && distance <= maxDistance) {
+        /* THE TARGET SELECTION - SAME RULES AS THE KERNEL ENGINE
+         * GameEngine.h picks the target with these rules:
+         *   - the target has to be ON the screen,
+         *   - the FOV circle is only checked for the silent aim and for the
+         *     hard aim (the collider lock uses the closest target),
+         *   - the target that is closest to the crosshair wins.
+         *
+         * The Daemon used a different rule: it always applied the FOV
+         * circle, it did not require the target to be on the screen, and it
+         * compared min(worldDistance, screenDistance) - a mix of two
+         * different units. That made the NINLITE mode aim at a different
+         * enemy than the kernel mode on the very same device.
+         */
+        bool targetOnScreen = (screenHead.X >= 0.0f && screenHead.X <= screenW &&
+                               screenHead.Y >= 0.0f && screenHead.Y <= screenH);
+        bool fovPass = !(pPlayer.silen4a || pPlayer.aimhard) || isWithinFOV(screenHead, fovRadius);
+
+        if (aimActive && !ignoreKnocked && targetOnScreen && fovPass && distance <= maxDistance) {
             float screenDist = sqrtf((screenHead.X - screenW * 0.5f) * (screenHead.X - screenW * 0.5f) +
                                      (screenHead.Y - screenH * 0.5f) * (screenHead.Y - screenH * 0.5f));
-            float priority = distance < screenDist ? distance : screenDist;
+            /* The closest target to the crosshair wins - the world distance
+             * must not take part in this comparison. */
+            float priority = screenDist;
             if (priority < bestPriority) {
                 bestPriority = priority;
                 bestTargetObj = enemy;
@@ -882,7 +965,19 @@ static void CreateDataList(Ninlite::Response& res) {
                 /* Head or chest, exactly like the reference engine: the chest
                  * point is interpolated 35% between the head and the hip. */
                 Vector3 aimPoint = headPos;
-                if (!aimHead) {
+                /* KILL IN CHEST
+                 * The reference engine shoots a weak target (below 50 HP)
+                 * into the chest. The Daemon never implemented this, so the
+                 * feature silently did nothing in the NINLITE mode - the
+                 * switch was on and the aim still went to the head.
+                 * The health of the enemy is read further up in this loop. */
+                bool useChest = false;
+                if (pPlayer.KillInChest && health > 0 && health < 50) {
+                    useChest = true;
+                } else if (!aimHead) {
+                    useChest = true;
+                }
+                if (useChest) {
                     uintptr_t hipTF = GetPlayerHipTF(enemy);
                     Vector3 hipPos = GetNodePosition(hipTF);
                     if (hipPos != Vector3::Zero()) {
@@ -948,6 +1043,9 @@ static void ApplyRequest(const Ninlite::Request& req) {
         case Ninlite::MODE_LEGIT_DELAY:
             pPlayer.LegitDelay = (float)req.value;
             break;
+        case Ninlite::MODE_KILL_IN_CHEST:
+            pPlayer.KillInChest = (req.enabled != 0);
+            break;
         default:
             break;
     }
@@ -995,6 +1093,7 @@ int main(int argc, char* argv[]) {
 
     std::thread(SilentAimThread).detach();
     std::thread(AimHardThread).detach();
+    std::thread(AimColliderThread).detach();
 
     /* Pre-resolve the game so the very first ESP request is fast. */
     AttachToGame();

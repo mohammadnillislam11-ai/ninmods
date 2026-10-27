@@ -1510,12 +1510,51 @@ inline void CreateDataList(Response& SendResponse) {
                 if (pPlayer.KillInChest && Health > 0 && Health < 50) {
                     /* A weak target is shot into the chest. */
                     useChest = true;
-                } else if (pPlayer.ChestRate > 0) {
-                    static int aimTickCounter = 0;
-                    aimTickCounter++;
-                    if (aimTickCounter > 100) aimTickCounter = 0;
-                    float threshold = (float)pPlayer.ChestRate * 10.0f;
-                    useChest = ((float)aimTickCounter < threshold);
+                } else if (pPlayer.HeadRate > 0 || pPlayer.ChestRate > 0) {
+                    /* THE HEAD / CHEST SHOT PATTERN
+                     * --------------------------------
+                     * HeadRate (0..3) and ChestRate (0..6) describe how many of
+                     * every N shots go to the head. The pattern is built the
+                     * same way as in the reference engine and in the Daemon
+                     * (ninlite_daemon.cpp), so the kernel engine and the
+                     * NINLITE engine now behave identically.
+                     *
+                     * The pattern used to be a 100 tick counter that only
+                     * looked at ChestRate. That made the "HEAD RATE" slider
+                     * do nothing at all in the kernel engine, and the two
+                     * engines produced a different hit distribution.
+                     */
+                    int headRate = (int)pPlayer.HeadRate;
+                    int chestRate = (int)pPlayer.ChestRate;
+                    if (headRate > 3) headRate = 3;
+                    if (chestRate > 6) chestRate = 6;
+                    if (headRate < 0) headRate = 0;
+                    if (chestRate < 0) chestRate = 0;
+                    if (headRate == 0 && chestRate == 0) headRate = 1;
+
+                    const int patternSize = headRate + chestRate;
+                    bool pattern[16];
+                    for (int i = 0; i < 16; i++) pattern[i] = false;
+                    if (headRate > 0) {
+                        float step = (float)patternSize / (float)headRate;
+                        for (int i = 0; i < headRate; ++i) {
+                            int pos = (int)(i * step + 0.5f);
+                            if (pos >= patternSize) pos = patternSize - 1;
+                            if (pos >= 0 && pos < 16) pattern[pos] = true;
+                        }
+                    }
+
+                    /* The pattern advances on every new burst of fire. */
+                    static int s_shotPatternIndex = 0;
+                    static bool s_wasFiring = false;
+                    bool isFiringNow = Read<bool>(localPlayer + OffIsFiring());
+                    if (isFiringNow && !s_wasFiring) {
+                        s_shotPatternIndex = (s_shotPatternIndex + 1) % (patternSize > 0 ? patternSize : 1);
+                    }
+                    s_wasFiring = isFiringNow;
+
+                    const bool shootHead = pattern[s_shotPatternIndex % (patternSize > 0 ? patternSize : 1)];
+                    useChest = !shootHead;
                 } else if (!pPlayer.silentAimHead) {
                     useChest = true;
                 }
@@ -1767,6 +1806,10 @@ inline Response RequestDaemonESP(int screenWidth, int screenHeight) {
     result.VisibleEnemyCount = wire.visibleEnemyCount;
     result.VisibleNearOffScreenEnemyCount = wire.visibleNearOffScreenEnemyCount;
     result.ProximityEnemyCount = wire.proximityEnemyCount;
+    /* The threat counter now crosses the socket as well, so the NINLITE
+     * mode shows the same "Enemy / Behind" numbers as the kernel mode. */
+    result.EnemiesInFront = wire.enemiesInFront;
+    result.EnemiesBehind = wire.enemiesBehind;
 
     for (int i = 0; i < count && i < maxplayerCount; i++) {
         const Ninlite::PlayerData& src = wire.players[i];
