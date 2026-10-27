@@ -12,6 +12,7 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.WindowManager;
 
+import com.ninmods.main.R;
 import com.ninmods.main.auth.AuthApiController;
 import com.ninmods.main.auth.AuthManager;
 import com.ninmods.main.core.AppLogger;
