@@ -414,16 +414,24 @@ public class MainActivity extends BaseActivity {
             os.writeBytes("exit\n");
             os.flush();
 
-            /* Cleanly wait for the official Magisk / KernelSU / APatch prompt
-             * response. Give user a reasonable window (10s) without hanging indefinitely. */
-            boolean finished = process.waitFor(10, TimeUnit.SECONDS);
-            if (!finished) {
+            // Compatible wait with 10s timeout that works on every Android version (API 21-35)
+            final Process proc = process;
+            final boolean[] finished = new boolean[]{false};
+            Thread waitThread = new Thread(() -> {
+                try {
+                    proc.waitFor();
+                    finished[0] = true;
+                } catch (InterruptedException ignored) {}
+            });
+            waitThread.start();
+            waitThread.join(10000);
+
+            if (!finished[0]) {
                 AppLogger.log("SYSTEM", "requestSuperUser timed out after 10s - official prompt was not answered");
-                process.destroy();
+                proc.destroy();
                 return false;
             }
-            int exitVal = process.exitValue();
-            return exitVal == 0;
+            return proc.exitValue() == 0;
         } catch (Throwable t) {
             AppLogger.log("SYSTEM", "requestSuperUser exception: " + t.getMessage());
             if (process != null) {
