@@ -927,7 +927,7 @@ inline void CreateDataList(Response& SendResponse) {
             libAddress.store(0, std::memory_order_relaxed);
             return;
         }
-        InitMemoryAccess(currentPid);
+        EnsureDriverConnectedThrottled();
     }
 
     if (currentPid != s_last_verified_pid) {
@@ -939,7 +939,9 @@ inline void CreateDataList(Response& SendResponse) {
         uintptr_t base = GetModuleBase(currentPid, "libil2cpp.so");
         libAddress.store(base, std::memory_order_relaxed);
         if (base == 0) return;
-        if (!IsDriverConnected()) InitMemoryAccess(currentPid);
+        /* Throttled, gated probe - InitMemoryAccess() probed on every engine
+         * tick while the driver was offline. */
+        if (!IsDriverConnected()) EnsureDriverConnectedThrottled();
     }
 
     static time_t lastLogTime = 0;

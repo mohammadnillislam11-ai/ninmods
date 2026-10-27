@@ -45,6 +45,18 @@ static inline int OpenDriver() {
         return driver_fd;
     }
 
+    /* The engine calls this from every failed read and write. Without a
+     * cooldown each offline tick logged a full probe attempt - a log storm
+     * that serialised the engine behind the logger mutex. At most one
+     * attempt (and one log line pair) every two seconds. */
+    static std::atomic<int64_t> s_lastOpenMs{0};
+    int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (nowMs - s_lastOpenMs.load(std::memory_order_relaxed) < 2000) {
+        return -1;
+    }
+    s_lastOpenMs.store(nowMs, std::memory_order_relaxed);
+
     NIN_LOGI("DRIVER_A2Z", "=== [DRIVER_INIT] Connecting via Unified c_driver Engine ===");
     if (driver && driver->initDriver()) {
         driver_fd = driver->getFd();

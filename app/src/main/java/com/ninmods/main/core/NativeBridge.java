@@ -96,16 +96,34 @@ public final class NativeBridge {
                     .redirectErrorStream(true)
                     .start();
 
-            // Drain the output so the pipe can never fill up and deadlock.
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    AppLogger.log(TAG, line);
-                }
-            }
+            final java.util.concurrent.atomic.AtomicInteger exitCode =
+                    new java.util.concurrent.atomic.AtomicInteger(-1);
 
-            return process.waitFor();
+            // Drain the output so the pipe can never fill up and deadlock.
+            Thread drainer = new Thread(() -> {
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        AppLogger.log(TAG, line);
+                    }
+                    exitCode.set(process.waitFor());
+                } catch (Throwable ignored) {}
+            }, "runAsRootDrain");
+            drainer.start();
+
+            /* A broken or half installed root binary can sit forever without
+             * printing a single byte - the old waitFor() then blocked this
+             * thread (and, on the UI path, the whole app) until Android
+             * killed it. The wait is now bounded. */
+            drainer.join(25000);
+            if (drainer.isAlive()) {
+                process.destroyForcibly();
+                drainer.interrupt();
+                Log.e(TAG, "runAsRoot timed out after 25s - root shell unresponsive");
+                return -1;
+            }
+            return exitCode.get();
         } catch (Throwable t) {
             Log.e(TAG, "runAsRoot failed", t);
             AppLogger.logE(TAG, "runAsRoot failed: " + t.getMessage(), t);

@@ -82,28 +82,45 @@ bool CheckShellDaemonRunning() {
         return true;
     }
 
+    /* The /proc fallback below walks the cmdline of EVERY process on the
+     * device. The menu poller calls this function from the UI thread every
+     * 500 ms, so the walk result is cached for three seconds - the daemon
+     * appears and disappears on the scale of minutes, not milliseconds. */
+    static std::atomic<bool> s_cachedRunning{false};
+    static std::atomic<int64_t> s_cachedAtMs{0};
+    int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (nowMs - s_cachedAtMs.load(std::memory_order_relaxed) < 3000) {
+        return s_cachedRunning.load(std::memory_order_relaxed);
+    }
+
     /* Fallback: look for the Daemon process itself. */
+    bool running = false;
     DIR* dir = opendir("/proc");
-    if (!dir) return false;
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        if (entry->d_type == DT_DIR && isdigit(entry->d_name[0])) {
-            char cmdPath[64];
-            snprintf(cmdPath, sizeof(cmdPath), "/proc/%s/cmdline", entry->d_name);
-            FILE* f = fopen(cmdPath, "r");
-            if (f) {
-                char cmdline[128] = {0};
-                fgets(cmdline, sizeof(cmdline), f);
-                fclose(f);
-                if (strstr(cmdline, "ninlite_daemon")) {
-                    closedir(dir);
-                    return true;
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            if (entry->d_type == DT_DIR && isdigit(entry->d_name[0])) {
+                char cmdPath[64];
+                snprintf(cmdPath, sizeof(cmdPath), "/proc/%s/cmdline", entry->d_name);
+                FILE* f = fopen(cmdPath, "r");
+                if (f) {
+                    char cmdline[128] = {0};
+                    fgets(cmdline, sizeof(cmdline), f);
+                    fclose(f);
+                    if (strstr(cmdline, "ninlite_daemon")) {
+                        running = true;
+                        break;
+                    }
                 }
             }
         }
+        closedir(dir);
     }
-    closedir(dir);
-    return false;
+
+    s_cachedRunning.store(running, std::memory_order_relaxed);
+    s_cachedAtMs.store(nowMs, std::memory_order_relaxed);
+    return running;
 }
 
 void StartEngine(const std::string& nativeLibDir) {
@@ -188,7 +205,11 @@ void StartEngine(const std::string& nativeLibDir) {
 
         /* 3. Sync engine state over the shared binary protocol. */
         SyncFeature(Ninlite::MODE_MASTER, true, 0);
+        /* The Start button is the MANUAL activation: only from this moment
+         * on the driver probes for kernel nodes (the driver layer stays
+         * completely silent before). */
         if (driver) {
+            driver->AllowProbing();
             driver->initDriver();
         }
         Actived.activar = true;

@@ -54,6 +54,7 @@ static inline ssize_t sys_process_vm_writev(pid_t pid, const struct iovec *local
 #include <mutex>
 #include <vector>
 #include <initializer_list>
+#include <chrono>
 #include <linux/input.h>
 #include <linux/uinput.h>
 
@@ -235,6 +236,23 @@ public:
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // MANUAL ACTIVATION GATE
+    //
+    // The app must not hunt for kernel driver nodes on its own. Nothing
+    // probes /dev or /proc until the user does something by hand: toggles a
+    // feature in the menu (NinFeatureSetState) or presses Start
+    // (NinliteEngine::StartEngine). Both call AllowProbing().
+    //
+    // Without the gate the engine probed every ~2 seconds forever - and,
+    // worse, initDriver() was also called from EVERY memory read while the
+    // driver was offline, which on a device without a loaded driver turned
+    // a single engine tick into several hundred open() syscalls.
+    // ──────────────────────────────────────────────────────────────────
+    static inline std::atomic<bool> s_probeAllowed{false};
+    static void AllowProbing() { s_probeAllowed.store(true, std::memory_order_relaxed); }
+    static bool ProbeAllowed() { return s_probeAllowed.load(std::memory_order_relaxed); }
+
+    // ──────────────────────────────────────────────────────────────────
     // Unified Linux Official Driver Discovery (Strictly Genuine Kernel Nodes)
     // ──────────────────────────────────────────────────────────────────
     bool initDriver() {
@@ -242,6 +260,26 @@ public:
         if (isConnected()) {
             return true;
         }
+
+        /* NOTHING is automatic: the user must have activated the app by hand
+         * (feature toggle or engine start) before a single node is probed. */
+        if (!s_probeAllowed.load(std::memory_order_relaxed)) {
+            return false;
+        }
+
+        /* PROBE COOLDOWN
+         * The discovery probe opens five device nodes and performs an IOCTL
+         * self test - several hundred syscalls. The engine calls initDriver()
+         * from every single memory read while offline, so without this the
+         * probe would run on every read of every frame. At most one probe
+         * every two seconds, from any thread. */
+        static std::atomic<int64_t> s_lastProbeMs{0};
+        int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (nowMs - s_lastProbeMs.load(std::memory_order_relaxed) < 2000) {
+            return false;
+        }
+        s_lastProbeMs.store(nowMs, std::memory_order_relaxed);
 
         NIN_LOGI("c_driver", "=== [DRIVER_INIT] Probing Official Linux Kernel Driver Nodes ===");
 

@@ -64,10 +64,6 @@
 // ============================================
 // GLOBAL SYSTEM STATE & PROFILE SETTINGS
 // ============================================
-static int g_hackVersion = 1;
-
-inline bool isButrulVersion() { return g_hackVersion == 2; }
-
 /* These used to be hard coded to `true`, which meant every native
  * authorisation gate was a no-op. They now mirror the genuine session state
  * that the Java layer pushes through SecurityVault.nativeSetSession(). */
@@ -97,12 +93,6 @@ inline ImU32 ToImU32(const Color &c, float alphaMultiplier = 1.0f) {
   int b = (int)ClampVal(c.b, 0.0f, 255.0f);
   int a = (int)ClampVal(c.a * alphaMultiplier, 0.0f, 255.0f);
   return IM_COL32(r, g, b, a);
-}
-
-static void EnsureDriverConnected() {
-  /* Rate limited: the discovery probe costs several hundred syscalls and this
-   * function runs once per rendered frame. */
-   EnsureDriverConnectedThrottled();
 }
 
 void DrawFOVCircle(ESP esp, float fov, Color color) {
@@ -834,50 +824,24 @@ static void SetEspMasterSwitch(bool on) {
 }
 
 /*
- * THE SAFE MODE GATE
- * ------------------
- * The user can pick between MODE_SAFE and MODE_EXTREME on the mode screen
- * (ModeSelectActivity). In SAFE mode the features that alter the game
- * memory the most aggressively are refused, so the menu can not switch
- * them on.
- *
- * This gate used to live in a SECOND, parallel feature switch
- * (the removed Floater_ChangesID writer). That switch is gone now, so the
- * gate lives here - in the one writer that every menu uses. A gate in the
- * dead switch protected nothing.
- */
-static bool IsFeatureBlockedInSafeMode(int featId) {
-  if (isButrulVersion()) {
-    return false; /* EXTREME mode: nothing is blocked */
-  }
-  switch (featId) {
-  case 3:   /* ESP skeleton        */
-  case 20:  /* aim hard            */
-  case 22:  /* silent aim          */
-  case 23:  /* aim magnet          */
-  case 33:  /* no recoil           */
-  case 41:  /* speed movement      */
-  case 42:  /* player to me        */
-  case 43:  /* underground camera  */
-  case 44:  /* anticheat bypass    */
-  case 216: /* kill in chest       */
-    return true;
-  default:
-    return false;
-  }
-}
-
-/*
  * THE SINGLE ENGINE WRITER
  * ------------------------
  * Every menu of this app (the classic NativeBridge menu and the reference
  * parity DSL menu in Menu/Preferences.cpp) writes through this function, so
  * there is exactly one switch that maps a feature id onto an engine flag.
+ *
+ * EVERY FEATURE IS MANUAL: the flag is set exactly when the user toggles
+ * it in the menu - nothing is refused, nothing is switched on by itself.
+ * The old SAFE-mode gate used to refuse ten feature ids behind the
+ * user's back, which on a non-rooted test device looked like "the menu
+ * is broken". It is gone.
+ *
+ * A toggle is also the manual activation of the whole memory layer: only
+ * from this moment on the driver may probe for kernel nodes.
  */
 void NinFeatureSetState(int featId, bool bState) {
-  if (IsFeatureBlockedInSafeMode(featId)) {
-    NIN_LOGI("CLIENT", "BLOCKED: feature %d is not available in SAFE mode", featId);
-    return;
+  if (driver) {
+    driver->AllowProbing();
   }
   switch (featId) {
   // ESP Features
@@ -1410,18 +1374,22 @@ Java_com_ninmods_main_core_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
   return env->NewStringUTF("");
 }
 
+/* The mode selection (SAFE / EXTREME) used to feed the feature blocking
+ * gate. The gate is gone - every feature is manually toggleable - so the
+ * mode no longer changes any engine behaviour. The exports stay as no-ops
+ * because the Java activities still call them. */
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_DashboardActivity_setModeNative(JNIEnv *env,
-                                                           jclass clazz,
-                                                           jint mode) {
-  g_hackVersion = (mode == 2) ? 2 : 1;
+                                                            jclass clazz,
+                                                            jint mode) {
+  (void) env; (void) clazz; (void) mode;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_ModeSelectActivity_setModeNative(JNIEnv *env,
                                                             jclass clazz,
                                                             jint mode) {
-  g_hackVersion = (mode == 2) ? 2 : 1;
+  (void) env; (void) clazz; (void) mode;
 }
 
 extern "C" JavaVM *g_JavaVM = nullptr;

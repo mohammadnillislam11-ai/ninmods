@@ -6,10 +6,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <atomic>
 #include <mutex>
 #include <signal.h>
 #include <time.h>
 #include <unistd.h>
+#include <thread>
 
 /*
  * THE GAME DETECTION ENGINE
@@ -275,7 +277,63 @@ void Store(const GameProcess &process) {
     state.current = process;
 }
 
+/* Is there a root binary at all? On a non-rooted device there is none,
+ * so no scan may ever try to spawn a shell. Checked once, then cached. */
+bool RootAvailable() {
+    static int s_state = 0; /* 0 = unknown, 1 = yes, -1 = no */
+    if (s_state != 0) return s_state == 1;
+    const char *paths[] = {"/system/bin/su", "/system/xbin/su", "/system/sbin/su",
+                           "/sbin/su", "/vendor/bin/su", "/data/adb/ksu/bin/su",
+                           "/data/adb/ap/bin/su"};
+    bool found = false;
+    for (const char *p : paths) {
+        if (access(p, F_OK) == 0 || access(p, X_OK) == 0) {
+            found = true;
+            break;
+        }
+    }
+    s_state = found ? 1 : -1;
+    return found;
+}
+
+/* The heavy scan. Runs on its own short-lived thread. */
+void RunScan() {
+    /* One scan at a time: if the previous one is stuck on a broken root
+     * shell, a newer scan must not pile up behind it. */
+    static std::atomic<bool> s_inFlight{false};
+    bool expected = false;
+    if (!s_inFlight.compare_exchange_strong(expected, true)) {
+        return;
+    }
+
+    GameProcess process;
+    bool found = DaemonScan(process);
+    if (!found && RootAvailable()) {
+        found = RootShellScan(process);
+    }
+    if (!found) {
+        found = ProcScan(process);
+    }
+    Store(found ? process : GameProcess());
+
+    s_inFlight.store(false);
+}
+
 }  // namespace
+
+/* =================================================================
+ * BACKGROUND SCAN WORKER
+ * =================================================================
+ * The heavy scans (the root shell spawn, the full /proc walk) must
+ * NEVER run on the calling thread. The menu polls Detect() from the
+ * UI thread every 500 ms; a root shell that hangs (a broken or
+ * half installed su binary) blocked that thread until Android killed
+ * the app as "not responding" - and on a plain non-rooted device the
+ * shell spawns plus the /proc walks ran needlessly on every poll.
+ *
+ * Detect() now only reads the cached state and asks a short-lived
+ * background thread to refresh it - at most one request per second.
+ * ================================================================= */
 
 GameProcess Detect() {
     EngineState &state = State();
@@ -288,32 +346,18 @@ GameProcess Detect() {
         }
     }
 
-    GameProcess process;
-
-    /*
-     * 2. The daemon - it runs as root and already scans /proc, so it is the
-     *    cheapest and most reliable source on Android 9+.
-     */
-    if (DaemonScan(process)) {
-        Store(process);
-        return process;
+    /* 2. Ask the background worker for a fresh scan - at most one request
+     * per second. The caller immediately receives the last known state;
+     * the calling thread never blocks on a root shell or a /proc walk. */
+    static std::atomic<int64_t> s_lastRequestMs{0};
+    int64_t now = NowMs();
+    if (now - s_lastRequestMs.load(std::memory_order_relaxed) >= 1000) {
+        s_lastRequestMs.store(now, std::memory_order_relaxed);
+        std::thread([]() { RunScan(); }).detach();
     }
 
-    /* 3. The scan with root rights of the app itself. */
-    if (RootShellScan(process)) {
-        Store(process);
-        return process;
-    }
-
-    /* 3. The plain scan, for the case that the game runs in our own user. */
-    if (ProcScan(process)) {
-        Store(process);
-        return process;
-    }
-
-    /* 4. Nothing found. */
-    Store(GameProcess());
-    return GameProcess();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    return state.current;
 }
 
 GameProcess Refresh() {
