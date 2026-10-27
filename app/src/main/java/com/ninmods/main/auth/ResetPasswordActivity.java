@@ -30,7 +30,7 @@ public class ResetPasswordActivity extends BaseActivity {
 
     @Override
     protected boolean enableSecureScreen() {
-        return true;
+        return false;
     }
 
 

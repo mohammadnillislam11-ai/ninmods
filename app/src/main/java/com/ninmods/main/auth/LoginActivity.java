@@ -35,7 +35,7 @@ public class LoginActivity extends BaseActivity {
 
     @Override
     protected boolean enableSecureScreen() {
-        return true;
+        return false;
     }
 
 

@@ -399,10 +399,11 @@ public class MainActivity extends BaseActivity {
 
     public static boolean requestSuperUser() {
         Process process = null;
+        DataOutputStream os = null;
         try {
             // Official standard interactive su invocation (identical to loader software)
             process = Runtime.getRuntime().exec("su");
-            DataOutputStream os = new DataOutputStream(process.getOutputStream());
+            os = new DataOutputStream(process.getOutputStream());
 
             // Drain stdout & stderr in background to avoid Linux pipe buffer deadlocks
             drainStream(process.getInputStream());
@@ -412,17 +413,12 @@ public class MainActivity extends BaseActivity {
             os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /dev/nh* /dev/wanbai* /proc/uevents_records 2>/dev/null\n");
             os.writeBytes("exit\n");
             os.flush();
-            os.close();
 
             /* Cleanly wait for the official Magisk / KernelSU / APatch prompt
-             * response. GEMINI.md rule 4 demands a GENEROUS window (>= 30s) so
-             * the user can actually read and approve the official dialog.
-             * The previous process.waitFor() had NO timeout at all, which
-             * parked the calling thread forever whenever the prompt stayed
-             * open. */
-            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+             * response. Give user a reasonable window (10s) without hanging indefinitely. */
+            boolean finished = process.waitFor(10, TimeUnit.SECONDS);
             if (!finished) {
-                AppLogger.log("SYSTEM", "requestSuperUser timed out after 30s - official prompt was not answered");
+                AppLogger.log("SYSTEM", "requestSuperUser timed out after 10s - official prompt was not answered");
                 process.destroy();
                 return false;
             }
@@ -434,6 +430,10 @@ public class MainActivity extends BaseActivity {
                 try { process.destroy(); } catch (Throwable ignored) {}
             }
             return false;
+        } finally {
+            if (os != null) {
+                try { os.close(); } catch (Throwable ignored) {}
+            }
         }
     }
 

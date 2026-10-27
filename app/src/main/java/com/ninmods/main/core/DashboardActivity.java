@@ -83,17 +83,23 @@ public class DashboardActivity extends BaseActivity {
             return;
         }
 
-        // Restore native cryptographic session from saved token if active
-        if (AuthManager.hasActiveLicense(this)) {
-            String sessionToken = AuthManager.getSessionToken(this);
-            String hwid = AuthApiController.getHwid(this);
-            long remSec = AuthManager.getRemainingSeconds(this);
-            if (sessionToken != null && !sessionToken.isEmpty()) {
-                SecurityVault.setNativeSession(sessionToken, hwid, remSec);
+        try {
+            // Restore native cryptographic session from saved token if active
+            if (AuthManager.hasActiveLicense(this)) {
+                String sessionToken = AuthManager.getSessionToken(this);
+                String hwid = AuthApiController.getHwid(this);
+                long remSec = AuthManager.getRemainingSeconds(this);
+                if (sessionToken != null && !sessionToken.isEmpty()) {
+                    SecurityVault.setNativeSession(sessionToken, hwid, remSec);
+                }
             }
-        }
 
-        buildInterface();
+            buildInterface();
+        } catch (Throwable t) {
+            AppLogger.logE("DASHBOARD", "Failed to build dashboard interface: " + t.getMessage(), t);
+            showFatalError("Dashboard Error", "Could not load dashboard components: " + t.getMessage());
+            return;
+        }
 
         // Asynchronously synchronize active plan and license directly from server database
         AuthApiController.fetchProfile(this, new AuthApiController.ApiCallback() {
@@ -238,6 +244,7 @@ public class DashboardActivity extends BaseActivity {
     }
 
     private void refreshBody() {
+        if (mainContainer == null || isFinishing()) return;
         final int scrollY = currentBodyView instanceof android.widget.ScrollView
                 ? currentBodyView.getScrollY()
                 : 0;

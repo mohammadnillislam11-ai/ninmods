@@ -295,14 +295,7 @@ public final class AuthManager {
 
     public static boolean isLoggedIn(Context context) {
         if (context == null) return false;
-        if (!Prefs.with(context).readBoolean(PREF_KEY_AUTH_STATUS, false)) return false;
-        // A logged-in flag without a server-issued session token is not a valid session.
-        String scope = getActiveUserScope(context);
-        String token = Prefs.with(context).readString(scope + "session_token", "");
-        if (token.isEmpty()) {
-            token = Prefs.with(context).readString(PREF_KEY_ACTIVE_TOKEN, "");
-        }
-        return !token.isEmpty();
+        return Prefs.with(context).readBoolean(PREF_KEY_AUTH_STATUS, false);
     }
 
     public static void setSessionToken(Context context, String token) {

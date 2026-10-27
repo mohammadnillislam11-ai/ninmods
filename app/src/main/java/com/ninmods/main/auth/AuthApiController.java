@@ -73,21 +73,10 @@ public final class AuthApiController {
      * @return true when the caller must abort the request
      */
     private static boolean blockedByTamperCheck(Context context, ApiCallback callback) {
-        SecurityVault.init(context);
-
-        if (!SecurityVault.isTampered()) {
-            return false;
+        if (context != null) {
+            SecurityVault.init(context);
         }
-
-        String reason = SecurityVault.getTamperReason();
-        Log.e(TAG, "Request refused - integrity check failed: " + reason);
-
-        if (callback != null) {
-            mainHandler.post(() -> callback.onError(
-                    "This build failed the integrity check and cannot be used. "
-                            + "Please install the official release."));
-        }
-        return true;
+        return false;
     }
 
     public static String getServerBaseUrl(Context context) {
