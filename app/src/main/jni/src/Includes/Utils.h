@@ -18,6 +18,7 @@
 #include "Logger.h"
 #include "NativeCrypto.h"
 #include "driver.h"
+#include "ShellExec.h"
 
 /* The target PID and the libil2cpp base are written by the JNI thread
  * (getDetectedGamePid / getDetectedGameTitle) AND by the scene worker thread
@@ -270,17 +271,16 @@ inline pid_t FindPid(const char *PackageName) {
         return FindGamePid();
     }
     char text[69];
-    pid_t pid = 0;
     snprintf(text, sizeof(text), "pidof %s 2>/dev/null", PackageName);
-    FILE *chkRun = popen(text, "r");
-    if (chkRun) {
-        char output[32] = {0};
-        if (fgets(output, sizeof(output), chkRun)) {
-            pid = atoi(output);
-        }
-        pclose(chkRun);
+
+    /* posix_spawn() instead of popen(): popen() uses fork(), which the
+     * Android app sandbox answers with SIGSYS. See Includes/ShellExec.h. */
+    char output[32] = {0};
+    if (RunShellCommand(text, output, sizeof(output)) == 0) {
+        pid_t pid = (pid_t)atoi(output);
+        return pid;
     }
-    return pid;
+    return 0;
 }
 
 // Encontra o endereço base de uma biblioteca dentro do processo alvo

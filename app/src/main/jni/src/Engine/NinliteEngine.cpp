@@ -3,6 +3,7 @@
 #include "NinliteEngine.h"
 #include "Includes/Logger.h"
 #include "Includes/driver.h"
+#include "Includes/ShellExec.h"
 #include "GameEngine.h"
 #include <dirent.h>
 #include <unistd.h>
@@ -171,16 +172,14 @@ void StartEngine(const std::string& nativeLibDir) {
         suCommand += script;
         suCommand += "'";
 
-        FILE* su = popen(suCommand.c_str(), "r");
-        if (su) {
-            char drain[256];
-            while (fgets(drain, sizeof(drain), su)) {
-                /* drain so the pipe can never fill up and deadlock */
-            }
-            int rc = pclose(su);
-            if (rc != 0) {
-                NIN_LOGE("NINLITE", "su -c returned %d - daemon launch failed", rc);
-            }
+        /* Run the script through posix_spawn() instead of popen().
+         * popen() uses fork(), which the Android app sandbox answers with
+         * SIGSYS - the same crash that the global driver constructor used to
+         * cause while the splash screen was still up. */
+        char suOutput[512];
+        int rc = RunShellCommand(suCommand.c_str(), suOutput, sizeof(suOutput));
+        if (rc != 0) {
+            NIN_LOGE("NINLITE", "su -c returned %d - daemon launch failed", rc);
         }
 
         /* 2. Poll up to ~3 seconds for the Daemon socket (non destructive). */
