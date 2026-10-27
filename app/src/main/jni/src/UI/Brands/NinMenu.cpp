@@ -140,10 +140,10 @@ void NinMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     Toggle("IGNORE KNOCKED PLAYERS", &pPlayer.ignoreKnocked);
                     Toggle("IGNORE BOTS / AI", &pPlayer.ignoreBots);
                     ImGui::Spacing();
-                    ImGui::Text("AIM FOV ANGLE: %.0f deg", pPlayer.AimFov);
+                    ImGui::Text("AIM FOV ANGLE: %.0f deg", pPlayer.AimFov.load(std::memory_order_relaxed));
                     MobileSliderFloat("##AimFovSlider", &pPlayer.AimFov, 10.0f, 180.0f);
                     ImGui::Spacing();
-                    ImGui::Text("MAX TARGET DISTANCE: %.0f M", pPlayer.AimDistance);
+                    ImGui::Text("MAX TARGET DISTANCE: %.0f M", pPlayer.AimDistance.load(std::memory_order_relaxed));
                     MobileSliderFloat("##AimDistSlider", &pPlayer.AimDistance, 10.0f, 350.0f);
                     ImGui::Spacing();
                 }
