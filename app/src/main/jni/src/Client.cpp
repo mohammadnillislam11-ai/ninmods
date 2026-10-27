@@ -775,34 +775,10 @@ Java_com_ninmods_main_core_NativeBridge_closeOverlay(JNIEnv *env,
  * Only the LATEST value per mode is kept, which is exactly the semantics of
  * a feature flag / slider.
  */
-static std::mutex g_daemonSyncMutex;
-static std::map<int, std::pair<bool, int>> g_daemonSyncQueue;
-static std::atomic<bool> g_daemonSyncWorkerStarted{false};
-
 static void SyncWithNinLiteDaemon(int mode, bool isOn, int value) {
-  {
-    std::lock_guard<std::mutex> lock(g_daemonSyncMutex);
-    g_daemonSyncQueue[mode] = std::make_pair(isOn, value);
-  }
-
-  if (!g_daemonSyncWorkerStarted.exchange(true)) {
-    std::thread([]() {
-      while (true) {
-        std::map<int, std::pair<bool, int>> pending;
-        {
-          std::lock_guard<std::mutex> lock(g_daemonSyncMutex);
-          if (g_daemonSyncQueue.empty()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            continue;
-          }
-          pending.swap(g_daemonSyncQueue);
-        }
-        for (auto &entry : pending) {
-          DaemonSyncRequest(entry.first, entry.second.first, entry.second.second);
-        }
-      }
-    }).detach();
-  }
+  /* Non-blocking: the DaemonLink worker owns the socket and coalesces the
+   * newest value per mode. The menu thread never waits for the daemon. */
+  NinEngine::DaemonLink::Instance().PushControl(mode, isOn, value);
 }
 
 /* The selected silent aim target (0 = Legit, 1 = Head, 2 = Chest, 3 = Neck).

@@ -32,9 +32,6 @@ const char *const kPackageMax = "com.dts.freefiremax";
 const char *const kPackageNormal = "com.dts.freefireth";
 const char *const kPackageNormalAlt = "com.dts.freefirein";
 
-/* The root shell must not be spawned more often than this. */
-const int64_t kRootScanThrottleMs = 1500;
-
 /* The daemon is asked at most once per second. */
 const int64_t kDaemonQueryThrottleMs = 1000;
 
@@ -168,86 +165,6 @@ bool ProcScan(GameProcess &outProcess) {
     return false;
 }
 
-/**
- * The same scan, but with root rights.
- *
- * The app owns a root grant (the kernel driver loader needs it), so the
- * cmdline of every process can be read. The result is throttled, because
- * spawning su is expensive.
- */
-bool RootShellScan(GameProcess &outProcess) {
-    static int64_t lastScanMs = 0;
-    static pid_t lastPid = 0;
-    static bool lastIsMax = false;
-    static std::string lastPackage;
-
-    int64_t now = NowMs();
-    if (lastPid > 0 && (now - lastScanMs) < kRootScanThrottleMs) {
-        FillGameProcess(outProcess, lastPid, lastPackage, lastIsMax, DetectionSource::ROOT_SHELL);
-        return true;
-    }
-
-    /*
-     * The throttle also applies when nothing was found. Without it every
-     * single call would spawn a root shell - the panel polls every 500 ms.
-     */
-    if ((now - lastScanMs) < kRootScanThrottleMs) {
-        return false;
-    }
-    lastScanMs = now;
-
-    static const char *kScript =
-            "su -c 'for p in /proc/[0-9]*; do "
-            "c=$(cat $p/cmdline 2>/dev/null | tr -d \"\\000\"); "
-            "case \"$c\" in "
-            "*com.dts.freefiremax*) echo \"${p#/proc/} max\" ;; "
-            "*com.dts.freefireth*|*com.dts.freefirein*) echo \"${p#/proc/} normal\" ;; "
-            "esac; done' 2>/dev/null";
-
-    FILE *pipe = popen(kScript, "r");
-    if (pipe == nullptr) return false;
-
-    pid_t normalPid = 0;
-    pid_t maxPid = 0;
-    char line[256];
-    while (fgets(line, sizeof(line), pipe) != nullptr) {
-        char *endptr = nullptr;
-        long pid = strtol(line, &endptr, 10);
-        if (endptr == line || pid <= 0) continue;
-
-        bool isMax = (strstr(line, "max") != nullptr);
-        if (isMax) {
-            if (maxPid == 0) maxPid = static_cast<pid_t>(pid);
-        } else {
-            if (normalPid == 0) normalPid = static_cast<pid_t>(pid);
-        }
-    }
-    pclose(pipe);
-
-    if (normalPid > 0) {
-        lastPid = normalPid;
-        lastIsMax = false;
-        lastPackage = kPackageNormal;
-        FillGameProcess(outProcess, normalPid, lastPackage, false, DetectionSource::ROOT_SHELL);
-        return true;
-    }
-    if (maxPid > 0) {
-        lastPid = maxPid;
-        lastIsMax = true;
-        lastPackage = kPackageMax;
-        FillGameProcess(outProcess, maxPid, lastPackage, true, DetectionSource::ROOT_SHELL);
-        return true;
-    }
-    return false;
-}
-
-/**
- * Asks the daemon for the game process.
- *
- * The daemon runs as root and scans /proc itself, so it can see the game
- * even though the app cannot. The answer is cached for a second, because
- * the panel polls the state every 500 ms.
- */
 bool DaemonScan(GameProcess &outProcess) {
     static int64_t lastQueryMs = 0;
 
@@ -277,29 +194,7 @@ void Store(const GameProcess &process) {
     state.current = process;
 }
 
-/* Is there a root binary at all? On a non-rooted device there is none,
- * so no scan may ever try to spawn a shell. Checked once, then cached. */
-bool RootAvailable() {
-    static int s_state = 0; /* 0 = unknown, 1 = yes, -1 = no */
-    if (s_state != 0) return s_state == 1;
-    const char *paths[] = {"/system/bin/su", "/system/xbin/su", "/system/sbin/su",
-                           "/sbin/su", "/vendor/bin/su", "/data/adb/ksu/bin/su",
-                           "/data/adb/ap/bin/su"};
-    bool found = false;
-    for (const char *p : paths) {
-        if (access(p, F_OK) == 0 || access(p, X_OK) == 0) {
-            found = true;
-            break;
-        }
-    }
-    s_state = found ? 1 : -1;
-    return found;
-}
-
-/* The heavy scan. Runs on its own short-lived thread. */
 void RunScan() {
-    /* One scan at a time: if the previous one is stuck on a broken root
-     * shell, a newer scan must not pile up behind it. */
     static std::atomic<bool> s_inFlight{false};
     bool expected = false;
     if (!s_inFlight.compare_exchange_strong(expected, true)) {
@@ -308,9 +203,6 @@ void RunScan() {
 
     GameProcess process;
     bool found = DaemonScan(process);
-    if (!found && RootAvailable()) {
-        found = RootShellScan(process);
-    }
     if (!found) {
         found = ProcScan(process);
     }
@@ -324,15 +216,14 @@ void RunScan() {
 /* =================================================================
  * BACKGROUND SCAN WORKER
  * =================================================================
- * The heavy scans (the root shell spawn, the full /proc walk) must
- * NEVER run on the calling thread. The menu polls Detect() from the
- * UI thread every 500 ms; a root shell that hangs (a broken or
- * half installed su binary) blocked that thread until Android killed
- * the app as "not responding" - and on a plain non-rooted device the
- * shell spawns plus the /proc walks ran needlessly on every poll.
+ * The full /proc walk must NEVER run on the calling thread: the menu
+ * poller queries Detect() from a background thread of its own, but
+ * other callers (render path, engine) may call it from anywhere, and
+ * a multi-hundred-file walk must not stall them.
  *
- * Detect() now only reads the cached state and asks a short-lived
- * background thread to refresh it - at most one request per second.
+ * Detect() therefore only reads the cached state and asks a short-lived
+ * background thread to refresh it - at most one request per second,
+ * one scan in flight at a time.
  * ================================================================= */
 
 GameProcess Detect() {

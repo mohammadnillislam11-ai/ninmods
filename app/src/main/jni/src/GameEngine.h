@@ -25,6 +25,7 @@
 #include "Includes/TransformTypes.h"
 #include "Includes/gameoffsets.h"
 #include "Includes/NinliteProtocol.h"
+#include "Engine/DaemonLink.h"
 #include "BooleanClient.h"
 #include "src/Unity/Vector3.hpp"
 #include "src/Unity/Vector2.hpp"
@@ -1716,36 +1717,16 @@ inline void EnsureSceneWorkerStarted() {
  *  - and every probe used to destroy the Daemon listener (the Daemon closed
  *    its listening socket as soon as a client disconnected).
  * ------------------------------------------------------------------ */
-inline Ninlite::SocketClient g_daemonClient;
-inline std::mutex g_daemonMutex;
-
+/* The daemon socket lives in Engine/DaemonLink.h - ONE worker thread owns it.
+ * Nothing in this file touches the socket or waits for it any more. */
 inline bool isNinLiteDaemonAvailable() {
-    std::lock_guard<std::mutex> lock(g_daemonMutex);
-    if (g_daemonClient.IsConnected()) return true;
-
-    /* Throttled reconnect: at most once per second, so a missing Daemon can
-     * never turn into a per frame connect() storm. */
-    static std::atomic<int64_t> s_lastAttempt{0};
-    int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now().time_since_epoch()).count();
-    int64_t last = s_lastAttempt.load(std::memory_order_relaxed);
-    if (now - last < 1000) return false;
-    s_lastAttempt.store(now, std::memory_order_relaxed);
-    return g_daemonClient.Connect();
+    return NinEngine::DaemonLink::Instance().IsConnected();
 }
 
-/* Sends a control request to the Daemon using the shared binary protocol.
- * Safe to call from any thread (the client is mutex protected). */
+/* Queues a control frame for the daemon. Never blocks. */
 inline bool DaemonSyncRequest(int mode, bool enabled, int value) {
-    std::lock_guard<std::mutex> lock(g_daemonMutex);
-    Ninlite::Request req;
-    memset(&req, 0, sizeof(req));
-    req.mode = mode;
-    req.enabled = enabled ? 1u : 0u;
-    req.value = value;
-    Ninlite::Response resp;
-    memset(&resp, 0, sizeof(resp));
-    return g_daemonClient.Request(req, &resp);
+    NinEngine::DaemonLink::Instance().PushControl(mode, enabled, value);
+    return true;
 }
 
 /**
@@ -1760,44 +1741,18 @@ inline bool DaemonSyncRequest(int mode, bool enabled, int value) {
  * @return true when the Daemon answered
  */
 inline bool RequestDaemonDetect(pid_t &outPid, bool &outIsMax) {
+    NinEngine::DaemonLink::Instance().RequestDetect();
     outPid = 0;
     outIsMax = false;
-
-    std::lock_guard<std::mutex> lock(g_daemonMutex);
-
-    Ninlite::Request req;
-    memset(&req, 0, sizeof(req));
-    req.mode = Ninlite::MODE_DETECT;
-    req.enabled = 1;
-
-    Ninlite::Response wire;
-    memset(&wire, 0, sizeof(wire));
-    if (!g_daemonClient.Request(req, &wire)) {
-        return false;
-    }
-    if (wire.detectedPid <= 0) {
-        return true;   /* the daemon answered, but the game is not running */
-    }
-
-    outPid = (pid_t)wire.detectedPid;
-    outIsMax = (strstr(wire.detectedPackage, "freefiremax") != nullptr);
-    return true;
+    return NinEngine::DaemonLink::Instance().GetDetect(outPid, outIsMax);
 }
 
 inline Response RequestDaemonESP(int screenWidth, int screenHeight) {
     Response result{};
-    std::lock_guard<std::mutex> lock(g_daemonMutex);
-
-    Ninlite::Request req;
-    memset(&req, 0, sizeof(req));
-    req.mode = Ninlite::MODE_ESP;
-    req.enabled = 1;
-    req.screenWidth = screenWidth;
-    req.screenHeight = screenHeight;
+    NinEngine::DaemonLink::Instance().RequestEsp(screenWidth, screenHeight);
 
     Ninlite::Response wire;
-    memset(&wire, 0, sizeof(wire));
-    if (!g_daemonClient.Request(req, &wire)) {
+    if (!NinEngine::DaemonLink::Instance().GetEsp(wire)) {
         return result;
     }
 
@@ -1808,8 +1763,6 @@ inline Response RequestDaemonESP(int screenWidth, int screenHeight) {
     result.VisibleEnemyCount = wire.visibleEnemyCount;
     result.VisibleNearOffScreenEnemyCount = wire.visibleNearOffScreenEnemyCount;
     result.ProximityEnemyCount = wire.proximityEnemyCount;
-    /* The threat counter now crosses the socket as well, so the NINLITE
-     * mode shows the same "Enemy / Behind" numbers as the kernel mode. */
     result.EnemiesInFront = wire.enemiesInFront;
     result.EnemiesBehind = wire.enemiesBehind;
 
@@ -1851,8 +1804,8 @@ inline Response GetCachedResponseSnapshot() {
 }
 
 inline bool isConnected() {
-    if (EnsureDriverConnectedThrottled()) {
+    if (driver && driver->isConnected()) {
         return true;
     }
-    return isNinLiteDaemonAvailable();
-}
+    return NinEngine::DaemonLink::Instance().IsConnected();
+}

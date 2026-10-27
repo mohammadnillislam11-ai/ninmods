@@ -36,11 +36,15 @@ void SyncFeature(int featId, bool enabled, int value) {
 }
 
 bool CheckEmulatorDetected() {
+    static int s_emuState = -1;
+    if (s_emuState != -1) return s_emuState == 1;
+
     if (access("/dev/qemu_pipe", F_OK) == 0 ||
         access("/dev/vboxguest", F_OK) == 0 ||
         access("/dev/vboxuser", F_OK) == 0 ||
         access("/system/bin/nox-prop", F_OK) == 0 ||
         access("/system/bin/androVM-prop", F_OK) == 0) {
+        s_emuState = 1;
         return true;
     }
     FILE* f = fopen("/system/build.prop", "r");
@@ -53,11 +57,13 @@ bool CheckEmulatorDetected() {
                 strstr(line, "genymotion") ||
                 strstr(line, "bluestacks")) {
                 fclose(f);
+                s_emuState = 1;
                 return true;
             }
         }
         fclose(f);
     }
+    s_emuState = 0;
     return false;
 }
 
@@ -78,49 +84,7 @@ const char* GetConnectionModeStr() {
 
 bool CheckShellDaemonRunning() {
     /* Non destructive liveness probe (persistent, shared connection). */
-    if (isNinLiteDaemonAvailable()) {
-        return true;
-    }
-
-    /* The /proc fallback below walks the cmdline of EVERY process on the
-     * device. The menu poller calls this function from the UI thread every
-     * 500 ms, so the walk result is cached for three seconds - the daemon
-     * appears and disappears on the scale of minutes, not milliseconds. */
-    static std::atomic<bool> s_cachedRunning{false};
-    static std::atomic<int64_t> s_cachedAtMs{0};
-    int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch()).count();
-    if (nowMs - s_cachedAtMs.load(std::memory_order_relaxed) < 3000) {
-        return s_cachedRunning.load(std::memory_order_relaxed);
-    }
-
-    /* Fallback: look for the Daemon process itself. */
-    bool running = false;
-    DIR* dir = opendir("/proc");
-    if (dir) {
-        struct dirent* entry;
-        while ((entry = readdir(dir)) != nullptr) {
-            if (entry->d_type == DT_DIR && isdigit(entry->d_name[0])) {
-                char cmdPath[64];
-                snprintf(cmdPath, sizeof(cmdPath), "/proc/%s/cmdline", entry->d_name);
-                FILE* f = fopen(cmdPath, "r");
-                if (f) {
-                    char cmdline[128] = {0};
-                    fgets(cmdline, sizeof(cmdline), f);
-                    fclose(f);
-                    if (strstr(cmdline, "ninlite_daemon")) {
-                        running = true;
-                        break;
-                    }
-                }
-            }
-        }
-        closedir(dir);
-    }
-
-    s_cachedRunning.store(running, std::memory_order_relaxed);
-    s_cachedAtMs.store(nowMs, std::memory_order_relaxed);
-    return running;
+    return isNinLiteDaemonAvailable();
 }
 
 void StartEngine(const std::string& nativeLibDir) {
@@ -130,19 +94,25 @@ void StartEngine(const std::string& nativeLibDir) {
 
     std::thread([nativeLibDir]() {
         /* --------------------------------------------------------------
-         * 1. Root shell injection.
+         * 1. Root shell injection - EXACTLY ONCE.
          *
-         * The previous implementation opened an INTERACTIVE `su` shell via
-         * popen("su","w"). That shell never terminates on its own: it stays
-         * open waiting for input, so the launching thread was parked forever
-         * and a SECOND root prompt was raised next to the official one the
-         * Java layer already requested (GEMINI.md rule 4).
+         * Every `su -c` invocation raises a fresh superuser prompt on the
+         * device. When the daemon is already running (a previous Start, a
+         * previous app launch), requesting root again would pop the prompt
+         * again for nothing - and the old script also killed a perfectly
+         * healthy daemon (killall) just to restart it.
          *
-         * We now execute ONE non interactive `su -c '<script>'` command. It
-         * uses the official superuser binary, it returns as soon as the
-         * script is done, and the already granted root permission is reused
-         * (no second prompt).
+         * The official flow is:
+         *   - daemon not running -> ONE `su -c` with the injection script,
+         *   - daemon running     -> no root request at all, just re-sync the
+         *     engine state over the existing connection.
+         *
+         * (The earlier interactive popen("su","w") variant is gone: it never
+         * terminated on its own and parked the launching thread forever.)
          * -------------------------------------------------------------- */
+        if (isNinLiteDaemonAvailable()) {
+            NIN_LOGI("NINLITE", "daemon already running - reusing the existing root session (no new superuser prompt)");
+        } else {
         std::string script;
         script += "killall -9 ninlite_daemon >/dev/null 2>&1\n";
         script += "setenforce 0 >/dev/null 2>&1\n";
@@ -202,8 +172,12 @@ void StartEngine(const std::string& nativeLibDir) {
                 break;
             }
         }
+        } /* end: the daemon was not running yet - injection done */
 
-        /* 3. Sync engine state over the shared binary protocol. */
+        /* 3. Sync engine state over the shared binary protocol. This runs in
+         * BOTH paths: a fresh injection and a reused, already running daemon.
+         * The daemon re-applies the master flag, so a second Start click
+         * restores a stopped engine without any root request. */
         SyncFeature(Ninlite::MODE_MASTER, true, 0);
         /* The Start button is the MANUAL activation: only from this moment
          * on the driver probes for kernel nodes (the driver layer stays

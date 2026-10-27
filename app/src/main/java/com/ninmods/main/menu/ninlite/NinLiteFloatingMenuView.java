@@ -560,126 +560,131 @@ public class NinLiteFloatingMenuView {
         mMainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (sSettingsDismissed) return;
+                if (sSettingsDismissed || !mIsAttached) return;
 
-                // Query C++ Real Engine for unified state
-                String stateJsonStr = NativeBridge.getNinliteStateJson();
-                try {
-                    org.json.JSONObject state = new org.json.JSONObject(stateJsonStr);
-                    boolean isStarting = state.optBoolean("isStarting", false);
-                    boolean isEngineStarted = state.optBoolean("isEngineStarted", false);
-                    boolean canStart = state.optBoolean("canStart", false);
-                    boolean gameDetected = state.optBoolean("gameDetected", false);
-                    int pid = state.optInt("gamePid", 0);
-                    String gameTitle = state.optString("gameTitle", "Waiting for Game...");
-                    boolean isEmu = state.optBoolean("isEmulator", false);
-                    String connMode = state.optString("connectionMode", "Phantom");
-                    String statusText = state.optString("statusText", "");
-                    String buttonText = state.optString("buttonText", "Start");
+                new Thread(() -> {
+                    try {
+                        final String stateJsonStr = NativeBridge.getNinliteStateJson();
+                        final boolean daemonRunning = NativeBridge.isShellDaemonRunning();
+                        mMainHandler.post(() -> {
+                            if (sSettingsDismissed || !mIsAttached) return;
+                            applyEngineStateUpdate(stateJsonStr, daemonRunning);
+                        });
+                    } catch (Throwable t) {
+                        AppLogger.logE(TAG, "Error querying native engine state: " + t.getMessage(), t);
+                    }
+                }, "NinLiteEnginePoller").start();
 
-                    if (mEmulatorValView != null) {
-                        mEmulatorValView.setText(isEmu ? "true" : "false");
-                        mEmulatorValView.setTextColor(isEmu ? COLOR_CYAN : COLOR_GREEN);
-                    }
-                    if (mConnectionValView != null) {
-                        mConnectionValView.setText(connMode);
-                    }
-                    if (mTeleEngineModeVal != null) {
-                        mTeleEngineModeVal.setText(connMode);
-                    }
-                    if (mTeleDaemonVal != null) {
-                        boolean daemonRunning = NativeBridge.isShellDaemonRunning();
-                        mTeleDaemonVal.setText(daemonRunning ? "Online (Connected)" : "Offline");
-                        mTeleDaemonVal.setTextColor(daemonRunning ? COLOR_GREEN : COLOR_RED);
-                    }
-                    if (mGameValView != null) {
-                        if (pid > 0) {
-                            mGameValView.setText(gameTitle + " (PID: " + pid + ")");
-                            mGameValView.setTextColor(COLOR_GREEN);
-                        } else {
-                            mGameValView.setText("Waiting for Game...");
-                            mGameValView.setTextColor(COLOR_TEXT_MUTED);
-                        }
-                    }
-                    if (mTeleTargetGameVal != null) {
-                        if (pid > 0) {
-                            mTeleTargetGameVal.setText(gameTitle + " [" + pid + "]");
-                            mTeleTargetGameVal.setTextColor(COLOR_GREEN);
-                        } else {
-                            mTeleTargetGameVal.setText("Waiting for Game");
-                            mTeleTargetGameVal.setTextColor(COLOR_TEXT_MUTED);
-                        }
-                    }
-
-                    if (mStatusValView != null) {
-                        mStatusValView.setText(statusText);
-                        if (isEngineStarted) {
-                            mStatusValView.setTextColor(COLOR_GREEN);
-                        } else if (isStarting) {
-                            mStatusValView.setTextColor(COLOR_CYAN_LIGHT);
-                        } else if (gameDetected) {
-                            mStatusValView.setTextColor(COLOR_CYAN);
-                        } else {
-                            mStatusValView.setTextColor(COLOR_TEXT_MUTED);
-                        }
-                    }
-
-                    if (mStartBtnView != null) {
-                        mStartBtnView.setText(buttonText);
-                        if (isEngineStarted) {
-                            mStartBtnView.setTextColor(Color.WHITE);
-                            GradientDrawable greenBg = new GradientDrawable();
-                            greenBg.setColor(COLOR_GREEN);
-                            greenBg.setCornerRadius(dp(10));
-                            mStartBtnView.setBackground(greenBg);
-                            mStartBtnView.setClickable(false);
-                        } else if (isStarting) {
-                            mStartBtnView.setTextColor(COLOR_CYAN_LIGHT);
-                            GradientDrawable startingBg = new GradientDrawable();
-                            startingBg.setColor(Color.parseColor("#152836"));
-                            startingBg.setCornerRadius(dp(10));
-                            mStartBtnView.setBackground(startingBg);
-                            mStartBtnView.setClickable(false);
-                        } else if (canStart) {
-                            mStartBtnView.setTextColor(Color.BLACK);
-                            GradientDrawable cyanBg = new GradientDrawable();
-                            cyanBg.setColor(COLOR_CYAN);
-                            cyanBg.setCornerRadius(dp(10));
-                            mStartBtnView.setBackground(cyanBg);
-                            mStartBtnView.setClickable(true);
-                        } else {
-                            mStartBtnView.setTextColor(Color.parseColor("#667788"));
-                            GradientDrawable disabledBg = new GradientDrawable();
-                            disabledBg.setColor(Color.parseColor("#161F2C"));
-                            disabledBg.setCornerRadius(dp(10));
-                            mStartBtnView.setBackground(disabledBg);
-                            mStartBtnView.setClickable(false);
-                        }
-                    }
-
-                    if (!gameTitle.equals(mLastGateGameTitle)) {
-                        mLastGateGameTitle = gameTitle;
-                        String gateGameType = FeatureSettings.gameTypeForTitle(gameTitle);
-                        if (!gateGameType.isEmpty()) {
-                            FeatureSettings.refreshServerGates(mContext, gateGameType);
-                        }
-                    }
-                } catch (Throwable t) {
-                    AppLogger.logE(TAG, "Error parsing native engine state: " + t.getMessage(), t);
-                }
-
-                /*
-                 * The poller has to keep running while the panel is collapsed
-                 * as well. It used to stop as soon as the panel was not
-                 * visible, so the panel kept the text of the moment it was
-                 * opened - the game row could say "Waiting for Game" long
-                 * after the game was detected.
-                 */
                 if (mIsAttached) {
-                    mMainHandler.postDelayed(this, 500);
+                    mMainHandler.postDelayed(this, 1000);
                 }
             }
         }, 500);
+    }
+
+    private void applyEngineStateUpdate(String stateJsonStr, boolean daemonRunning) {
+        try {
+            org.json.JSONObject state = new org.json.JSONObject(stateJsonStr);
+            boolean isStarting = state.optBoolean("isStarting", false);
+            boolean isEngineStarted = state.optBoolean("isEngineStarted", false);
+            boolean canStart = state.optBoolean("canStart", false);
+            boolean gameDetected = state.optBoolean("gameDetected", false);
+            int pid = state.optInt("gamePid", 0);
+            String gameTitle = state.optString("gameTitle", "Waiting for Game...");
+            boolean isEmu = state.optBoolean("isEmulator", false);
+            String connMode = state.optString("connectionMode", "Phantom");
+            String statusText = state.optString("statusText", "");
+            String buttonText = state.optString("buttonText", "Start");
+
+            if (mEmulatorValView != null) {
+                mEmulatorValView.setText(isEmu ? "true" : "false");
+                mEmulatorValView.setTextColor(isEmu ? COLOR_CYAN : COLOR_GREEN);
+            }
+            if (mConnectionValView != null) {
+                mConnectionValView.setText(connMode);
+            }
+            if (mTeleEngineModeVal != null) {
+                mTeleEngineModeVal.setText(connMode);
+            }
+            if (mTeleDaemonVal != null) {
+                mTeleDaemonVal.setText(daemonRunning ? "Online (Connected)" : "Offline");
+                mTeleDaemonVal.setTextColor(daemonRunning ? COLOR_GREEN : COLOR_RED);
+            }
+            if (mGameValView != null) {
+                if (pid > 0) {
+                    mGameValView.setText(gameTitle + " (PID: " + pid + ")");
+                    mGameValView.setTextColor(COLOR_GREEN);
+                } else {
+                    mGameValView.setText("Waiting for Game...");
+                    mGameValView.setTextColor(COLOR_TEXT_MUTED);
+                }
+            }
+            if (mTeleTargetGameVal != null) {
+                if (pid > 0) {
+                    mTeleTargetGameVal.setText(gameTitle + " [" + pid + "]");
+                    mTeleTargetGameVal.setTextColor(COLOR_GREEN);
+                } else {
+                    mTeleTargetGameVal.setText("Waiting for Game");
+                    mTeleTargetGameVal.setTextColor(COLOR_TEXT_MUTED);
+                }
+            }
+
+            if (mStatusValView != null) {
+                mStatusValView.setText(statusText);
+                if (isEngineStarted) {
+                    mStatusValView.setTextColor(COLOR_GREEN);
+                } else if (isStarting) {
+                    mStatusValView.setTextColor(COLOR_CYAN_LIGHT);
+                } else if (gameDetected) {
+                    mStatusValView.setTextColor(COLOR_CYAN);
+                } else {
+                    mStatusValView.setTextColor(COLOR_TEXT_MUTED);
+                }
+            }
+
+            if (mStartBtnView != null) {
+                mStartBtnView.setText(buttonText);
+                if (isEngineStarted) {
+                    mStartBtnView.setTextColor(Color.WHITE);
+                    GradientDrawable greenBg = new GradientDrawable();
+                    greenBg.setColor(COLOR_GREEN);
+                    greenBg.setCornerRadius(dp(10));
+                    mStartBtnView.setBackground(greenBg);
+                    mStartBtnView.setClickable(false);
+                } else if (isStarting) {
+                    mStartBtnView.setTextColor(COLOR_CYAN_LIGHT);
+                    GradientDrawable startingBg = new GradientDrawable();
+                    startingBg.setColor(Color.parseColor("#152836"));
+                    startingBg.setCornerRadius(dp(10));
+                    mStartBtnView.setBackground(startingBg);
+                    mStartBtnView.setClickable(false);
+                } else if (canStart) {
+                    mStartBtnView.setTextColor(Color.BLACK);
+                    GradientDrawable cyanBg = new GradientDrawable();
+                    cyanBg.setColor(COLOR_CYAN);
+                    cyanBg.setCornerRadius(dp(10));
+                    mStartBtnView.setBackground(cyanBg);
+                    mStartBtnView.setClickable(true);
+                } else {
+                    mStartBtnView.setTextColor(Color.parseColor("#667788"));
+                    GradientDrawable disabledBg = new GradientDrawable();
+                    disabledBg.setColor(Color.parseColor("#161F2C"));
+                    disabledBg.setCornerRadius(dp(10));
+                    mStartBtnView.setBackground(disabledBg);
+                    mStartBtnView.setClickable(false);
+                }
+            }
+
+            if (!gameTitle.equals(mLastGateGameTitle)) {
+                mLastGateGameTitle = gameTitle;
+                String gateGameType = FeatureSettings.gameTypeForTitle(gameTitle);
+                if (!gateGameType.isEmpty()) {
+                    FeatureSettings.refreshServerGates(mContext, gateGameType);
+                }
+            }
+        } catch (Throwable t) {
+            AppLogger.logE(TAG, "Error parsing native engine state: " + t.getMessage(), t);
+        }
     }
 
     private void startRealShellAndEngine() {

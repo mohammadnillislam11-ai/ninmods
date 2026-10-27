@@ -20,23 +20,25 @@
  * ------------------------------
  * The old detector only walked /proc and read /proc/<pid>/cmdline. Since
  * Android 9 an app may not read the cmdline of a process of another user,
- * so the scan found nothing - the app is NOT root, the game is. The engine
- * therefore has three sources and uses them in this order:
+ * so the scan found nothing - the app is NOT root, the game is.
+ *
+ * The official split of responsibilities is:
+ *   - the DAEMON (root, started by the Start button) is the authority for
+ *     the game process - the app asks it over the wire protocol
+ *     (MODE_DETECT), the daemon scans /proc with root rights,
+ *   - the plain /proc scan covers the cases where the app may read it
+ *     (emulator, permissive SELinux, game in the same user).
+ *
+ * The engine therefore has two sources and uses them in this order:
  *
  *   1. CACHE      - the pid that was found before and is still alive.
- *   2. ROOT_SHELL - the same /proc scan, but with root rights (su). The
- *                   app already owns a root grant (the driver loader needs
- *                   it), so the scan can read every cmdline.
- *   3. PROC_SCAN  - the plain /proc scan with the rights of the app. It
- *                   still works when the game runs in the same user.
+ *   2. DAEMON     - the root daemon reports the game process.
+ *   3. PROC_SCAN  - the plain /proc scan with the rights of the app.
  *
- * The result is cached and the root scan is throttled, so the detection
- * never spawns a root shell more than once every 1.5 seconds.
- *
- * The daemon (which runs as root and is already connected - see the
- * telemetry panel) is asked first: it knows the game process because it
- * scans /proc with root rights. That is the cheapest and most reliable
- * source, and it needs no extra privileges at all.
+ * Detection NEVER spawns a root shell: every `su` invocation raises a
+ * fresh superuser prompt on the device, and the old su-based scan produced
+ * a prompt every 1.5 seconds while its pending prompt blocked all further
+ * scans. Root is requested exactly once - by the Start button.
  */
 namespace NinDetection {
 
@@ -44,7 +46,6 @@ enum class DetectionSource {
     NONE = 0,
     CACHE,       /* the pid of the previous scan is still alive */
     DAEMON,      /* the root daemon reported the game process */
-    ROOT_SHELL,  /* /proc scan with root rights */
     PROC_SCAN,   /* /proc scan with the rights of the app */
 };
 
@@ -58,8 +59,8 @@ struct GameProcess {
 };
 
 /**
- * Runs the full detection (cache -> root shell -> plain scan) and returns
- * the current state.
+ * Returns the current detection state (cache -> daemon -> plain scan).
+ * Never blocks: heavy scanning runs on a background thread.
  */
 GameProcess Detect();
 

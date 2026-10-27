@@ -31,6 +31,8 @@ public class MenuOverlayService extends Service {
     private static volatile ModMenu sMenu;
 
     ModMenu menu;
+    private final Handler mMainHandler = new Handler(android.os.Looper.getMainLooper());
+    private volatile boolean mDestroyed = false;
 
     @Override
     public void onCreate() {
@@ -41,14 +43,21 @@ public class MenuOverlayService extends Service {
         menu.SetWindowManagerWindowService();
         menu.ShowMenu();
 
-        //Create a handler for this Class
-        final Handler handler = new Handler();
-        handler.post(new Runnable() {
-            public void run() {
-                Thread();
-                handler.postDelayed(this, 1000);
+        new Thread(() -> {
+            while (!mDestroyed) {
+                final boolean running = isGameRunning();
+                mMainHandler.post(() -> {
+                    if (!mDestroyed && menu != null) {
+                        menu.setVisibility(running ? View.VISIBLE : View.INVISIBLE);
+                    }
+                });
+                try {
+                    java.lang.Thread.sleep(1200);
+                } catch (InterruptedException ignored) {
+                    break;
+                }
             }
-        });
+        }, "MenuOverlayGamePoller").start();
     }
 
     @Override
@@ -76,13 +85,6 @@ public class MenuOverlayService extends Service {
         }
     }
 
-    private void Thread() {
-        if (!isGameRunning()) {
-            menu.setVisibility(View.INVISIBLE);
-        } else {
-            menu.setVisibility(View.VISIBLE);
-        }
-    }
 
     /**
      * Expands the running menu (icon -> menu card).
@@ -111,6 +113,7 @@ public class MenuOverlayService extends Service {
     //Destroy our View
     @Override
     public void onDestroy() {
+        mDestroyed = true;
         super.onDestroy();
         if (menu != null) {
             menu.onDestroy();

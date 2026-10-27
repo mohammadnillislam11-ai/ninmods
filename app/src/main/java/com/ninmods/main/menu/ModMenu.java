@@ -135,18 +135,6 @@ public class ModMenu {
     private boolean stopChecking, overlayRequired;
     private final Context mContext;
 
-    /**
-     * Every switch row of the menu, addressed by its feature id. The rows are
-     * refreshed from the engine after every change, because the engine
-     * couples the ESP master with its sub features.
-     */
-    private final Map<Integer, Switch> mSwitches = new LinkedHashMap<>();
-
-    /**
-     * True while the menu writes into a widget itself. It stops the widget
-     * listener from reacting on a state that the menu has just set.
-     */
-    private boolean mUpdatingUi = false;
 
     /**
      * True when the native library is loaded and the native methods are
@@ -642,89 +630,23 @@ public class ModMenu {
         switchR.setTextColor(TEXT_COLOR_2);
         switchR.setPadding(10, 5, 0, 5);
         switchR.setChecked(MenuPreferences.loadPrefBool(featName, featNum, swiOn));
-        mSwitches.put(featNum, switchR);
         switchR.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             public void onCheckedChanged(CompoundButton compoundButton, boolean bool) {
-                if (mUpdatingUi) {
-                    return;
-                }
-
-                boolean allowed = bool;
-                /*
-                 * The backend can switch a whole feature group off for a game
-                 * type. The reference menu knows nothing about that, but the
-                 * kill switch has to be honoured here as well, otherwise a row
-                 * could switch on a feature that the server has disabled.
-                 */
-                FeatureCatalog feature = FeatureCatalog.byNativeId(featNum);
-                if (feature != null && !FeatureSettings.isAllowedByServer(feature)) {
-                    allowed = false;
-                    AppLogger.log(TAG, "Refused to enable " + feature.key()
-                            + ": the server has switched this feature group off.");
-                }
-                if (allowed != bool) {
-                    mUpdatingUi = true;
-                    switchR.setChecked(allowed);
-                    mUpdatingUi = false;
-                }
-
-                MenuPreferences.changeFeatureBool(featName, featNum, allowed);
+                MenuPreferences.changeFeatureBool(featName, featNum, bool);
                 switch (featNum) {
-                    case -1: //Save perferences
-                        MenuPreferences.with(switchR.getContext()).writeBoolean(-1, allowed);
-                        if (!allowed) MenuPreferences.with(switchR.getContext()).clear(); //Clear perferences if switched off
+                    case -1: //Save preferences
+                        MenuPreferences.with(switchR.getContext()).writeBoolean(-1, bool);
+                        if (!bool) MenuPreferences.with(switchR.getContext()).clear(); //Clear preferences if switched off
                         break;
                     case -3:
-                        MenuPreferences.isExpanded = allowed;
-                        scrollView.setLayoutParams(allowed ? scrlLLExpanded : scrlLL);
+                        MenuPreferences.isExpanded = bool;
+                        scrollView.setLayoutParams(bool ? scrlLLExpanded : scrlLL);
                         break;
                 }
-
-                /* The engine can change a second row with the same switch (the
-                 * ESP master follows its sub features), so every row is read
-                 * back from the engine. */
-                syncSwitchStates();
             }
         });
 
         linLayout.addView(switchR);
-    }
-
-    /**
-     * Refreshes every switch row from the engine.
-     *
-     * The engine couples the ESP master with its sub features, so a row can
-     * change without the user touching it. Reading the rows back from the
-     * engine after every change guarantees that the menu never shows a state
-     * that the engine does not have.
-     */
-    private void syncSwitchStates() {
-        if (mUpdatingUi) {
-            return;
-        }
-        mUpdatingUi = true;
-        try {
-            for (Map.Entry<Integer, Switch> entry : mSwitches.entrySet()) {
-                int featureId = entry.getKey();
-                Switch widget = entry.getValue();
-                if (widget == null || featureId <= 0) {
-                    /* The settings rows (-1, -3) live in the Java layer and
-                     * have no engine flag behind them. */
-                    continue;
-                }
-                boolean live;
-                try {
-                    live = NativeBridge.getFeatureState(featureId);
-                } catch (Throwable t) {
-                    continue;
-                }
-                if (widget.isChecked() != live) {
-                    widget.setChecked(live);
-                }
-            }
-        } finally {
-            mUpdatingUi = false;
-        }
     }
 
     private void SeekBar(LinearLayout linLayout, final int featNum, final String featName, final int min, int max) {
