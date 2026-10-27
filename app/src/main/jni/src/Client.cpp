@@ -649,7 +649,7 @@ void DrawESP(ESP esp) {
     }
   }
 
-  float globalThickness = pEspPlayer.thickness;
+  float globalThickness = pEspPlayer.thickness.load(std::memory_order_relaxed);
 
   for (int i = 0; i < response.PlayerCount; i++) {
     auto player = response.Players[i];
@@ -668,6 +668,7 @@ void DrawESP(ESP esp) {
       continue;
 
     // Dynamic distance scaling for clean visuals
+    float thickness = (distance > 70.0f) ? 1.0f : globalThickness;
     float textSizeVal = pEspPlayer.textSize.load(std::memory_order_relaxed);
     float fSize = (distance > 70.0f) ? 10.0f : textSizeVal;
 
