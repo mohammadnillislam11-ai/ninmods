@@ -59,11 +59,6 @@ public class NinLiteOverlayManager {
                     return;
                 }
 
-                // Initialize Root Daemon Service in background
-                new Thread(() -> {
-                    com.ninmods.main.core.MainActivity.requestSuperUser();
-                }).start();
-
                 String hwid = AuthApiController.getHwid(mContext);
                 boolean hasActiveLicense = AuthManager.hasActiveLicense(mContext);
                 String activeKey = AuthManager.getActiveLicenseKey(mContext);

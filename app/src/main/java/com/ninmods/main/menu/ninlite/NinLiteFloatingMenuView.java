@@ -140,6 +140,7 @@ public class NinLiteFloatingMenuView {
                 : WindowManager.LayoutParams.TYPE_PHONE;
 
         int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 | WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS;
 
         mParams = new WindowManager.LayoutParams(
@@ -904,11 +905,17 @@ public class NinLiteFloatingMenuView {
     public void expandMenu() {
         if (mCollapsedView != null) mCollapsedView.setVisibility(View.GONE);
         if (mExpandedView != null) mExpandedView.setVisibility(View.VISIBLE);
+        try {
+            mWindowManager.updateViewLayout(mRootFrame, mParams);
+        } catch (Throwable ignored) {}
     }
 
     public void collapseToLogo() {
         if (mExpandedView != null) mExpandedView.setVisibility(View.GONE);
         if (mCollapsedView != null) mCollapsedView.setVisibility(View.VISIBLE);
+        try {
+            mWindowManager.updateViewLayout(mRootFrame, mParams);
+        } catch (Throwable ignored) {}
     }
 
     private View.OnTouchListener createLogoTouchListener() {

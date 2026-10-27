@@ -1812,6 +1812,14 @@ Java_com_ninmods_main_core_NativeBridge_getNinliteStateJson(JNIEnv *env, jclass 
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_startNinliteEngineNative(JNIEnv *env, jclass clazz, jstring jNativeLibDir) {
+  /* Cache the NativeBridge class on THIS JNI thread before the engine is
+   * started. The engine runs the root script on a detached native thread,
+   * and a thread attached through AttachCurrentThread() uses the system
+   * class loader where FindClass() cannot see the app classes. */
+  if (g_NativeBridgeClassRef == nullptr && clazz != nullptr) {
+    g_NativeBridgeClassRef = (jclass)env->NewGlobalRef(clazz);
+  }
+
   std::string nativeLibDir = "";
   if (jNativeLibDir) {
     const char *chars = env->GetStringUTFChars(jNativeLibDir, nullptr);

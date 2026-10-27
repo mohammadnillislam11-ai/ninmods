@@ -175,11 +175,6 @@ public class NativeOverlayManager {
                     return;
                 }
 
-                // Ensure kernel driver device nodes and permissions are initialized
-                new Thread(() -> {
-                    com.ninmods.main.core.MainActivity.requestSuperUser();
-                }).start();
-
                 // 1. Initialize C++ Native Bridge Engine & Driver link
                 NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense, mDensity, activeKey, serverUrl);
 

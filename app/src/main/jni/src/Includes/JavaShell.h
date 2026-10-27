@@ -6,11 +6,24 @@
 
 extern "C" JavaVM *g_JavaVM;
 
+/*
+ * Cached global reference to com/ninmods/main/core/NativeBridge.
+ * Defined in Client.cpp.
+ *
+ * It is resolved on a JNI thread, never on an attached native thread: a
+ * thread attached through AttachCurrentThread() uses the SYSTEM class
+ * loader, so FindClass() there can never see the app classes and it leaves
+ * an uncleared pending exception behind, which makes every later JNI call
+ * on that thread undefined. The very same reasoning and the very same
+ * global are used by UI/Popups/LicensePopup.h.
+ */
+extern jclass g_NativeBridgeClassRef;
+
 /**
  * Runs a shell script as root by handing it over to the Java side.
  *
- * WHY NOT JUST spawn() FROM NATIVE CODE
- * --------------------------------------
+ * WHY NOT spawn() FROM NATIVE CODE
+ * ----------------------------------
  * bionic's system(), popen() and exec*() all need a plain fork(). The
  * Android app sandbox does not allow that clone() variant: the seccomp
  * filter of the app zygote answers it with SIGSYS and the whole process
@@ -18,12 +31,11 @@ extern "C" JavaVM *g_JavaVM;
  *
  * Runtime.exec() on the Java side uses posix_spawn() - the
  * clone(CLONE_VM|CLONE_VFORK) variant the sandbox allows - so the spawn has
- * to happen in Java. This helper calls NativeBridge.runAsRoot(String) for
- * that.
+ * to happen in Java and this helper calls NativeBridge.runAsRoot(String).
  *
- * The pattern (GetEnv / AttachCurrentThread / FindClass /
- * CallStaticIntMethod / DetachCurrentThread) is the same one that
- * Includes/UI/Popups/LicensePopup.h already uses to talk to Java.
+ * The script itself is the NINLITE root shell / SELinux policy / daemon
+ * launch, and it only ever runs from the "shell start" button of the
+ * NINLITE menu (NinLiteFloatingMenuView.startRealShellAndEngine).
  *
  * @param script the shell script to run as root
  * @return the exit code of the script, or -1 when it could not run
@@ -45,7 +57,9 @@ inline int RunRootScriptViaJava(const std::string &script) {
 
     int result = -1;
 
-    jclass clazz = jEnv->FindClass("com/ninmods/main/core/NativeBridge");
+    /* The class reference is cached on a JNI thread, so it is usable from
+     * this attached native thread as well. */
+    jclass clazz = g_NativeBridgeClassRef;
     if (clazz != nullptr) {
         jmethodID method = jEnv->GetStaticMethodID(clazz, "runAsRoot", "(Ljava/lang/String;)I");
         if (method != nullptr) {
@@ -55,7 +69,6 @@ inline int RunRootScriptViaJava(const std::string &script) {
                 jEnv->DeleteLocalRef(jScript);
             }
         }
-        jEnv->DeleteLocalRef(clazz);
     }
 
     if (jEnv->ExceptionCheck()) {
