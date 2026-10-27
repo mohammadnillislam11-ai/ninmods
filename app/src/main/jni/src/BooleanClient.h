@@ -61,6 +61,11 @@ inline struct PlayerState {
     std::atomic<bool> ignoreBots{true};
     std::atomic<bool> ignoreKnocked{true};
 
+    /* Reference engine aim options. */
+    std::atomic<bool> KillInChest{false};  // aim into the chest when the target is weak
+    std::atomic<int> ChestRate{0};         // how many of every ten ticks aim into the chest
+    std::atomic<int> HeadRate{0};          // how many of every ten ticks aim into the head
+
     // Extra delay (milliseconds) applied between two aim writes.
     // Backs the "Legit Delay" control of the NINLITE menu.
     std::atomic<float> legitDelayMs{0.0f};
@@ -87,6 +92,11 @@ inline struct EspPlayerState {
     std::atomic<float> thickness{1.0f};
     std::atomic<BoxType> boxType{BOX_STROKE};
     std::atomic<LineType> lineType{LINE_TOP};
+
+    /* Reference engine options. */
+    std::atomic<bool> espCount{false};   // the threat counter (Enemy / Behind)
+    std::atomic<bool> espWeapon{false};  // the weapon name below the box
+    std::atomic<bool> espInfo{true};     // the info line at the bottom of the screen
 } pEspPlayer;
 
 inline std::atomic<bool> showFOVCircle{true};

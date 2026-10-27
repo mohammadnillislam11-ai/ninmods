@@ -98,6 +98,7 @@ enum RequestMode : int32_t {
     MODE_HEAD_RATE    = 70,   /* head shot rate (0..3)                    */
     MODE_AIM_DISTANCE = 60,   /* max target distance (metres)             */
     MODE_LEGIT_DELAY  = 59,   /* legit / smooth delay (milliseconds)      */
+    MODE_DETECT       = 100,  /* ask the daemon for the game process      */
 };
 
 /* ---------------------------------------------------------- player flags */
@@ -142,6 +143,10 @@ struct Response {
     int32_t  visibleNearOffScreenEnemyCount;
     int32_t  proximityEnemyCount;
     PlayerData players[kMaxPlayers];
+    /* The game process the Daemon (root) has detected. The App cannot find
+     * it on its own since Android 9, so the Daemon reports it. */
+    int32_t  detectedPid;
+    char     detectedPackage[64];
 };
 #pragma pack(pop)
 
@@ -150,15 +155,15 @@ static_assert(sizeof(Request) == 20, "Ninlite::Request layout drifted");
  * weaponId(2)+reserved(2) = 44, playerName[64] = 108, already 4 byte
  * aligned because of #pragma pack(4). */
 static_assert(sizeof(PlayerData) == 108, "Ninlite::PlayerData layout drifted");
-static_assert(sizeof(Response) == 20 + sizeof(PlayerData) * kMaxPlayers,
-              "Ninlite::Response layout drifted");
+static_assert(sizeof(Response) == 20 + sizeof(PlayerData) * kMaxPlayers + 68,
+               "Ninlite::Response layout drifted");
 
 /* ------------------------------------------------------- frame transport */
 
 /**
  * Length prefixed frame helpers shared by the client and the server.
  * The length prefix is a 32 bit big endian value, exactly like the
- * reference implementation in STORM_MODS.
+ * reference implementation.
  */
 inline bool SendFrame(int fd, const void* payload, size_t size) {
     if (fd < 0 || payload == nullptr || size == 0 || size > (size_t)kMaxFrameSize) {

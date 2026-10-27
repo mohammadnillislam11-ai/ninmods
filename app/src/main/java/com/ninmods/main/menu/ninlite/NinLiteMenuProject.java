@@ -7,7 +7,7 @@ import com.ninmods.main.core.Prefs;
 import com.ninmods.main.menu.IMenuProject;
 
 /**
- * NINLITE Tactical Menu Project Implementation (STORM_MODS Root Engine).
+ * NINLITE Tactical Menu Project Implementation (root daemon engine).
  * Isolated in package 'com.ninmods.main.menu.ninlite'.
  * Features: Pure Root Daemon Engine + Cyberpunk Vertical Sidebar Floating Window.
  */

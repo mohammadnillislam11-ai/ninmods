@@ -144,7 +144,23 @@ public final class NativeBridge {
     public static native boolean isKernelDriverConnected();
     public static native int getDetectedGamePid();
     public static native String getDetectedGameTitle();
+
+    /**
+     * Hands the text of the ESP info line over to the native renderer.
+     * The native side draws it at the bottom of the screen. The value is the
+     * name of the white label build, so no brand is hardcoded in the native
+     * code.
+     */
+    public static native void setEspWatermark(String text);
+
+    /**
+     * The real memory path of the engine, for the telemetry panel.
+     * The panel used to show a hardcoded string that did not match the
+     * engine - the engine reads and writes through the kernel driver.
+     */
+    public static native String getMemoryAccessMode();
     public static native boolean isLiveGameDetected();
+    public static native void drawEspNative(com.ninmods.main.esp.ESPView espView, android.graphics.Canvas canvas, int width, int height);
     public static native String getNinliteStateJson();
     public static native void startNinliteEngineNative(String nativeLibDir);
     public static void startNinliteEngineNative() {

@@ -37,13 +37,13 @@ public enum FeatureCatalog {
     // ------------------------------------------------------------------ ESP
     ESP_MASTER   ("esp.master",   1,  Type.SWITCH, false, Group.ESP),
     ESP_BOX      ("esp.box",      2,  Type.SWITCH, false, Group.ESP),
-    ESP_SKELETON ("esp.skeleton", 3,  Type.SWITCH, false, Group.ESP),
     ESP_LINE     ("esp.line",     4,  Type.SWITCH, false, Group.ESP),
     ESP_HEALTH   ("esp.health",   5,  Type.SWITCH, false, Group.ESP),
     ESP_NAME     ("esp.name",     6,  Type.SWITCH, false, Group.ESP),
     ESP_DISTANCE ("esp.distance", 7,  Type.SWITCH, false, Group.ESP),
-    ESP_COUNT    ("esp.count",    8,  Type.SWITCH, false, Group.ESP),
-    ESP_RADAR360 ("esp.radar360", 9,  Type.SWITCH, false, Group.ESP),
+    ESP_WEAPON   ("esp.weapon",   206, Type.SWITCH, false, Group.ESP),
+    ESP_THREAT_COUNT ("esp.threatCount", 207, Type.SWITCH, false, Group.ESP),
+    ESP_INFO_LINE("esp.infoLine", 208, Type.SWITCH, true,  Group.ESP),
 
     // ------------------------------------------------------------------ AIM
     AIM_AUTOLOCK       ("aim.autolock",       20, Type.SWITCH, false, Group.AIM),
@@ -51,13 +51,15 @@ public enum FeatureCatalog {
     AIM_SILENT         ("aim.silent",         22, Type.SWITCH, false, Group.AIM),
     AIM_MAGNET         ("aim.magnet",         23, Type.SWITCH, false, Group.AIM),
     AIM_IGNORE_KNOCKED ("aim.ignoreKnocked",  24, Type.SWITCH, true,  Group.AIM),
-    AIM_IGNORE_BOTS    ("aim.ignoreBots",     25, Type.SWITCH, true,  Group.AIM),
+    AIM_KILL_IN_CHEST  ("aim.killInChest",    216, Type.SWITCH, false, Group.AIM),
+    AIM_FOV_CIRCLE     ("aim.fovCircle",      27, Type.SWITCH, true,  Group.AIM),
 
     // --------------------------------------------------------------- COMBAT
     COMBAT_NO_RECOIL   ("combat.noRecoil",   40, Type.SWITCH, false, Group.COMBAT),
     COMBAT_SPEED_HACK  ("combat.speedHack",  41, Type.SWITCH, false, Group.COMBAT),
     COMBAT_PLAYER_TO_ME("combat.playerToMe", 42, Type.SWITCH, false, Group.COMBAT),
     COMBAT_UNDERCAM    ("combat.undercam",    43, Type.SWITCH, false, Group.COMBAT),
+    COMBAT_ANTICHEAT   ("combat.bypass",     44, Type.SWITCH, false, Group.COMBAT),
 
     // -------------------------------------------------------------- SLIDERS
     AIM_FOV            ("aim.fov",        303, Type.SLIDER,  60,  10, 180, Group.AIM),
@@ -66,7 +68,10 @@ public enum FeatureCatalog {
     AIM_SILENT_TARGET  ("aim.silentTarget",305,Type.SLIDER,   1,   0,   3, Group.AIM),
     COMBAT_GAME_SPEED  ("combat.gameSpeed",102,Type.SLIDER,   1,   1,   5, Group.COMBAT),
     ESP_BOX_STYLE      ("esp.boxStyle",   201, Type.SLIDER,   0,   0,   3, Group.ESP),
-    ESP_LINE_SNAP      ("esp.lineSnap",   202, Type.SLIDER,   0,   0,   2, Group.ESP);
+    ESP_LINE_SNAP      ("esp.lineSnap",   202, Type.SLIDER,   0,   0,   2, Group.ESP),
+    ESP_TEXT_SIZE      ("esp.textSize",   209, Type.SLIDER,  15,   8,  24, Group.ESP),
+    AIM_HEAD_RATE      ("aim.headRate",   214, Type.SLIDER,   0,   0,   3, Group.AIM),
+    AIM_CHEST_RATE     ("aim.chestRate",  215, Type.SLIDER,   0,   0,   6, Group.AIM);
 
     public enum Type { SWITCH, SLIDER }
 
@@ -155,5 +160,25 @@ public enum FeatureCatalog {
      */
     public Group gateGroup() {
         return mGroup == Group.COMBAT ? null : mGroup;
+    }
+
+    /**
+     * The catalogue entry that owns a native feature id.
+     *
+     * The reference mod menu uses the native id as the index of its feature
+     * rows, so a menu that is built from the native feature DSL has to be
+     * able to translate an id back into its feature - that is the only way
+     * to find out which backend kill switch belongs to a row.
+     *
+     * @param nativeId the engine feature id
+     * @return the feature, or {@code null} when the id is not in the catalogue
+     */
+    public static FeatureCatalog byNativeId(int nativeId) {
+        for (FeatureCatalog feature : values()) {
+            if (feature.mNativeId == nativeId) {
+                return feature;
+            }
+        }
+        return null;
     }
 }

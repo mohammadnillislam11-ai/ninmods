@@ -63,4 +63,23 @@
     <color name="menu_seekbar_progress">#E637E6</color>
     <color name="menu_seekbar_thumb">#F76BF7</color>
     <color name="menu_seekbar_label">#F5D6F5</color>
+
+    <!-- Reference Mod Menu Palette (100% XML Driven) -->
+    <!-- These are the exact colours of the reference mod menu, so the menu looks
+         identical there and here. The Java layer never hardcodes a colour. -->
+    <color name="menu_dsl_text">#82CAFD</color>
+    <color name="menu_dsl_text_2">#FFFFFF</color>
+    <color name="menu_dsl_btn">#1C262D</color>
+    <color name="menu_dsl_bg">#EE1C2A35</color>
+    <color name="menu_dsl_feature_bg">#DD141C22</color>
+    <color name="menu_dsl_toggle_on">#FF00FF00</color>
+    <color name="menu_dsl_toggle_off">#FFFF0000</color>
+    <color name="menu_dsl_btn_on">#1b5e20</color>
+    <color name="menu_dsl_btn_off">#7f0000</color>
+    <color name="menu_dsl_category_bg">#2F3D4C</color>
+    <color name="menu_dsl_seekbar">#80CBC4</color>
+    <color name="menu_dsl_checkbox">#80CBC4</color>
+    <color name="menu_dsl_radio">#FFFFFF</color>
+    <color name="menu_dsl_collapse">#232F2C</color>
+    <color name="menu_dsl_collapse_sub">#222D38</color>
 </resources>

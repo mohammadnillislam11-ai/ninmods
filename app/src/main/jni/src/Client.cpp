@@ -55,19 +55,11 @@
 #include "Icon/Font.h"
 #include "Icon/Icon.h"
 #include "Icon/Iconcpp.h"
-#include "UI/MenuRouter.h"
 #include "UI/NativeOverlayController.h"
 #include "UI/Popups/LicensePopup.h"
 #include "Engine/NinliteEngine.h"
-#if __has_include(<imgui.h>)
-#include <imgui.h>
-#include <imgui_impl_opengl3.h>
-#include <imgui_internal.h>
-#else
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_opengl3.h"
-#include "imgui/imgui_internal.h"
-#endif
+#include "Includes/FeatureBridge.h"
+#include "Menu/Menu.hpp"
 
 // ============================================
 // GLOBAL SYSTEM STATE & PROFILE SETTINGS
@@ -90,7 +82,6 @@ inline bool NativeIsLoggedIn() { return SecurityVault_IsSessionValid(); }
 float g_espLeftAdjust = 0.0f;
 float g_espRightAdjust = 0.0f;
 
-static bool g_ImGuiInitialized = false;
 static int g_ScreenWidth = 0;
 static int g_ScreenHeight = 0;
 
@@ -112,862 +103,6 @@ static void EnsureDriverConnected() {
    * function runs once per rendered frame. */
   EnsureDriverConnectedThrottled();
 }
-
-void RenderHardwareESP(int screenWidth, int screenHeight) {
-  if (screenWidth <= 0 || screenHeight <= 0)
-    return;
-
-  EnsureDriverConnected();
-
-  if (!isConnected()) {
-    return;
-  }
-
-  ImDrawList *draw = ImGui::GetBackgroundDrawList();
-
-  // 1. Draw FOV Circle
-  bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock || pPlayer.aimMagnet;
-  if (Actived.activar && anyAimActive && showFOVCircle &&
-      pPlayer.AimFov > 0) {
-    float centerX = screenWidth * 0.5f;
-    float centerY = screenHeight * 0.5f;
-    float radius = (pPlayer.AimFov / 180.0f) * (screenHeight * 0.5f);
-    radius *= pPlayer.AimFovScale;
-    if (radius < 30.0f)
-      radius = 30.0f;
-
-    ImVec2 center(centerX, centerY);
-    ImU32 fovColor = ToImU32(pEspPlayer.espColor);
-    ImU32 fovGlow = (fovColor & 0x00FFFFFF) | (0x40 << 24);
-
-    draw->AddCircle(center, radius + 2.0f, fovGlow, 64, 4.0f);
-    draw->AddCircle(center, radius, fovColor, 64, 1.8f);
-    draw->AddCircleFilled(center, 2.5f, IM_COL32(255, 255, 255, 255), 16);
-  }
-
-  // 2. Fetch live data from daemon
-  Response response = getData(screenWidth, screenHeight);
-  if (!response.Success)
-    return;
-
-  // 3. Live Threat Counter HUD (Safe / Danger)
-  if (Actived.activar && pEspPlayer.espDrawCount) {
-    const bool hasVisible = response.VisibleEnemyCount > 0;
-    const bool hasNear = response.VisibleNearOffScreenEnemyCount > 0;
-
-    float topY = 75.0f;
-    float badgeH = 32.0f;
-    float badgeRadius = 16.0f;
-
-    if (!hasVisible && !hasNear) {
-      float badgeW = 140.0f;
-      float startX = (screenWidth - badgeW) * 0.5f;
-      ImVec2 minP(startX, topY);
-      ImVec2 maxP(startX + badgeW, topY + badgeH);
-
-      draw->AddRectFilled(minP, maxP, IM_COL32(20, 160, 60, 220), badgeRadius);
-      draw->AddRect(minP, maxP, IM_COL32(100, 255, 140, 200), badgeRadius, 0,
-                    1.5f);
-
-      const char *txt = "AREA SAFE";
-      ImVec2 txtSz = ImGui::CalcTextSize(txt);
-      draw->AddText(ImVec2(startX + (badgeW - txtSz.x) * 0.5f,
-                           topY + (badgeH - txtSz.y) * 0.5f),
-                    IM_COL32(255, 255, 255, 255), txt);
-    } else {
-      float sectionW = 110.0f;
-      float gap = 10.0f;
-      int sections = (hasVisible ? 1 : 0) + (hasNear ? 1 : 0);
-      float totalW = sections * sectionW + (sections - 1) * gap;
-      float curX = (screenWidth - totalW) * 0.5f;
-
-      if (hasVisible) {
-        ImVec2 minP(curX, topY);
-        ImVec2 maxP(curX + sectionW, topY + badgeH);
-        draw->AddRectFilled(minP, maxP, IM_COL32(235, 40, 40, 220),
-                            badgeRadius);
-        draw->AddRect(minP, maxP, IM_COL32(255, 140, 140, 220), badgeRadius, 0,
-                      1.5f);
-
-        char buf[32];
-        snprintf(buf, sizeof(buf), "FOE: %d", response.VisibleEnemyCount);
-        ImVec2 sz = ImGui::CalcTextSize(buf);
-        draw->AddText(ImVec2(curX + (sectionW - sz.x) * 0.5f,
-                             topY + (badgeH - sz.y) * 0.5f),
-                      IM_COL32(255, 255, 255, 255), buf);
-        curX += sectionW + gap;
-      }
-
-      if (hasNear) {
-        ImVec2 minP(curX, topY);
-        ImVec2 maxP(curX + sectionW, topY + badgeH);
-        draw->AddRectFilled(minP, maxP, IM_COL32(240, 150, 20, 220),
-                            badgeRadius);
-        draw->AddRect(minP, maxP, IM_COL32(255, 210, 120, 220), badgeRadius, 0,
-                      1.5f);
-
-        char buf[32];
-        snprintf(buf, sizeof(buf), "NEAR: %d",
-                 response.VisibleNearOffScreenEnemyCount);
-        ImVec2 sz = ImGui::CalcTextSize(buf);
-        draw->AddText(ImVec2(curX + (sectionW - sz.x) * 0.5f,
-                             topY + (badgeH - sz.y) * 0.5f),
-                      IM_COL32(255, 255, 255, 255), buf);
-      }
-    }
-  }
-
-  if (response.PlayerCount <= 0 || !Actived.activar)
-    return;
-
-  float totalXAdjust = g_espRightAdjust - g_espLeftAdjust;
-  float thicknessVal = pEspPlayer.thickness.load(std::memory_order_relaxed);
-  float globalThickness = (thicknessVal > 0.5f) ? thicknessVal : 1.5f;
-
-  for (int i = 0; i < response.PlayerCount; i++) {
-    const auto &player = response.Players[i];
-    /* Behind the camera there is nothing to project. */
-    if (player.Head.Z <= 0.0f)
-      continue;
-
-    Vector3 headPos = player.Head;
-    Vector3 toePos = player.Toe;
-    /* Degenerate foot projection (player right on top of the camera). */
-    if (toePos.Z <= 0.0f)
-      toePos = headPos;
-
-    float distance = player.Distancia;
-    float aimDistanceVal = pPlayer.AimDistance.load(std::memory_order_relaxed);
-    float maxDist = (aimDistanceVal > 150.0f) ? aimDistanceVal : 350.0f;
-    if (distance < 0.1f || distance > maxDist)
-      continue;
-
-    float headToFeetHeight = std::abs(toePos.Y - headPos.Y);
-    /* A degenerate projection must not collapse the box. */
-    if (headToFeetHeight < 3.0f)
-      headToFeetHeight = 3.0f;
-    float boxHeight = headToFeetHeight * 1.15f;
-    float width = boxHeight * 0.48f;
-
-    float boxY = headPos.Y - (boxHeight * 0.12f);
-    float boxX = headPos.X - (width * 0.5f) + totalXAdjust;
-    float adjustedHeadX = headPos.X + totalXAdjust;
-
-    Color baseColor = pEspPlayer.espColor;
-    if (player.Name)
-      baseColor = Color::Red(); // Bot
-    if (player.IsCaido)
-      baseColor = Color(255, 200, 0); // Knocked
-
-    ImU32 mainCol = ToImU32(baseColor);
-    ImU32 glowCol = (mainCol & 0x00FFFFFF) | (0x44 << 24);
-    ImU32 shadowCol = IM_COL32(0, 0, 0, 180);
-
-    // --- ESP LINE ---
-    if (pEspPlayer.espLinha) {
-      ImVec2 startP;
-      if (pEspPlayer.lineType == LINE_TOP) {
-        startP = ImVec2(screenWidth * 0.5f, 0.0f);
-      } else if (pEspPlayer.lineType == LINE_CENTER) {
-        startP = ImVec2(screenWidth * 0.5f, screenHeight * 0.5f);
-      } else {
-        startP = ImVec2(screenWidth * 0.5f, (float)screenHeight);
-      }
-
-      ImVec2 endP = (pEspPlayer.lineType == LINE_BOTTOM)
-                        ? ImVec2(adjustedHeadX, boxY + boxHeight)
-                        : ImVec2(adjustedHeadX, boxY);
-
-      draw->AddLine(startP, endP, glowCol, globalThickness + 2.0f);
-      draw->AddLine(startP, endP, mainCol, globalThickness);
-    }
-
-    // --- ESP BOX ---
-    if (pEspPlayer.espCaixa) {
-      ImVec2 bMin(boxX, boxY);
-      ImVec2 bMax(boxX + width, boxY + boxHeight);
-
-      if (pEspPlayer.boxType == BOX_CORNER) {
-        float cs = width * 0.25f;
-        draw->AddLine(ImVec2(bMin.x + 1, bMin.y + 1),
-                      ImVec2(bMin.x + cs + 1, bMin.y + 1), shadowCol,
-                      globalThickness + 1.0f);
-        draw->AddLine(ImVec2(bMin.x + 1, bMin.y + 1),
-                      ImVec2(bMin.x + 1, bMin.y + cs + 1), shadowCol,
-                      globalThickness + 1.0f);
-        draw->AddLine(ImVec2(bMax.x + 1, bMin.y + 1),
-                      ImVec2(bMax.x - cs + 1, bMin.y + 1), shadowCol,
-                      globalThickness + 1.0f);
-        draw->AddLine(ImVec2(bMax.x + 1, bMin.y + 1),
-                      ImVec2(bMax.x + 1, bMin.y + cs + 1), shadowCol,
-                      globalThickness + 1.0f);
-        draw->AddLine(ImVec2(bMin.x + 1, bMax.y + 1),
-                      ImVec2(bMin.x + cs + 1, bMax.y + 1), shadowCol,
-                      globalThickness + 1.0f);
-        draw->AddLine(ImVec2(bMin.x + 1, bMax.y + 1),
-                      ImVec2(bMin.x + 1, bMax.y - cs + 1), shadowCol,
-                      globalThickness + 1.0f);
-        draw->AddLine(ImVec2(bMax.x + 1, bMax.y + 1),
-                      ImVec2(bMax.x - cs + 1, bMax.y + 1), shadowCol,
-                      globalThickness + 1.0f);
-        draw->AddLine(ImVec2(bMax.x + 1, bMax.y + 1),
-                      ImVec2(bMax.x + 1, bMax.y - cs + 1), shadowCol,
-                      globalThickness + 1.0f);
-
-        draw->AddLine(ImVec2(bMin.x, bMin.y), ImVec2(bMin.x + cs, bMin.y),
-                      mainCol, globalThickness);
-        draw->AddLine(ImVec2(bMin.x, bMin.y), ImVec2(bMin.x, bMin.y + cs),
-                      mainCol, globalThickness);
-        draw->AddLine(ImVec2(bMax.x, bMin.y), ImVec2(bMax.x - cs, bMin.y),
-                      mainCol, globalThickness);
-        draw->AddLine(ImVec2(bMax.x, bMin.y), ImVec2(bMax.x, bMin.y + cs),
-                      mainCol, globalThickness);
-        draw->AddLine(ImVec2(bMin.x, bMax.y), ImVec2(bMin.x + cs, bMax.y),
-                      mainCol, globalThickness);
-        draw->AddLine(ImVec2(bMin.x, bMax.y), ImVec2(bMin.x, bMax.y - cs),
-                      mainCol, globalThickness);
-        draw->AddLine(ImVec2(bMax.x, bMax.y), ImVec2(bMax.x - cs, bMax.y),
-                      mainCol, globalThickness);
-        draw->AddLine(ImVec2(bMax.x, bMax.y), ImVec2(bMax.x, bMax.y - cs),
-                      mainCol, globalThickness);
-      } else if (pEspPlayer.boxType == BOX_FILLED) {
-        ImU32 fillCol = (mainCol & 0x00FFFFFF) | (0x35 << 24);
-        draw->AddRectFilled(bMin, bMax, fillCol, 4.0f);
-        draw->AddRect(bMin, bMax, mainCol, 4.0f, 0, globalThickness);
-      } else {
-        draw->AddRect(ImVec2(bMin.x - 1, bMin.y - 1),
-                      ImVec2(bMax.x + 1, bMax.y + 1), glowCol, 5.0f, 0, 3.0f);
-        draw->AddRect(bMin, bMax, mainCol, 5.0f, 0, globalThickness);
-      }
-    }
-
-    // --- ESP HEALTH BAR ---
-    if (pEspPlayer.espHealth && player.Health > 0) {
-      /* Reference heuristic: a bot has a 100 HP pool, a real player 200
-       * (armour included). Health == 0 means "could not be read" and is not
-       * drawn at all - the old code defaulted to 100 and painted a full bar
-       * for every player whose HP could not be read. */
-      float maxHp = player.Name ? 100.0f : 200.0f;
-      float curHp = (float)player.Health;
-      if (curHp < 0.0f)
-        curHp = 0.0f;
-      if (curHp > maxHp)
-        curHp = maxHp;
-      float pct = curHp / maxHp;
-      if (pct < 0.0f)
-        pct = 0.0f;
-      if (pct > 1.0f)
-        pct = 1.0f;
-
-      ImU32 hpCol = IM_COL32(70, 225, 90, 255);
-      if (pct < 0.30f)
-        hpCol = IM_COL32(235, 45, 45, 255);
-      else if (pct < 0.60f)
-        hpCol = IM_COL32(235, 200, 45, 255);
-
-      float barW = 4.0f;
-      float barX = boxX - barW - 4.0f;
-      float barY = boxY;
-      float barH = boxHeight;
-
-      draw->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH),
-                          IM_COL32(20, 20, 25, 210), 2.0f);
-      float fillH = barH * pct;
-      draw->AddRectFilled(ImVec2(barX, barY + (barH - fillH)),
-                          ImVec2(barX + barW, barY + barH), hpCol, 2.0f);
-      draw->AddRect(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH),
-                    IM_COL32(255, 255, 255, 120), 2.0f, 0, 1.0f);
-    }
-
-    // --- ESP NAME / DISTANCE ---
-    if (pEspPlayer.espName || pEspPlayer.espDistance) {
-      char labelBuf[64];
-      const char *nameLabel = (strlen(player.PlayerName) > 0) ? player.PlayerName : (player.Name ? "BOT" : "ENEMY");
-      if (pEspPlayer.espName && pEspPlayer.espDistance) {
-        snprintf(labelBuf, sizeof(labelBuf), "%s [%dm]",
-                 nameLabel, (int)distance);
-      } else if (pEspPlayer.espDistance) {
-        snprintf(labelBuf, sizeof(labelBuf), "[%dm]", (int)distance);
-      } else {
-        snprintf(labelBuf, sizeof(labelBuf), "%s", nameLabel);
-      }
-
-      ImVec2 txtSz = ImGui::CalcTextSize(labelBuf);
-      float txtX = boxX + (width - txtSz.x) * 0.5f;
-      float txtY = boxY - txtSz.y - 4.0f;
-
-      draw->AddText(ImVec2(txtX + 1, txtY + 1), shadowCol, labelBuf);
-      draw->AddText(ImVec2(txtX, txtY), IM_COL32(255, 255, 255, 255), labelBuf);
-    }
-
-    // --- ESP WEAPON NAME ---
-    if (player.WeaponId > 0) {
-      static bool s_namegunInited = false;
-      if (!s_namegunInited) {
-        Namegun::Init();
-        s_namegunInited = true;
-      }
-      std::string gunName = Namegun::GetGunName(player.WeaponId);
-      if (!gunName.empty()) {
-        ImVec2 gunSz = ImGui::CalcTextSize(gunName.c_str());
-        float gunX = boxX + (width - gunSz.x) * 0.5f;
-        float gunY = boxY + boxHeight + 2.0f;
-        draw->AddText(ImVec2(gunX + 1, gunY + 1), shadowCol, gunName.c_str());
-        draw->AddText(ImVec2(gunX, gunY), IM_COL32(255, 230, 100, 255), gunName.c_str());
-      }
-    }
-  }
-}
-
-struct MemoryChunk {
-  char *memory;
-  size_t size;
-  MemoryChunk() : memory(nullptr), size(0) {}
-  ~MemoryChunk() {
-    if (memory) {
-      free(memory);
-      memory = nullptr;
-    }
-  }
-};
-
-static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
-                                  void *userp) {
-  size_t realsize = size * nmemb;
-  MemoryChunk *mem = (MemoryChunk *)userp;
-  char *new_memory = (char *)realloc(mem->memory, mem->size + realsize + 1);
-  if (new_memory == NULL)
-    return 0;
-  mem->memory = new_memory;
-  memcpy(&(mem->memory[mem->size]), contents, realsize);
-  mem->size += realsize;
-  mem->memory[mem->size] = 0;
-  return realsize;
-}
-
-std::string XOR_decryption(std::string value, std::string key) {
-  std::string text = "";
-  int klen = key.length();
-  for (int v = 0; v < value.length(); v++) {
-    text += value[v] ^ key[v % klen];
-  }
-  return text;
-}
-
-std::string get_Key_From_Public(std::string publicKey) {
-  if (publicKey.length() < 98)
-    return "000000000";
-  std::string keyDes = "";
-  keyDes += publicKey[58 - 1];
-  keyDes += publicKey[62 - 1];
-  keyDes += publicKey[10 - 1];
-  keyDes += publicKey[47 - 1];
-  keyDes += publicKey[20 - 1];
-  keyDes += publicKey[33 - 1];
-  keyDes += publicKey[87 - 1];
-  keyDes += publicKey[98 - 1];
-  keyDes += publicKey[14 - 1];
-  return keyDes;
-}
-
-#define game_package OBFUSCATE("com.dts.freefireth")
-#define LibBypass OBFUSCATE("libanogs.so")
-
-struct {
-  bool connectClient = false;
-  std::string server_msg = "Waiting...";
-} Connection;
-
-ESP espOverlay;
-
-void DrawFOVCircle(ESP esp, float fov, Color color) {
-  if (fov <= 0)
-    return;
-
-  auto screenHeight = esp.getHeight();
-  auto screenWidth = esp.getWidth();
-
-  float centerX = screenWidth / 2.0f;
-  float centerY = screenHeight / 2.0f;
-
-  float radius = (fov / 180.0f) * (screenHeight / 2.0f);
-  radius *= pPlayer.AimFovScale;
-  if (radius < 40.0f)
-    radius = 40.0f;
-
-  Vector2 centerPos(centerX, centerY);
-  esp.DrawCircle(color, 2.0f, centerPos, radius);
-
-  float crossSize = 15.0f;
-  esp.DrawLine(color, 1.5f, Vector3(centerX - crossSize, centerY, 0),
-               Vector3(centerX + crossSize, centerY, 0));
-  esp.DrawLine(color, 1.5f, Vector3(centerX, centerY - crossSize, 0),
-               Vector3(centerX, centerY + crossSize, 0));
-}
-
-void DrawESP(ESP esp) {
-  auto screenHeight = esp.getHeight();
-  auto screenWidth = esp.getWidth();
-
-  if (!isConnected())
-    return;
-
-  bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock || pPlayer.aimMagnet;
-  if (Actived.activar && anyAimActive && showFOVCircle &&
-      pPlayer.AimFov > 0) {
-    DrawFOVCircle(esp, pPlayer.AimFov, pEspPlayer.espColor);
-  }
-
-  auto response = getData(screenWidth, screenHeight);
-  if (!response.Success)
-    return;
-
-  // The following block is removed because Response no longer contains
-  // VisibleEnemyCount etc. (If you want to keep a counter, you'd need to add
-  // those fields to the Response struct
-  //  and have the server fill them. For now, just skip drawing the counter.)
-
-  if (response.PlayerCount <= 0)
-    return;
-
-  // Draw Live Threat Counter HUD once per frame if enabled
-  if (Actived.activar && pEspPlayer.espDrawCount) {
-    const bool showOnScreen = response.VisibleEnemyCount > 0;
-    const bool showNearScreen = response.VisibleNearOffScreenEnemyCount > 0;
-    const bool showProximity = response.ProximityEnemyCount > 0;
-    const bool noThreatVisible =
-        !showOnScreen && !showNearScreen && !showProximity;
-
-    std::string onScreenLabel = std::to_string(response.VisibleEnemyCount);
-    std::string nearScreenLabel =
-        std::to_string(response.VisibleNearOffScreenEnemyCount);
-    std::string proximityLabel = std::to_string(response.ProximityEnemyCount);
-
-    float countSize = pEspPlayer.textSize + 10.0f;
-    if (countSize < 24.0f)
-      countSize = 24.0f;
-
-    float topMargin = 80.0f;
-    float sectionWidth = 120.0f;
-    float sectionHeight = countSize + 22.0f;
-    float sectionGap = 14.0f;
-
-    int activeSections = (showOnScreen ? 1 : 0) + (showNearScreen ? 1 : 0) +
-                         (showProximity ? 1 : 0);
-    float totalWidth =
-        sectionWidth * activeSections + sectionGap * (activeSections - 1);
-    float startX = (screenWidth - totalWidth) / 2.0f;
-
-    float backgroundY = topMargin;
-    float countY = backgroundY + sectionHeight / 2.0f;
-    float cornerRadius = sectionHeight * 0.30f;
-    Color outlineColor = Color(0, 0, 0, 220);
-    Color textColor = Color::White();
-
-    auto DrawRoundedPanel = [&](float x, float y, float width, float height,
-                                float radius, Color color) {
-      float clampedRadius =
-          std::max(1.0f, std::min(radius, std::min(width, height) * 0.5f));
-      esp.DrawFilledRect(color, Vector3(x + clampedRadius, y, 0),
-                         width - (clampedRadius * 2.0f), height);
-      esp.DrawFilledRect(color, Vector3(x, y + clampedRadius, 0),
-                         clampedRadius, height - (clampedRadius * 2.0f));
-      esp.DrawFilledRect(
-          color, Vector3(x + width - clampedRadius, y + clampedRadius, 0),
-          clampedRadius, height - (clampedRadius * 2.0f));
-      esp.DrawFilledCircle(color,
-                           Vector2(x + clampedRadius, y + clampedRadius),
-                           clampedRadius);
-      esp.DrawFilledCircle(
-          color, Vector2(x + width - clampedRadius, y + clampedRadius),
-          clampedRadius);
-      esp.DrawFilledCircle(
-          color, Vector2(x + clampedRadius, y + height - clampedRadius),
-          clampedRadius);
-      esp.DrawFilledCircle(
-          color,
-          Vector2(x + width - clampedRadius, y + height - clampedRadius),
-          clampedRadius);
-    };
-
-    if (noThreatVisible) {
-      float safeWidth = 200.0f;
-      float safeX = (screenWidth - safeWidth) / 2.0f;
-      DrawRoundedPanel(safeX, backgroundY, safeWidth, sectionHeight,
-                       cornerRadius, Color(22, 165, 70, 235));
-      const char *safeLabel = "SAFE";
-      float safeTextX = safeX + (safeWidth * 0.5f);
-      esp.DrawText(outlineColor, safeLabel,
-                   Vector2(safeTextX - 1, countY - 1), countSize - 2.0f);
-      esp.DrawText(outlineColor, safeLabel,
-                   Vector2(safeTextX + 1, countY + 1), countSize - 2.0f);
-      esp.DrawText(textColor, safeLabel, Vector2(safeTextX, countY),
-                   countSize - 2.0f);
-    } else {
-      Color onScreenBg = Color(255, 215, 0, 230);   // Yellow
-      Color nearScreenBg = Color(235, 30, 30, 230); // Red
-      Color proximityBg = Color(255, 140, 0, 230);  // Orange
-      float nextSectionX = startX;
-
-      if (showOnScreen) {
-        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
-                         sectionHeight, cornerRadius, onScreenBg);
-        float centerX = nextSectionX + (sectionWidth * 0.5f);
-        esp.DrawText(outlineColor, onScreenLabel.c_str(),
-                     Vector2(centerX - 1, countY - 1), countSize);
-        esp.DrawText(outlineColor, onScreenLabel.c_str(),
-                     Vector2(centerX + 1, countY + 1), countSize);
-        esp.DrawText(textColor, onScreenLabel.c_str(),
-                     Vector2(centerX, countY), countSize);
-        nextSectionX += sectionWidth + sectionGap;
-      }
-
-      if (showNearScreen) {
-        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
-                         sectionHeight, cornerRadius, nearScreenBg);
-        float centerX = nextSectionX + (sectionWidth * 0.5f);
-        esp.DrawText(outlineColor, nearScreenLabel.c_str(),
-                     Vector2(centerX - 1, countY - 1), countSize);
-        esp.DrawText(outlineColor, nearScreenLabel.c_str(),
-                     Vector2(centerX + 1, countY + 1), countSize);
-        esp.DrawText(textColor, nearScreenLabel.c_str(),
-                     Vector2(centerX, countY), countSize);
-        nextSectionX += sectionWidth + sectionGap;
-      }
-
-      if (showProximity) {
-        DrawRoundedPanel(nextSectionX, backgroundY, sectionWidth,
-                         sectionHeight, cornerRadius, proximityBg);
-        float centerX = nextSectionX + (sectionWidth * 0.5f);
-        esp.DrawText(outlineColor, proximityLabel.c_str(),
-                     Vector2(centerX - 1, countY - 1), countSize);
-        esp.DrawText(outlineColor, proximityLabel.c_str(),
-                     Vector2(centerX + 1, countY + 1), countSize);
-        esp.DrawText(textColor, proximityLabel.c_str(),
-                     Vector2(centerX, countY), countSize);
-      }
-    }
-  }
-
-  float globalThickness = pEspPlayer.thickness.load(std::memory_order_relaxed);
-
-  for (int i = 0; i < response.PlayerCount; i++) {
-    auto player = response.Players[i];
-    if (player.Head.Z <= 0.0f)
-      continue;
-    if (!Actived.activar)
-      continue;
-
-    Vector3 headPos = player.Head;
-    Vector3 toePos = player.Toe;
-    if (toePos.Z <= 0.0f)
-      toePos = headPos;
-
-    float distance = player.Distancia;
-    if (distance < 0.1f || distance > 150.0f)
-      continue;
-
-    // Dynamic distance scaling for clean visuals
-    float thickness = (distance > 70.0f) ? 1.0f : globalThickness;
-    float textSizeVal = pEspPlayer.textSize.load(std::memory_order_relaxed);
-    float fSize = (distance > 70.0f) ? 10.0f : textSizeVal;
-
-    float headToFeetHeight = std::abs(toePos.Y - headPos.Y);
-    if (headToFeetHeight < 3.0f)
-      headToFeetHeight = 3.0f;
-    float boxHeight = headToFeetHeight * 1.15f;
-    float width = boxHeight * 0.48f;
-
-    float totalXAdjust = g_espRightAdjust - g_espLeftAdjust;
-
-    float boxY = headPos.Y - (boxHeight * 0.12f);
-    float boxX = headPos.X - (width / 2.0f) + totalXAdjust;
-
-    Color currentBoxColor = pEspPlayer.espColor;
-    if (player.Name)
-      currentBoxColor = Color::Red(); // player.Name == true -> bot
-    if (player.IsCaido)
-      currentBoxColor = Color::Red(); // knocked (changed from Yellow to Red)
-    Color strokeColor = Color(0, 0, 0, 255);
-
-    float adjustedHeadX = headPos.X + totalXAdjust;
-
-    if (pEspPlayer.espLinha) {
-      Vector3 lineStart, lineEnd;
-      if (pEspPlayer.lineType == LINE_TOP)
-        lineStart = Vector3(screenWidth / 2, 0, 0);
-      else if (pEspPlayer.lineType == LINE_CENTER)
-        lineStart = Vector3(screenWidth / 2, screenHeight / 2, 0);
-      else
-        lineStart = Vector3(screenWidth / 2, screenHeight, 0);
-
-      lineEnd = (pEspPlayer.lineType == LINE_BOTTOM)
-                    ? Vector3(adjustedHeadX, boxY + boxHeight, 0)
-                    : Vector3(adjustedHeadX, boxY, 0);
-      esp.DrawLine(currentBoxColor, thickness, lineStart, lineEnd);
-    }
-
-    if (pEspPlayer.espCaixa) {
-      Rect playerRect(boxX, boxY, width, boxHeight);
-      if (pEspPlayer.boxType == BOX_FILLED ||
-          pEspPlayer.boxType == BOX_ROUNDED) {
-        Color fill = currentBoxColor;
-        fill.a = 70;
-        esp.DrawFilledRect(fill, Vector3(boxX, boxY, 0), width, boxHeight);
-      }
-      if (pEspPlayer.boxType == BOX_CORNER)
-        esp.DrawBox4Line(boxX, boxY, width, boxHeight, currentBoxColor,
-                         thickness);
-      else
-        esp.DrawBox(currentBoxColor, thickness, playerRect);
-    }
-
-    if (pEspPlayer.espName || pEspPlayer.espDistance || pEspPlayer.espHealth) {
-      std::string drawName;
-      if (pEspPlayer.espName) {
-        if (player.Name)
-          drawName = "Bot";
-        else if (player.PlayerName[0] != '\0')
-          drawName = player.PlayerName;
-        else
-          drawName = "Unknown";
-      }
-
-      std::string dStr;
-      if (pEspPlayer.espDistance)
-        dStr = std::to_string((int)distance) + "M";
-
-      const bool hasName = pEspPlayer.espName && !drawName.empty();
-      const bool hasDistance = pEspPlayer.espDistance && !dStr.empty();
-      const bool hasHealth = pEspPlayer.espHealth && player.Health > 0;
-
-      if (hasName || hasDistance || hasHealth) {
-        float fontSize = std::max(10.0f, fSize - 1.0f);
-        float spacing = 6.0f;        // gap between name and distance segments
-        float segmentPadding = 6.0f; // internal padding inside each segment
-        float layoutPadding = 6.0f;  // padding around the whole panel
-        float textHeight = fontSize + 5.0f; // height of text background
-
-        // Calculate name text width (approximate)
-        float nameTextWidth =
-            hasName ? (drawName.length() * (fontSize * 0.56f)) : 0.0f;
-        float rawNameSegmentWidth =
-            (nameTextWidth > 0.0f) ? (nameTextWidth + segmentPadding * 2.0f)
-                                   : 0.0f;
-        float nameSegmentWidth = rawNameSegmentWidth;
-
-        // Fixed width for distance segment
-        const float fixedDistWidth = 80.0f; // adjust as needed
-        const float defaultHealthWidth =
-            60.0f; // default health bar width when no name/distance
-
-        float distSegmentWidth = hasDistance ? fixedDistWidth : 0.0f;
-
-        // ----- SYNCHRONIZE NAME BACKGROUND AND HEALTH BAR WIDTHS (existing
-        // logic) -----
-        float healthBarWidth;
-        if (hasName) {
-          float baseHealthWidth =
-              hasDistance ? fixedDistWidth : defaultHealthWidth;
-          healthBarWidth = std::max(nameSegmentWidth, baseHealthWidth);
-          nameSegmentWidth =
-              healthBarWidth; // name background expands to match health bar
-        } else {
-          healthBarWidth = hasDistance ? fixedDistWidth : defaultHealthWidth;
-        }
-
-        // ----- NEW LOGIC: When all three are present, unify total
-        // name+distance width with health bar -----
-        if (hasName && hasDistance && hasHealth) {
-          float combinedWidth =
-              nameSegmentWidth + distSegmentWidth +
-              spacing; // total width of both segments plus gap
-          if (combinedWidth > healthBarWidth) {
-            // Need to shrink combined width to match health bar
-            float excess = combinedWidth - healthBarWidth;
-            // First try to reduce the name segment
-            float newNameWidth = nameSegmentWidth - excess;
-            // Ensure name doesn't go below its text-based minimum (to avoid
-            // clipping)
-            float minNameWidth = rawNameSegmentWidth; // original text width
-            if (newNameWidth < minNameWidth) {
-              // If name would become too small, we also need to shrink the
-              // distance segment Calculate how much we need to take from
-              // distance
-              float nameDeficit =
-                  minNameWidth - newNameWidth; // amount name would go below min
-              newNameWidth = minNameWidth;     // set name to minimum
-              // Reduce distance by the remaining deficit
-              float newDistWidth = distSegmentWidth - nameDeficit;
-              // Ensure distance doesn't go below a reasonable minimum (e.g.,
-              // 30)
-              const float minDistWidth = 30.0f;
-              if (newDistWidth < minDistWidth) {
-                // If both would go below min, we clamp and accept that combined
-                // may still be > healthBarWidth
-                newDistWidth = minDistWidth;
-              }
-              distSegmentWidth = newDistWidth;
-            }
-            nameSegmentWidth = newNameWidth;
-            // Recalculate combined width after adjustments
-            combinedWidth = nameSegmentWidth + distSegmentWidth + spacing;
-            // If still larger, we may need to further adjust, but we'll leave
-            // it as is (health bar remains the target)
-          } else if (combinedWidth < healthBarWidth) {
-            // Shrink health bar to match combined width
-            healthBarWidth = combinedWidth;
-          }
-        }
-
-        const float healthBarHeight = 6.0f; // constant height
-
-        // Total width required for text segments (name + distance + spacing)
-        float contentWidth = nameSegmentWidth + distSegmentWidth;
-        if (nameSegmentWidth > 0.0f && distSegmentWidth > 0.0f)
-          contentWidth += spacing;
-
-        bool hasText = hasName || hasDistance; // are we showing any text?
-
-        // ----- TEXT PANEL WIDTH (adapts to name + distance) -----
-        float layoutInnerWidth;
-        if (hasText) {
-          layoutInnerWidth = contentWidth;
-        } else {
-          layoutInnerWidth = defaultHealthWidth; // health‑only mode
-        }
-
-        // ----- TEXT PANEL POSITIONING -----
-        float layoutHeight = 0.0f;
-        float roundedPanelWidth = 0.0f;
-        float roundedPanelHeight = 0.0f;
-        float layoutX = 0.0f;
-        float layoutY = 0.0f;
-
-        if (hasText) {
-          layoutHeight = textHeight + layoutPadding * 2.0f;
-          roundedPanelWidth = layoutInnerWidth + layoutPadding * 2.0f;
-          roundedPanelHeight = layoutHeight;
-
-          layoutX = adjustedHeadX - (layoutInnerWidth * 0.5f) - layoutPadding;
-          layoutY = boxY - roundedPanelHeight - 8.0f;
-          if (layoutY < 2.0f)
-            layoutY = 2.0f;
-        }
-
-        // Helper to draw rounded panels
-        auto DrawRoundedPanel = [&](float x, float y, float width, float height,
-                                    float radius, Color color) {
-          float clampedRadius =
-              std::max(1.0f, std::min(radius, std::min(width, height) * 0.5f));
-          esp.DrawFilledRect(color, Vector3(x + clampedRadius, y, 0),
-                             width - clampedRadius * 2.0f, height);
-          esp.DrawFilledRect(color, Vector3(x, y + clampedRadius, 0),
-                             clampedRadius, height - clampedRadius * 2.0f);
-          esp.DrawFilledRect(
-              color, Vector3(x + width - clampedRadius, y + clampedRadius, 0),
-              clampedRadius, height - clampedRadius * 2.0f);
-          esp.DrawFilledCircle(color,
-                               Vector2(x + clampedRadius, y + clampedRadius),
-                               clampedRadius);
-          esp.DrawFilledCircle(
-              color, Vector2(x + width - clampedRadius, y + clampedRadius),
-              clampedRadius);
-          esp.DrawFilledCircle(
-              color, Vector2(x + clampedRadius, y + height - clampedRadius),
-              clampedRadius);
-          esp.DrawFilledCircle(
-              color,
-              Vector2(x + width - clampedRadius, y + height - clampedRadius),
-              clampedRadius);
-        };
-
-        // Draw main text panel background
-        if (hasText) {
-          DrawRoundedPanel(layoutX, layoutY, roundedPanelWidth,
-                           roundedPanelHeight, 4.0f, Color(0, 0, 0, 170));
-        }
-
-        // ----- DRAW TEXT SEGMENTS -----
-        if (hasText) {
-          float contentStartX = adjustedHeadX - (layoutInnerWidth * 0.5f);
-          float currentX = contentStartX;
-          float textCenterY = layoutY + layoutPadding + (textHeight * 0.5f);
-
-          // Name segment (width may have been adjusted)
-          if (nameSegmentWidth > 0.0f) {
-            DrawRoundedPanel(currentX, layoutY + layoutPadding,
-                             nameSegmentWidth, textHeight, 3.0f,
-                             Color(30, 30, 30, 210));
-            float nameCenterX = currentX + nameSegmentWidth * 0.5f;
-            esp.DrawText(strokeColor, drawName.c_str(),
-                         Vector2(nameCenterX - 1, textCenterY - 1), fontSize);
-            esp.DrawText(strokeColor, drawName.c_str(),
-                         Vector2(nameCenterX + 1, textCenterY + 1), fontSize);
-            esp.DrawText(Color::White(), drawName.c_str(),
-                         Vector2(nameCenterX, textCenterY), fontSize);
-            currentX +=
-                nameSegmentWidth + (distSegmentWidth > 0.0f ? spacing : 0.0f);
-          }
-
-          // Distance segment (width may have been adjusted if needed)
-          if (distSegmentWidth > 0.0f) {
-            DrawRoundedPanel(currentX, layoutY + layoutPadding,
-                             distSegmentWidth, textHeight, 3.0f,
-                             Color(30, 30, 30, 210));
-            float distCenterX = currentX + distSegmentWidth * 0.5f;
-            Color distColor = currentBoxColor;
-            esp.DrawText(strokeColor, dStr.c_str(),
-                         Vector2(distCenterX - 1, textCenterY - 1), fontSize);
-            esp.DrawText(strokeColor, dStr.c_str(),
-                         Vector2(distCenterX + 1, textCenterY + 1), fontSize);
-            esp.DrawText(distColor, dStr.c_str(),
-                         Vector2(distCenterX, textCenterY), fontSize);
-          }
-        }
-
-        // ----- DRAW HEALTH BAR (width may have been adjusted) -----
-        if (hasHealth) {
-          float hMax = player.Name ? 100.0f : 200.0f;
-          float hpPercent =
-              std::min(1.0f, std::max(0.0f, player.Health / hMax));
-
-          // Determine Y position
-          float healthY;
-          if (hasText) {
-            healthY = layoutY + roundedPanelHeight + 2.0f; // below text panel
-          } else {
-            healthY = boxY - healthBarHeight - 8.0f;
-            if (healthY < 2.0f)
-              healthY = 2.0f;
-          }
-
-          // Center the health bar horizontally
-          float healthBarX = adjustedHeadX - healthBarWidth * 0.5f;
-
-          // Draw background
-          DrawRoundedPanel(healthBarX, healthY, healthBarWidth, healthBarHeight,
-                           healthBarHeight * 0.5f, Color(45, 45, 45, 210));
-
-          // Draw health fill
-          float hpWidth = healthBarWidth * hpPercent;
-          if (hpWidth > 0.0f) {
-            Color hpColor = Color(0, 255, 0, 220);
-            if (hpPercent <= 0.6f)
-              hpColor = Color(255, 210, 0, 220);
-            if (hpPercent < 0.4f)
-              hpColor = Color(255, 70, 70, 220);
-
-            DrawRoundedPanel(healthBarX, healthY, hpWidth, healthBarHeight,
-                             healthBarHeight * 0.5f, hpColor);
-          }
-        }
-      }
-    }
-  }
-}
-
-
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_overlay_Floater_ChangesID(JNIEnv *env, jclass clazz,
@@ -1123,6 +258,24 @@ Java_com_ninmods_main_overlay_Floater_ChangesID(JNIEnv *env, jclass clazz,
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_drawEspNative(JNIEnv *env, jclass type,
+                                                     jobject espView,
+                                                     jobject canvas, jint width,
+                                                     jint height) {
+  if (!SecurityVault_IsSessionValid()) {
+    return; // Zero ESP drawing if no genuine verified server session
+  }
+  if (env->PushLocalFrame(256) < 0) {
+    return;
+  }
+  ESP localEsp = ESP(env, espView, canvas);
+  if (localEsp.isValid()) {
+    DrawESP(localEsp);
+  }
+  env->PopLocalFrame(nullptr);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_overlay_Floater_PxbftKZXivSr(JNIEnv *env, jclass type,
                                                    jobject espView,
                                                    jobject canvas, jint width,
@@ -1161,156 +314,6 @@ Java_com_ninmods_main_overlay_Floater_ftKwCvSr(JNIEnv *env, jclass clazz) {
 
 // ========================================================
 // GLES3 JNI VIEW NATIVE BRIDGE (OpenGL ES 3.0 / ImGui ESP)
-// ========================================================
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env,
-                                                       jclass clazz,
-                                                       jfloat density) {
-  if (!g_ImGuiInitialized) {
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    io.IniFilename = nullptr;
-    io.LogFilename = nullptr;
-
-    float scale = (float)density;
-    if (scale < 1.5f)
-      scale = 2.0f;
-    if (scale > 4.0f)
-      scale = 4.0f;
-    static const ImWchar icons_ranges[] = {0xe000, 0xf8ff, 0};
-    ImFontConfig icons_config;
-    icons_config.MergeMode = true;
-    icons_config.PixelSnapH = true;
-    icons_config.OversampleH = 3;
-    icons_config.OversampleV = 3;
-
-    ImFontConfig customFontCfg;
-    customFontCfg.FontDataOwnedByAtlas = false;
-    customFontCfg.OversampleH = 3;
-    customFontCfg.OversampleV = 3;
-    customFontCfg.PixelSnapH = true;
-
-    float targetDpi = (scale >= 1.2f) ? scale : 2.4f;
-    float fontSize = std::round(16.0f * targetDpi);
-
-    io.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t *>(Custom),
-                                   sizeof(Custom), fontSize, &customFontCfg);
-
-    io.Fonts->AddFontFromMemoryCompressedTTF(font_awesome_data,
-                                             font_awesome_size, fontSize,
-                                             &icons_config, icons_ranges);
-
-    ImFontConfig defCfg;
-    defCfg.SizePixels = fontSize;
-    io.Fonts->AddFontDefault(&defCfg);
-
-    io.Fonts->Build();
-
-    NativeOverlayController::SetDpiScale(scale);
-    NativeOverlayController::ApplyDpiTheme();
-
-    ImGui_ImplOpenGL3_Init("#version 300 es");
-    g_ImGuiInitialized = true;
-    NativeOverlayController::SetImGuiReady(true);
-    MenuRouter::Initialize();
-    LOGD("GLES3 ImGui Hardware ESP & MenuRouter initialized with DPI scale: "
-         "%.2f and TrueType vector font (24px)",
-         scale);
-  }
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_graphics_GLES3JNIView_nativeResize(JNIEnv *env,
-                                                         jclass clazz,
-                                                         jint width,
-                                                         jint height) {
-  g_ScreenWidth = width;
-  g_ScreenHeight = height;
-  g_screenWidth.store(width, std::memory_order_relaxed);
-  g_screenHeight.store(height, std::memory_order_relaxed);
-  glViewport(0, 0, width, height);
-  if (g_ImGuiInitialized) {
-    ImGuiIO &io = ImGui::GetIO();
-    io.DisplaySize = ImVec2((float)width, (float)height);
-  }
-  NativeOverlayController::SetScreenSize(width, height);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_graphics_GLES3JNIView_nativeStep(JNIEnv *env,
-                                                        jclass clazz) {
-  if (!g_ImGuiInitialized)
-    return;
-
-  /* HARDWARE ESP GATE
-   * ------------------------------------------------------------------
-   * The hardware ESP (this function) was the one path in the whole app
-   * that was NOT behind the native session gate: only the two legacy
-   * Canvas/Floater exports were guarded. Anyone who could set
-   * Actived.activar (a plain flag reachable from the Java menu) got the
-   * full ESP even without a verified server session.
-   *
-   * The gate is the native one - SecurityVault_IsSessionValid() - not a
-   * Java-side boolean, because a Java boolean can be flipped by editing
-   * the DEX, while this flag lives in the native library and is only set
-   * by SecurityVault.nativeSetSession() after the server handed out a
-   * signed session token. */
-  if (!SecurityVault_IsSessionValid()) {
-    /* Nothing may be drawn and nothing may be read from the game while
-     * there is no verified session. */
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    return;
-  }
-
-  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-  glClear(GL_COLOR_BUFFER_BIT);
-
-  /* Apply the queued Android touch events BEFORE NewFrame so that ImGuiIO is
-   * only ever written by the render thread. */
-  NativeOverlayController::DrainTouchEvents();
-
-  ImGui_ImplOpenGL3_NewFrame();
-  ImGui::NewFrame();
-
-  /* Publish the capture flag for the Android input thread. It must be read on
-   * the render thread, because the input thread cannot safely touch ImGuiIO
-   * while this thread is building the frame. */
-  NativeOverlayController::PublishWantCaptureMouse();
-
-  // 1. ESP Overlay (Pure Hardware ESP drawing loop: Boxes, Skeletons, Lines,
-  // Distance, Health)
-  RenderHardwareESP(g_ScreenWidth, g_ScreenHeight);
-
-  // Floating Menu and Logo are 100% managed by Android Native WindowManager
-  // (FloatingMenuView.java) exactly matching Android-ModMenu-SemiJni-main. Zero
-  // DPI issues, pure native touch sliding.
-
-  ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_graphics_GLES3JNIView_nativeShutdown(JNIEnv *env,
-                                                           jclass clazz) {
-  if (g_ImGuiInitialized) {
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui::DestroyContext();
-    g_ImGuiInitialized = false;
-    NativeOverlayController::SetImGuiReady(false);
-    LOGD("GLES3 ImGui Hardware ESP shutdown cleanly");
-  }
-}
-
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_ninmods_main_graphics_GLES3JNIView_nativeTouchEvent(
-    JNIEnv *env, jclass clazz, jint action, jfloat x, jfloat y) {
-  return (jboolean)NativeOverlayController::HandleTouchEvent(action, x, y);
-}
-
-// ========================================================
-// NATIVE BRIDGE JNI EXPORTS (com.ninmods.main.core.NativeBridge)
 // ========================================================
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_launchBrandOverlay(
@@ -1505,41 +508,74 @@ static void SyncWithNinLiteDaemon(int mode, bool isOn, int value) {
  * here to let the menu read back exactly what the user picked. */
 static std::atomic<int> g_silentTargetSelection{1};
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
-                                                        jclass clazz,
-                                                        jint featId,
-                                                        jboolean state) {
-  bool bState = (bool)state;
+/*
+ * The ESP master switch gates the whole entity pipeline of the engine
+ * (GameEngine.h returns immediately when it is off), so it is written
+ * through one helper: switching on an ESP sub feature switches the master
+ * on as well and switching the master off switches every ESP sub feature
+ * off again. A menu can therefore never show a switched on ESP that
+ * renders nothing.
+ */
+static void SetEspMasterSwitch(bool on) {
+  Actived.activar = on;
+  SyncWithNinLiteDaemon(Ninlite::MODE_MASTER, on, 0);
+}
+
+/*
+ * THE SINGLE ENGINE WRITER
+ * ------------------------
+ * Every menu of this app (the classic NativeBridge menu and the reference
+ * parity DSL menu in Menu/Preferences.cpp) writes through this function, so
+ * there is exactly one switch that maps a feature id onto an engine flag.
+ */
+void NinFeatureSetState(int featId, bool bState) {
   switch (featId) {
   // ESP Features
   case 1:
-    Actived.activar = bState;
-    SyncWithNinLiteDaemon(Ninlite::MODE_MASTER, bState, 0);
+    SetEspMasterSwitch(bState);
+    if (!bState) {
+      /* Master off: every ESP sub feature goes with it. */
+      pEspPlayer.espCaixa = false;
+      pEspPlayer.espSkeleton = false;
+      pEspPlayer.espLinha = false;
+      pEspPlayer.espHealth = false;
+      pEspPlayer.espName = false;
+      pEspPlayer.espDistance = false;
+      pEspPlayer.espDrawCount = false;
+      pEspPlayer.espIden360 = false;
+    }
     break;
   case 2:
     pEspPlayer.espCaixa = bState;
+    if (bState) SetEspMasterSwitch(true);
     break;
   case 3:
     pEspPlayer.espSkeleton = bState;
+    if (bState) SetEspMasterSwitch(true);
     break;
   case 4:
     pEspPlayer.espLinha = bState;
+    if (bState) SetEspMasterSwitch(true);
     break;
   case 5:
     pEspPlayer.espHealth = bState;
+    if (bState) SetEspMasterSwitch(true);
     break;
   case 6:
     pEspPlayer.espName = bState;
+    if (bState) SetEspMasterSwitch(true);
     break;
   case 7:
     pEspPlayer.espDistance = bState;
+    if (bState) SetEspMasterSwitch(true);
     break;
   case 8:
     pEspPlayer.espDrawCount = bState;
+    if (bState) SetEspMasterSwitch(true);
     break;
   case 9:
     pEspPlayer.espIden360 = bState;
+    if (bState) SetEspMasterSwitch(true);
     break;
 
   // Aimbot Features
@@ -1569,6 +605,24 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
   case 26:
     pPlayer.silentAimHead = bState;
     break;
+  case 27:
+    showFOVCircle = bState;
+    break;
+
+  /* Reference engine options: the weapon name, the threat counter and the
+   * info line at the bottom of the screen. */
+  case 206:
+    pEspPlayer.espWeapon = bState;
+    break;
+  case 207:
+    pEspPlayer.espCount = bState;
+    break;
+  case 208:
+    pEspPlayer.espInfo = bState;
+    break;
+  case 216:
+    pPlayer.KillInChest = bState;
+    break;
 
   // Combat / Memory Features
   case 40:
@@ -1583,6 +637,9 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
     break;
   case 43:
     pPlayer.undercam = bState;
+    break;
+  case 44:
+    Actived.Bypass = bState;
     break;
   // NINLITE Checkbox & Switch Features
   // Ids 111..115: 101/102 belong to the "MAX TARGET DISTANCE" and
@@ -1631,11 +688,22 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
+                                                        jclass clazz,
+                                                        jint featId,
+                                                        jboolean state) {
+  NinFeatureSetState((int)featId, (bool)state);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env,
                                                         jclass clazz,
                                                         jint featId,
                                                         jfloat value) {
-  float fVal = (float)value;
+  NinFeatureSetValue((int)featId, (float)value);
+}
+
+void NinFeatureSetValue(int featId, float fVal) {
   switch (featId) {
   case 100:
     pPlayer.AimFov = fVal;
@@ -1655,6 +723,17 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env,
     break;
   case 202:
     pEspPlayer.lineType = (LineType)((int)fVal);
+    break;
+  /* Reference engine sliders: the size of the ESP text and the head and
+   * chest rate of the aim (how many of every ten shots hit the head). */
+  case 209:
+    pEspPlayer.textSize = fVal;
+    break;
+  case 214:
+    pPlayer.HeadRate = (int)fVal;
+    break;
+  case 215:
+    pPlayer.ChestRate = (int)fVal;
     break;
   case 303:
     pPlayer.AimFov = fVal;
@@ -1699,6 +778,10 @@ extern "C" JNIEXPORT jfloat JNICALL
 Java_com_ninmods_main_core_NativeBridge_getFeatureFloat(JNIEnv *env,
                                                           jclass clazz,
                                                           jint featId) {
+  return (jfloat)NinFeatureGetValue((int)featId);
+}
+
+float NinFeatureGetValue(int featId) {
   switch (featId) {
   case 100:
   case 303:
@@ -1711,19 +794,29 @@ Java_com_ninmods_main_core_NativeBridge_getFeatureFloat(JNIEnv *env,
     return (jfloat)(int)pEspPlayer.boxType.load();
   case 202:
     return (jfloat)(int)pEspPlayer.lineType.load();
+  case 209:
+    return (jfloat)pEspPlayer.textSize.load();
+  case 214:
+    return (jfloat)pPlayer.HeadRate.load();
+  case 215:
+    return (jfloat)pPlayer.ChestRate.load();
   case 304:
     return (jfloat)pPlayer.legitDelayMs.load();
   case 305:
     return (jfloat)g_silentTargetSelection.load();
-  default:
+default:
     return -1.0f;
   }
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_getFeatureState(JNIEnv *env,
-                                                        jclass clazz,
-                                                        jint featId) {
+                                                          jclass clazz,
+                                                          jint featId) {
+  return NinFeatureGetState((int)featId) ? JNI_TRUE : JNI_FALSE;
+}
+
+bool NinFeatureGetState(int featId) {
   switch (featId) {
   case 1:
     return (jboolean)Actived.activar;
@@ -1758,6 +851,16 @@ Java_com_ninmods_main_core_NativeBridge_getFeatureState(JNIEnv *env,
     return (jboolean)pPlayer.ignoreBots;
   case 26:
     return (jboolean)pPlayer.silentAimHead;
+  case 27:
+    return (jboolean)showFOVCircle;
+  case 206:
+    return (jboolean)pEspPlayer.espWeapon;
+  case 207:
+    return (jboolean)pEspPlayer.espCount;
+  case 208:
+    return (jboolean)pEspPlayer.espInfo;
+  case 216:
+    return (jboolean)pPlayer.KillInChest;
 
   case 40:
     return (jboolean)pPlayer.NoRecoil;
@@ -1767,6 +870,8 @@ Java_com_ninmods_main_core_NativeBridge_getFeatureState(JNIEnv *env,
     return (jboolean)pPlayer.PlayerToMe;
   case 43:
     return (jboolean)pPlayer.undercam;
+  case 44:
+    return (jboolean)Actived.Bypass;
 
   /* NINLITE alias ids. 111..115 and the legacy NINLITE ids 301/302 address
    * the very same engine flags as the classic menu ids, so a menu must be
@@ -1848,24 +953,28 @@ Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env,
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_ninmods_main_core_NativeBridge_getDetectedGamePid(JNIEnv *env, jclass clazz) {
-  pid_t pid = target_pid.load(std::memory_order_relaxed);
-  if (pid > 0 && kill(pid, 0) == 0) {
-    return (jint)pid;
+  /*
+   * The detection lives in the dedicated engine
+   * (jni/src/Detection/GameDetection.cpp). This function only keeps the
+   * pid of the engine in sync with the one the memory layer uses.
+   */
+  NinDetection::GameProcess process = NinDetection::Detect();
+  if (process.isDetected && process.pid > 0) {
+    target_pid.store(process.pid, std::memory_order_relaxed);
+    return (jint)process.pid;
   }
-  pid = FindGamePid();
-  target_pid.store(pid, std::memory_order_relaxed);
-  return (jint)pid;
+  target_pid.store(0, std::memory_order_relaxed);
+  return 0;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isLiveGameDetected(JNIEnv *env, jclass clazz) {
-  pid_t pid = target_pid.load(std::memory_order_relaxed);
-  if (pid > 0 && kill(pid, 0) == 0) {
+  NinDetection::GameProcess process = NinDetection::Detect();
+  if (process.isDetected && process.pid > 0) {
+    target_pid.store(process.pid, std::memory_order_relaxed);
     return JNI_TRUE;
   }
-  pid = FindGamePid();
-  target_pid.store(pid, std::memory_order_relaxed);
-  return (pid > 0) ? JNI_TRUE : JNI_FALSE;
+  return JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1907,25 +1016,16 @@ Java_com_ninmods_main_core_NativeBridge_isNinliteSetupDone(JNIEnv *env, jclass c
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getDetectedGameTitle(JNIEnv *env, jclass clazz) {
-  pid_t known = target_pid.load(std::memory_order_relaxed);
-  pid_t pid = (known > 0 && kill(known, 0) == 0) ? known : FindGamePid();
-  if (pid > 0) {
-    target_pid.store(pid, std::memory_order_relaxed);
-    char cmdline[256] = {0};
-    char path[64];
-    snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
-    FILE* f = fopen(path, "r");
-    if (f) {
-      fgets(cmdline, sizeof(cmdline), f);
-      fclose(f);
-    }
-    if (strstr(cmdline, "com.dts.freefiremax")) {
-      return env->NewStringUTF("Free Fire Max");
-    } else if (strstr(cmdline, "com.dts.freefireth") || strstr(cmdline, "com.dts.freefirein")) {
-      return env->NewStringUTF("Free Fire Normal");
-    } else {
-      return env->NewStringUTF("Free Fire Active");
-    }
+  /*
+   * The title comes from the detection engine. The old implementation read
+   * /proc/<pid>/cmdline here a second time - that read fails since Android 9
+   * for a process of another user, which is why the panel reported the
+   * wrong game (and sometimes none at all).
+   */
+  NinDetection::GameProcess process = NinDetection::Detect();
+  if (process.isDetected && process.pid > 0) {
+    target_pid.store(process.pid, std::memory_order_relaxed);
+    return env->NewStringUTF(process.gameTitle.c_str());
   }
   return env->NewStringUTF("Waiting for Game...");
 }
@@ -1976,8 +1076,59 @@ extern "C" JavaVM *g_JavaVM = nullptr;
  * the GL render thread, where FindClass() would always fail. */
 jclass g_NativeBridgeClassRef = nullptr;
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ninmods_main_core_NativeBridge_getMemoryAccessMode(JNIEnv *env, jclass clazz) {
+  /*
+   * The real memory path of the engine. The telemetry panel used to show a
+   * hardcoded "process_vm_readv / pread64" - that was wrong: both the app
+   * engine and the daemon read and write through the kernel driver.
+   */
+  (void) clazz;
+  const char *mode = "Not connected";
+  if (driver != nullptr && driver->isConnected()) {
+    mode = "Kernel Driver IOCTL (0x801/0x802)";
+  } else {
+    std::string connection = NinliteEngine::GetConnectionModeStr();
+    if (connection.find("RT") != std::string::npos) {
+      mode = "Root Daemon (Kernel Driver)";
+    }
+  }
+  return env->NewStringUTF(mode);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_setEspWatermark(JNIEnv *env, jclass clazz, jstring text) {
+  (void) clazz;
+  if (text == nullptr) {
+    g_espWatermark.clear();
+    return;
+  }
+  const char *value = env->GetStringUTFChars(text, nullptr);
+  if (value != nullptr) {
+    g_espWatermark = value;
+    env->ReleaseStringUTFChars(text, value);
+  }
+}
+
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
   g_JavaVM = vm;
   signal(SIGPIPE, SIG_IGN);
+
+  /*
+   * The mod menu binds its native methods here. A failed binding is logged
+   * but does not abort the load: the library also carries the ESP engine,
+   * the driver bridge and the licence vault, and those must keep working
+   * even if the menu classes are not reachable.
+   */
+  JNIEnv *env = nullptr;
+  if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK && env != nullptr) {
+    if (RegisterNinMenu(env) != JNI_OK) {
+      NIN_LOGI("MENU", "Native mod menu binding failed - the menu will not be available");
+    }
+    if (RegisterNinMenuPreferences(env) != JNI_OK) {
+      NIN_LOGI("MENU", "Native mod menu preference binding failed - the menu will not be available");
+    }
+  }
+
   return JNI_VERSION_1_6;
 }

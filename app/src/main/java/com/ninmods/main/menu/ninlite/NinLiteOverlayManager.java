@@ -73,11 +73,6 @@ public class NinLiteOverlayManager {
                  * reads a single value. */
                 FeatureSettings.init(mContext);
 
-                /* Attach the shared transparent hardware ESP surface. There
-                 * must only be ONE GL context: the main overlay manager owns
-                 * it, so this call is a no-op when it is already running. */
-                com.ninmods.main.overlay.NativeOverlayManager.attachEspSurface(mContext, mWindowManager);
-
                 if (mFloatingMenuView == null) {
                     mFloatingMenuView = new NinLiteFloatingMenuView(mContext, mWindowManager);
                     mWindowManager.addView(mFloatingMenuView.getRootFrame(), mFloatingMenuView.getLayoutParams());

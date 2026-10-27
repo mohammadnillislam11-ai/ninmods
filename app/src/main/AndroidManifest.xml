@@ -77,6 +77,18 @@
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:label="Account Profile" />
 
+        <!--
+            The floating mod menu. The service owns the overlay window, exactly
+            like the launcher service of the reference mod menu.
+            stopWithTask="true" makes the menu disappear together with the
+            task of the app, so it can never stay behind on the device.
+        -->
+        <service
+            android:name="com.ninmods.main.menu.MenuOverlayService"
+            android:enabled="true"
+            android:exported="false"
+            android:stopWithTask="true" />
+
     </application>
 
 </manifest>

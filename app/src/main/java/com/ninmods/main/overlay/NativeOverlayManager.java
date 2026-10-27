@@ -2,6 +2,7 @@ package com.ninmods.main.overlay;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.Handler;
@@ -16,7 +17,7 @@ import com.ninmods.main.auth.AuthManager;
 import com.ninmods.main.core.AppLogger;
 import com.ninmods.main.core.FeatureSettings;
 import com.ninmods.main.core.NativeBridge;
-import com.ninmods.main.graphics.GLES3JNIView;
+import com.ninmods.main.menu.MenuOverlayService;
 
 /**
  * NativeOverlayManager coordinates the Android Native Floating Menu Window
@@ -32,15 +33,14 @@ public class NativeOverlayManager {
     private static final String TAG = "NativeOverlayManager";
     private static volatile NativeOverlayManager sInstance;
 
-    /* Shared ESP surface (static: used by the NINLITE overlay as well). */
-    private static volatile GLES3JNIView sEspOverlayView;
+    /* Shared ESP surface (Canvas architecture: used by the NINLITE and the classic overlay). */
+    private static volatile com.ninmods.main.esp.ESPView sEspOverlayView;
     private static volatile WindowManager.LayoutParams sEspParams;
 
     private final Context mContext;
     private final WindowManager mWindowManager;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
 
-    private FloatingMenuView mFloatingMenuView;
     private WindowManager.LayoutParams mEspParams;
 
     private volatile boolean mIsAttached = false;
@@ -90,7 +90,7 @@ public class NativeOverlayManager {
     /* ------------------------------------------------------------------
      * SHARED HARDWARE ESP SURFACE
      * ------------------------------------------------------------------
-     * The GLES3JNIView drives nativeStep() -> RenderHardwareESP() ->
+     * The ESP view drives drawEspNative() -> DrawESP() ->
      * getData() -> CreateDataList(), which is the complete ESP pipeline.
      * Before this surface existed the field was declared but never
      * assigned, so the render thread never started and NOT A SINGLE ESP
@@ -104,9 +104,9 @@ public class NativeOverlayManager {
             AppLogger.logE(TAG, "Cannot attach the hardware ESP surface: WindowManager is null", null);
             return;
         }
-        GLES3JNIView view = null;
+        com.ninmods.main.esp.ESPView view = null;
         try {
-            view = new GLES3JNIView(context);
+            view = new com.ninmods.main.esp.ESPView(context);
             int overlayType = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                     ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                     : WindowManager.LayoutParams.TYPE_PHONE;
@@ -121,15 +121,15 @@ public class NativeOverlayManager {
                     PixelFormat.TRANSLUCENT);
             params.gravity = Gravity.TOP | Gravity.LEFT;
             wm.addView(view, params);
+            view.start();
             sEspOverlayView = view;
             sEspParams = params;
-            AppLogger.log(TAG, "Hardware ESP surface attached (transparent GLES3 overlay)");
+            AppLogger.log(TAG, "Hardware ESP surface attached (transparent Canvas overlay)");
         } catch (Throwable t) {
-            /* A failed attach means NO ESP AT ALL, so the failure must be
-             * visible in the log instead of being swallowed. */
             AppLogger.logE(TAG, "Failed to attach the hardware ESP surface - the ESP will not render", t);
             if (view != null) {
                 try {
+                    view.stop();
                     if (view.isAttachedToWindow()) {
                         wm.removeView(view);
                     }
@@ -171,7 +171,7 @@ public class NativeOverlayManager {
                 String activeKey = AuthManager.getActiveLicenseKey(mContext);
                 String serverUrl = AuthApiController.getServerBaseUrl(mContext);
 
-                if (mIsAttached && mFloatingMenuView != null && mFloatingMenuView.isAttached()) {
+if (mIsAttached && MenuOverlayService.isRunning()) {
                     AppLogger.log(TAG, "Floating overlay already running. Active brand: " + mActiveBrandId);
                     return;
                 }
@@ -183,13 +183,17 @@ public class NativeOverlayManager {
                 // 1. Initialize C++ Native Bridge Engine & Driver link
                 NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense, mDensity, activeKey, serverUrl);
 
-                /* The saved configuration is restored into the engine, so the
-                 * menus show what the user configured last time instead of the
-                 * C++ start up defaults. */
-                FeatureSettings.applyAllToEngine();
+                /*
+                 * The floating menu owns the feature state from now on. It is
+                 * built from the native feature DSL and it restores a stored
+                 * configuration only when the user has switched "Save feature
+                 * preferences" on - exactly like the reference mod menu. A
+                 * blind restore here would switch features on without the
+                 * user touching them.
+                 */
 
-                /* The global feature switches of the backend are applied, so
-                 * an administrator can really switch a group off. */
+                /* The global feature switches of the backend are applied, so an
+                 * administrator can really switch a group off. */
                 String gameType = FeatureSettings.gameTypeForTitle(NativeBridge.getDetectedGameTitle());
                 if (!gameType.isEmpty()) {
                     FeatureSettings.refreshServerGates(mContext, gameType);
@@ -198,13 +202,27 @@ public class NativeOverlayManager {
                 // 2. Attach the transparent hardware ESP surface (shared).
                 attachEspSurface(mContext, mWindowManager);
 
-                // 3. Attach Android Native Floating Menu Window (Exact Semi-JNI Window Architecture)
-                if (mFloatingMenuView == null) {
-                    mFloatingMenuView = new FloatingMenuView(mContext, mWindowManager);
-                    mWindowManager.addView(mFloatingMenuView.getRootFrame(), mFloatingMenuView.getLayoutParams());
-                    mFloatingMenuView.setAttached(true);
-                    AppLogger.log(TAG, "Android Native Floating Menu Window attached (Pure floating view, zero screen block)");
+                /*
+                 * The info line of the ESP surface is drawn by the native
+                 * renderer. The text comes from the app resources, so every
+                 * white label build shows its own name.
+                 */
+                try {
+                    NativeBridge.setEspWatermark(mContext.getString(R.string.app_name));
+                } catch (Throwable t) {
+                    AppLogger.logE(TAG, "Failed to set the ESP watermark", t);
                 }
+
+                /*
+                 * 3. Attach the floating mod menu.
+                 *
+                 * The menu is a service of its own: it creates the overlay
+                 * window, owns it and hides itself while the game is not
+                 * running. That is the architecture of the reference mod menu.
+                 */
+                Intent menuService = new Intent(mContext, MenuOverlayService.class);
+                mContext.startService(menuService);
+                AppLogger.log(TAG, "Floating mod menu service started (native feature DSL)");
 
                 mIsAttached = true;
             } catch (Throwable t) {
@@ -214,31 +232,22 @@ public class NativeOverlayManager {
     }
 
     public void openMenu() {
-        mMainHandler.post(() -> {
-            if (mFloatingMenuView != null) {
-                mFloatingMenuView.expandMenu();
-            }
-        });
+        mMainHandler.post(() -> MenuOverlayService.expandMenu());
     }
 
     public void collapseToLogo() {
-        mMainHandler.post(() -> {
-            if (mFloatingMenuView != null) {
-                mFloatingMenuView.collapseToLogo();
-            }
-        });
+        mMainHandler.post(() -> MenuOverlayService.collapseToLogo());
     }
 
     private void stopInternal() {
         mMainHandler.post(() -> {
             try {
-                if (mFloatingMenuView != null) {
-                    mFloatingMenuView.release();
-                    if (mFloatingMenuView.getRootFrame() != null && mFloatingMenuView.getRootFrame().isAttachedToWindow()) {
-                        mWindowManager.removeView(mFloatingMenuView.getRootFrame());
-                    }
-                    mFloatingMenuView.setAttached(false);
-                    mFloatingMenuView = null;
+                /* The menu window belongs to the menu service - stopping the
+                 * service removes the window with it. */
+                try {
+                    mContext.stopService(new Intent(mContext, MenuOverlayService.class));
+                } catch (Throwable t) {
+                    AppLogger.logE(TAG, "Failed to stop the mod menu service", t);
                 }
                 /* Tear the GL surface down first so the native render thread
                  * stops touching the ImGui context before the brand overlay is

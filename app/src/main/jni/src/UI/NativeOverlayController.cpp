@@ -1,5 +1,4 @@
 #include "NativeOverlayController.h"
-#include "MenuRouter.h"
 #include "Popups/LicensePopup.h"
 #include "Popups/DriverAlertPopup.h"
 #include "../Icon/TextureLoader.h"
@@ -47,8 +46,6 @@ void NativeOverlayController::Initialize(int screenWidth, int screenHeight, floa
         activeBrand = s_ActiveBrandId;
     }
 
-    MenuRouter::Initialize();
-    MenuRouter::SelectBrand(activeBrand);
 
     if (licenseActive) {
         LicensePopup::SetVerified(true);
@@ -84,7 +81,6 @@ void NativeOverlayController::SetActiveBrand(const std::string& brandId) {
         std::lock_guard<std::mutex> lock(s_StateMutex);
         s_ActiveBrandId = brandId;
     }
-    MenuRouter::SelectBrand(brandId);
 }
 
 void NativeOverlayController::SetOpenLoaderCallback(std::function<void()> cb) {
@@ -133,142 +129,6 @@ void NativeOverlayController::ApplyDpiTheme() {
     style.GrabMinSize       = 20.0f;
 
     s_LastAppliedDpi = dpi;
-}
-
-void NativeOverlayController::RenderFrame(bool isKernelActive) {
-    if (!s_Initialized.load(std::memory_order_relaxed)) return;
-
-    ApplyDpiTheme();
-
-    IBrandMenu* activeMenu = MenuRouter::GetActiveMenu();
-    if (!activeMenu) return;
-
-    ImVec4 themeColor = activeMenu->GetPrimaryColor();
-
-    // ------------------------------------------------------------------
-    // [STATE 0] License Key Verification Modal
-    // ------------------------------------------------------------------
-    if (!LicensePopup::IsVerified()) {
-        /* Only block the menu while the modal is actually visible. The old
-         * code returned unconditionally, so closing the modal produced a
-         * completely blank overlay with no way back to the menu. */
-        if (LicensePopup::IsOpen()) {
-            LicensePopup::Render(activeMenu->GetId(), themeColor, []() {
-                // Callback when license verified successfully
-            });
-            return;
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // [STATE 1] Kernel Driver Status Check Modal
-    // ------------------------------------------------------------------
-    if (!isKernelActive && !DriverAlertPopup::IsPreviewMode() &&
-        !s_DriverAlertDismissed.load(std::memory_order_relaxed)) {
-        /* Open() sets s_IsOpen = true unconditionally. Calling it on every
-         * frame therefore undid the close button and the "VIEW MENU ONLY"
-         * button immediately - the modal could never be dismissed. */
-        if (!DriverAlertPopup::IsOpen()) {
-            std::function<void()> loaderCb;
-            {
-                std::lock_guard<std::mutex> lock(s_StateMutex);
-                loaderCb = s_OpenLoaderCallback;
-            }
-            DriverAlertPopup::Open(loaderCb);
-        }
-        DriverAlertPopup::Render([]() {
-            s_DriverAlertDismissed.store(true, std::memory_order_relaxed);
-            s_MenuOpen.store(true, std::memory_order_relaxed);
-        });
-        return;
-    }
-
-    // ------------------------------------------------------------------
-    // [STATE 2] Floating Logo Mode (compact draggable overlay button)
-    // ------------------------------------------------------------------
-    if (!s_MenuOpen.load(std::memory_order_relaxed)) {
-        /* The logo used to be a disc with a radius of HALF THE SCREEN and an
-         * invisible button that covered the entire display, so the game was
-         * hidden behind it and every single touch was swallowed. It is now a
-         * compact (76dp) draggable button with a matching hit area. */
-        const float logoRadius = 38.0f * s_DpiScale.load(std::memory_order_relaxed);
-        const float hitRadius = logoRadius * 1.35f;
-
-        ImVec2 center(s_LogoX.load(std::memory_order_relaxed),
-                      s_LogoY.load(std::memory_order_relaxed));
-        const float screenW = (float)s_ScreenWidth.load(std::memory_order_relaxed);
-        const float screenH = (float)s_ScreenHeight.load(std::memory_order_relaxed);
-        if (center.x < 0.0f) center.x = logoRadius;
-        if (center.y < 0.0f) center.y = logoRadius;
-        if (center.x > screenW - logoRadius) center.x = screenW - logoRadius;
-        if (center.y > screenH - logoRadius) center.y = screenH - logoRadius;
-
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-
-        // Outer Pulsing Neon Glow Ring
-        static float pulse = 0.0f;
-        pulse += 0.045f;
-        float glowAlpha = 0.35f + 0.30f * sinf(pulse);
-        ImU32 glowCol = ImColor(themeColor.x, themeColor.y, themeColor.z, glowAlpha);
-        drawList->AddCircle(center, logoRadius + 4.0f, glowCol, 48, 3.5f);
-
-        // Inner Dark Disc Background
-        ImU32 discBg = ImColor(0.08f, 0.06f, 0.12f, 0.94f);
-        drawList->AddCircleFilled(center, logoRadius, discBg, 48);
-
-        // Sharp Metallic Border Ring
-        ImU32 ringCol = ImColor(themeColor.x, themeColor.y, themeColor.z, 0.95f);
-        drawList->AddCircle(center, logoRadius, ringCol, 48, 2.5f);
-
-        // Authentic NINMODS Logo Texture inside Floating Icon
-        if (g_NinLogoTexture == 0) {
-            LoadNinLogoTexture();
-        }
-
-        if (g_NinLogoTexture != 0) {
-            float iconRadius = logoRadius * 0.95f;
-            float iconH = iconRadius * 2.0f;
-            float iconW = (g_NinLogoHeight > 0) ? (iconH * ((float)g_NinLogoWidth / (float)g_NinLogoHeight)) : iconH;
-            ImVec2 pMin = ImVec2(center.x - iconW * 0.5f, center.y - iconH * 0.5f);
-            ImVec2 pMax = ImVec2(center.x + iconW * 0.5f, center.y + iconH * 0.5f);
-            drawList->AddImage((ImTextureID)(intptr_t)g_NinLogoTexture, pMin, pMax, ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255));
-        } else if (s_LogoTexture.load(std::memory_order_relaxed) > 0) {
-            float iconHalf = logoRadius * 0.65f;
-            ImVec2 imgMin(center.x - iconHalf, center.y - iconHalf);
-            ImVec2 imgMax(center.x + iconHalf, center.y + iconHalf);
-            drawList->AddImage((ImTextureID)(intptr_t)s_LogoTexture.load(std::memory_order_relaxed),
-                               imgMin, imgMax);
-        } else {
-            // High-visibility Brand Initial
-            const char* id = activeMenu->GetId();
-            const char* initial = "NIN";
-            if (id) {
-                if (strcmp(id, "bull") == 0) initial = "BULL";
-                else if (strcmp(id, "cross") == 0) initial = "CRS";
-                else if (strcmp(id, "delta") == 0) initial = "DLT";
-            }
-            ImVec2 txtSz = ImGui::CalcTextSize(initial);
-            drawList->AddText(ImVec2(center.x - txtSz.x * 0.5f, center.y - txtSz.y * 0.5f), ringCol, initial);
-        }
-
-        // Click detector limited to the logo itself (not the whole screen).
-        ImVec2 mouse = ImGui::GetIO().MousePos;
-        bool overLogo = (mouse.x >= center.x - hitRadius && mouse.x <= center.x + hitRadius &&
-                         mouse.y >= center.y - hitRadius && mouse.y <= center.y + hitRadius);
-        if (overLogo && ImGui::IsMouseClicked(0)) {
-            s_MenuOpen.store(true, std::memory_order_relaxed);
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // [STATE 3] Full Modular Tactical Brand Menu (In expanded window)
-    // ------------------------------------------------------------------
-    if (s_MenuOpen.load(std::memory_order_relaxed)) {
-        /* RenderMenu takes a bool& so it can close itself. */
-        bool menuOpen = true;
-        activeMenu->RenderMenu(menuOpen, isKernelActive);
-        s_MenuOpen.store(menuOpen, std::memory_order_relaxed);
-    }
 }
 
 bool NativeOverlayController::IsModalPopupActive() {

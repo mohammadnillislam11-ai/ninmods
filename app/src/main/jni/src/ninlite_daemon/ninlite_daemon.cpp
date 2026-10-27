@@ -419,9 +419,15 @@ static pid_t ScanTargetGamePid() {
     DIR* dir = opendir("/proc");
     if (!dir) return -1;
     struct dirent* entry;
-    pid_t found = -1;
+    pid_t normalFound = -1;
+    pid_t maxFound = -1;
     while ((entry = readdir(dir)) != nullptr) {
-        if (entry->d_type != DT_DIR || !isdigit((unsigned char)entry->d_name[0])) continue;
+        /*
+         * d_type is not filled in by every file system, so a process that is
+         * reported as DT_UNKNOWN is still a process - the name decides.
+         */
+        if (entry->d_type != DT_DIR && entry->d_type != DT_UNKNOWN) continue;
+        if (!isdigit((unsigned char)entry->d_name[0])) continue;
         char cmdPath[80];
         snprintf(cmdPath, sizeof(cmdPath), "/proc/%s/cmdline", entry->d_name);
         FILE* f = fopen(cmdPath, "rb");
@@ -432,18 +438,25 @@ static pid_t ScanTargetGamePid() {
         if (n == 0) continue;
         cmdline[n] = '\0';
         if (strstr(cmdline, "com.dts.freefiremax")) {
-            g_isGameMax.store(true, std::memory_order_relaxed);
-            found = (pid_t)atoi(entry->d_name);
-            break;
+            if (maxFound < 0) maxFound = (pid_t)atoi(entry->d_name);
+            continue;
         }
         if (strstr(cmdline, "com.dts.freefireth") || strstr(cmdline, "com.dts.freefirein")) {
-            g_isGameMax.store(false, std::memory_order_relaxed);
-            found = (pid_t)atoi(entry->d_name);
-            break;
+            if (normalFound < 0) normalFound = (pid_t)atoi(entry->d_name);
         }
     }
     closedir(dir);
-    return found;
+
+    /* Free Fire Normal has priority, exactly like the App side. */
+    if (normalFound > 0) {
+        g_isGameMax.store(false, std::memory_order_relaxed);
+        return normalFound;
+    }
+    if (maxFound > 0) {
+        g_isGameMax.store(true, std::memory_order_relaxed);
+        return maxFound;
+    }
+    return -1;
 }
 
 static bool IsElfHeader(uintptr_t addr) {
@@ -1021,6 +1034,28 @@ int main(int argc, char* argv[]) {
                                      std::memory_order_relaxed);
                 CreateDataList(res);
                 res.success = 1;
+            } else if (req.mode == Ninlite::MODE_DETECT) {
+                /*
+                 * THE GAME PROCESS
+                 * ----------------
+                 * Since Android 9 an App may not read the cmdline of a
+                 * process of another user - and the game runs in its own
+                 * user. The Daemon runs as root, so it is the authority for
+                 * the game process. The App asks this Daemon instead of
+                 * scanning /proc on its own.
+                 */
+                pid_t pid = g_target_pid.load(std::memory_order_relaxed);
+                if (pid <= 0 || !GameStillAlive()) {
+                    pid = ScanTargetGamePid();
+                    if (pid > 0) {
+                        g_target_pid.store(pid, std::memory_order_relaxed);
+                    }
+                }
+                bool isMax = g_isGameMax.load(std::memory_order_relaxed);
+                snprintf(res.detectedPackage, sizeof(res.detectedPackage), "%s",
+                         isMax ? "com.dts.freefiremax" : "com.dts.freefireth");
+                res.detectedPid = (int32_t)pid;
+                res.success = (pid > 0) ? 1 : 0;
             } else if (req.mode == Ninlite::MODE_INIT) {
                 if (!GameStillAlive()) AttachToGame();
                 res.success = (g_target_pid.load(std::memory_order_relaxed) > 0 &&

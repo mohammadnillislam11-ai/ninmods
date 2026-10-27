@@ -18,6 +18,7 @@ namespace NinliteEngine {
 
 static bool g_ninlite_setup_done_flag = false;
 static std::atomic<bool> g_ninlite_starting{false};
+static std::atomic<bool> g_ninlite_engine_started{false};
 
 /**
  * Sends a control request to the root Daemon.
@@ -191,6 +192,7 @@ void StartEngine(const std::string& nativeLibDir) {
             driver->initDriver();
         }
         Actived.activar = true;
+        g_ninlite_engine_started = true;
         g_ninlite_starting = false;
     }).detach();
 }
@@ -202,6 +204,7 @@ void StopEngine() {
     SyncFeature(Ninlite::MODE_MASTER, false, 0);
     Actived.activar = false;
     SyncFeature(Ninlite::MODE_STOP, false, 0);
+    g_ninlite_engine_started = false;
 }
 
 bool IsSetupDone() {
@@ -209,37 +212,23 @@ bool IsSetupDone() {
 }
 
 std::string GetStateJson() {
-    bool shellOk = CheckShellDaemonRunning();
-    bool driverOk = (driver && driver->isConnected() && driver->getFd() >= 0);
-    if (!driverOk) {
-        driverOk = EnsureDriverConnectedThrottled();
-    }
-    bool shellActive = shellOk || driverOk;
+    bool isStarting = g_ninlite_starting.load();
+    bool isEngineStarted = g_ninlite_engine_started.load();
 
-    pid_t known = target_pid.load(std::memory_order_relaxed);
-    pid_t pid = (known > 0 && kill(known, 0) == 0) ? known : FindGamePid();
+    /*
+     * The game process comes from the detection engine. The old code
+     * scanned /proc here a second time - that read fails since Android 9 for
+     * a process of another user, which is why the panel reported "Waiting
+     * for Game" although the daemon (root) had already found the game.
+     */
+    NinDetection::GameProcess detected = NinDetection::Detect();
+    pid_t pid = detected.pid;
     if (pid > 0) target_pid.store(pid, std::memory_order_relaxed);
-    bool gameDetected = (pid > 0);
+    bool gameDetected = (detected.isDetected && pid > 0);
 
-    const char *gameName = "Free Fire Max";
-    if (pid > 0) {
-        char cmdline[256] = {0};
-        char path[64];
-        snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
-        FILE* f = fopen(path, "r");
-        if (f) {
-            fgets(cmdline, sizeof(cmdline), f);
-            fclose(f);
-        }
-        if (strstr(cmdline, "com.dts.freefireth") || strstr(cmdline, "com.dts.freefirein")) {
-            gameName = "Free Fire Normal";
-        } else if (strstr(cmdline, "com.dts.freefiremax")) {
-            gameName = "Free Fire Max";
-        } else if (gameDetected) {
-            gameName = "Free Fire Active";
-        }
-    } else {
-        gameName = "Waiting for Game...";
+    const char *gameName = "Waiting for Game...";
+    if (gameDetected) {
+        gameName = detected.gameTitle.c_str();
     }
 
     bool isEmu = CheckEmulatorDetected();
@@ -247,39 +236,47 @@ std::string GetStateJson() {
 
     std::string statusText;
     std::string buttonText;
-    bool readyToDismiss = false;
+    bool canStart = false;
 
-    if (shellActive && gameDetected) {
-        statusText = std::string("Connected: ") + gameName + " (PID " + std::to_string(pid) + ")";
-        buttonText = "Connected ✓";
-        readyToDismiss = true;
+    if (isEngineStarted) {
+        if (gameDetected) {
+            statusText = std::string("Connected: ") + gameName + " (PID " + std::to_string(pid) + ")";
+            buttonText = "Active ✓";
+        } else {
+            statusText = "Engine Active (Waiting for Game...)";
+            buttonText = "Active ✓";
+        }
+        canStart = false;
         g_ninlite_setup_done_flag = true;
-    } else if (shellActive) {
-        statusText = "Shell Injected (Waiting for Game to Start...)";
-        buttonText = "Shell Active (Start Game)";
-    } else if (g_ninlite_starting.load()) {
-        statusText = "Injecting Root Shell & Daemon...";
+    } else if (isStarting) {
+        statusText = "Injecting Root Shell & Engine...";
         buttonText = "Starting...";
-    } else {
-        statusText = "Standby (Click Start to Inject Shell)";
+        canStart = false;
+    } else if (gameDetected) {
+        statusText = std::string("Game Detected: ") + gameName + " (Ready to Start)";
         buttonText = "Start";
+        canStart = true;
+    } else {
+        statusText = "Waiting for Game to Start...";
+        buttonText = "Start";
+        canStart = false;
     }
 
     char buf[2048];
     snprintf(buf, sizeof(buf),
-             "{\"isStarting\":%s,\"shellActive\":%s,\"gameDetected\":%s,\"gamePid\":%d,\"gameTitle\":\"%s\","
+             "{\"isStarting\":%s,\"isEngineStarted\":%s,\"canStart\":%s,\"gameDetected\":%s,\"gamePid\":%d,\"gameTitle\":\"%s\","
              "\"isEmulator\":%s,\"connectionMode\":\"%s\",\"statusText\":\"%s\",\"buttonText\":\"%s\","
-             "\"readyToDismiss\":%s}",
-             g_ninlite_starting.load() ? "true" : "false",
-             shellActive ? "true" : "false",
+             "\"readyToDismiss\":false}",
+             isStarting ? "true" : "false",
+             isEngineStarted ? "true" : "false",
+             canStart ? "true" : "false",
              gameDetected ? "true" : "false",
              (int)pid,
              gameName,
              isEmu ? "true" : "false",
              connMode,
              statusText.c_str(),
-             buttonText.c_str(),
-             readyToDismiss ? "true" : "false");
+             buttonText.c_str());
 
     return std::string(buf);
 }

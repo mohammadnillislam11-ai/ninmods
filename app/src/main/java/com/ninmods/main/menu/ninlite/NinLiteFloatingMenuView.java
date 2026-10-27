@@ -107,6 +107,9 @@ public class NinLiteFloatingMenuView {
     private TextView mStatusValView;
     private TextView mGameValView;
     private TextView mStartBtnView;
+    private TextView mTeleTargetGameVal;
+    private TextView mTeleEngineModeVal;
+    private TextView mTeleDaemonVal;
 
     // Authentic Screenshot Color Palette
     private static final int COLOR_CARD_BG = 0xF50B0F19;      // Deep Blackish Navy (#0B0F19)
@@ -178,7 +181,6 @@ public class NinLiteFloatingMenuView {
                 : WindowManager.LayoutParams.TYPE_PHONE;
 
         int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 | WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS;
 
         mParams = new WindowManager.LayoutParams(
@@ -565,7 +567,8 @@ public class NinLiteFloatingMenuView {
                 try {
                     org.json.JSONObject state = new org.json.JSONObject(stateJsonStr);
                     boolean isStarting = state.optBoolean("isStarting", false);
-                    boolean shellActive = state.optBoolean("shellActive", false);
+                    boolean isEngineStarted = state.optBoolean("isEngineStarted", false);
+                    boolean canStart = state.optBoolean("canStart", false);
                     boolean gameDetected = state.optBoolean("gameDetected", false);
                     int pid = state.optInt("gamePid", 0);
                     String gameTitle = state.optString("gameTitle", "Waiting for Game...");
@@ -573,7 +576,6 @@ public class NinLiteFloatingMenuView {
                     String connMode = state.optString("connectionMode", "Phantom");
                     String statusText = state.optString("statusText", "");
                     String buttonText = state.optString("buttonText", "Start");
-                    boolean readyToDismiss = state.optBoolean("readyToDismiss", false);
 
                     if (mEmulatorValView != null) {
                         mEmulatorValView.setText(isEmu ? "true" : "false");
@@ -581,6 +583,14 @@ public class NinLiteFloatingMenuView {
                     }
                     if (mConnectionValView != null) {
                         mConnectionValView.setText(connMode);
+                    }
+                    if (mTeleEngineModeVal != null) {
+                        mTeleEngineModeVal.setText(connMode);
+                    }
+                    if (mTeleDaemonVal != null) {
+                        boolean daemonRunning = NativeBridge.isShellDaemonRunning();
+                        mTeleDaemonVal.setText(daemonRunning ? "Online (Connected)" : "Offline");
+                        mTeleDaemonVal.setTextColor(daemonRunning ? COLOR_GREEN : COLOR_RED);
                     }
                     if (mGameValView != null) {
                         if (pid > 0) {
@@ -591,15 +601,24 @@ public class NinLiteFloatingMenuView {
                             mGameValView.setTextColor(COLOR_TEXT_MUTED);
                         }
                     }
+                    if (mTeleTargetGameVal != null) {
+                        if (pid > 0) {
+                            mTeleTargetGameVal.setText(gameTitle + " [" + pid + "]");
+                            mTeleTargetGameVal.setTextColor(COLOR_GREEN);
+                        } else {
+                            mTeleTargetGameVal.setText("Waiting for Game");
+                            mTeleTargetGameVal.setTextColor(COLOR_TEXT_MUTED);
+                        }
+                    }
 
                     if (mStatusValView != null) {
                         mStatusValView.setText(statusText);
-                        if (readyToDismiss) {
+                        if (isEngineStarted) {
                             mStatusValView.setTextColor(COLOR_GREEN);
-                        } else if (shellActive) {
-                            mStatusValView.setTextColor(COLOR_CYAN);
                         } else if (isStarting) {
                             mStatusValView.setTextColor(COLOR_CYAN_LIGHT);
+                        } else if (gameDetected) {
+                            mStatusValView.setTextColor(COLOR_CYAN);
                         } else {
                             mStatusValView.setTextColor(COLOR_TEXT_MUTED);
                         }
@@ -607,39 +626,37 @@ public class NinLiteFloatingMenuView {
 
                     if (mStartBtnView != null) {
                         mStartBtnView.setText(buttonText);
-                        if (readyToDismiss) {
+                        if (isEngineStarted) {
                             mStartBtnView.setTextColor(Color.WHITE);
                             GradientDrawable greenBg = new GradientDrawable();
                             greenBg.setColor(COLOR_GREEN);
                             greenBg.setCornerRadius(dp(10));
                             mStartBtnView.setBackground(greenBg);
                             mStartBtnView.setClickable(false);
-                        } else if (shellActive) {
-                            mStartBtnView.setTextColor(COLOR_CYAN);
+                        } else if (isStarting) {
+                            mStartBtnView.setTextColor(COLOR_CYAN_LIGHT);
+                            GradientDrawable startingBg = new GradientDrawable();
+                            startingBg.setColor(Color.parseColor("#152836"));
+                            startingBg.setCornerRadius(dp(10));
+                            mStartBtnView.setBackground(startingBg);
+                            mStartBtnView.setClickable(false);
+                        } else if (canStart) {
+                            mStartBtnView.setTextColor(Color.BLACK);
                             GradientDrawable cyanBg = new GradientDrawable();
-                            cyanBg.setColor(Color.parseColor("#102525"));
-                            cyanBg.setStroke(dp(1), COLOR_CYAN);
+                            cyanBg.setColor(COLOR_CYAN);
                             cyanBg.setCornerRadius(dp(10));
                             mStartBtnView.setBackground(cyanBg);
-                            mStartBtnView.setClickable(false);
-                        } else if (isStarting) {
-                            mStartBtnView.setClickable(false);
-                        } else {
                             mStartBtnView.setClickable(true);
+                        } else {
+                            mStartBtnView.setTextColor(Color.parseColor("#667788"));
+                            GradientDrawable disabledBg = new GradientDrawable();
+                            disabledBg.setColor(Color.parseColor("#161F2C"));
+                            disabledBg.setCornerRadius(dp(10));
+                            mStartBtnView.setBackground(disabledBg);
+                            mStartBtnView.setClickable(false);
                         }
                     }
 
-                    /* The engine switches the ESP master on while it boots,
-                     * so the saved configuration is restored once the root
-                     * shell is really up. */
-                    if (shellActive && !mEngineStateRestored) {
-                        mEngineStateRestored = true;
-                        FeatureSettings.applyAllToEngine();
-                    }
-
-                    /* The global feature switches of the backend belong to
-                     * the running game, so they are read again when the game
-                     * changes. */
                     if (!gameTitle.equals(mLastGateGameTitle)) {
                         mLastGateGameTitle = gameTitle;
                         String gateGameType = FeatureSettings.gameTypeForTitle(gameTitle);
@@ -647,34 +664,22 @@ public class NinLiteFloatingMenuView {
                             FeatureSettings.refreshServerGates(mContext, gateGameType);
                         }
                     }
-
-                    if (readyToDismiss) {
-                        mIsEngineStarted = true;
-                        mIsEngineStarting = false;
-                        dismissSettingsTabPermanently();
-                        return; // Stop poller
-                    }
                 } catch (Throwable t) {
                     AppLogger.logE(TAG, "Error parsing native engine state: " + t.getMessage(), t);
                 }
 
-                if (mIsAttached && mExpandedView != null && mExpandedView.getVisibility() == View.VISIBLE && !sSettingsDismissed) {
+                /*
+                 * The poller has to keep running while the panel is collapsed
+                 * as well. It used to stop as soon as the panel was not
+                 * visible, so the panel kept the text of the moment it was
+                 * opened - the game row could say "Waiting for Game" long
+                 * after the game was detected.
+                 */
+                if (mIsAttached) {
                     mMainHandler.postDelayed(this, 500);
                 }
             }
         }, 500);
-    }
-
-    private void dismissSettingsTabPermanently() {
-        sSettingsDismissed = true;
-        if (mSidebarButtons != null && mSidebarButtons.length > 0 && mSidebarButtons[0] != null) {
-            mSidebarButtons[0].setVisibility(View.GONE);
-        }
-        if (mContentSections != null && mContentSections.length > 0 && mContentSections[0] != null) {
-            mContentSections[0].setVisibility(View.GONE);
-        }
-        selectTab(1); // Switch directly to Silent Aim tab
-        AppLogger.log(TAG, "Settings setup layer dismissed permanently after successful shell start & game detection");
     }
 
     private void startRealShellAndEngine() {
@@ -693,6 +698,9 @@ public class NinLiteFloatingMenuView {
         // Delegate 100% of root shell, SELinux policy, and daemon execution to C++
         String nativeLibDir = mContext.getApplicationInfo().nativeLibraryDir;
         NativeBridge.startNinliteEngineNative(nativeLibDir);
+
+        // Attach ESP surface when engine is started
+        com.ninmods.main.overlay.NativeOverlayManager.attachEspSurface(mContext, mWindowManager);
     }
 
 
@@ -776,7 +784,7 @@ public class NinLiteFloatingMenuView {
     }
 
     // =========================================================================
-    // ESP Section (Matching STORM_MODS features with clean UI)
+    // ESP section (the native feature set with a clean UI)
     // =========================================================================
     private ScrollView createEspSection() {
         ScrollView sv = new ScrollView(mContext);
@@ -823,14 +831,38 @@ public class NinLiteFloatingMenuView {
         boolean daemonRunning = NativeBridge.isShellDaemonRunning();
 
         layout.addView(createKeyValueRow("Architecture: ", "AArch64 (ARM64)", COLOR_CYAN));
-        layout.addView(createKeyValueRow("Engine Mode: ", conn, COLOR_GREEN));
-        layout.addView(createKeyValueRow("Target Game: ", pid > 0 ? (game + " [" + pid + "]") : "Waiting for Game", pid > 0 ? COLOR_GREEN : COLOR_TEXT_MUTED));
-        layout.addView(createKeyValueRow("Daemon Stream: ", daemonRunning ? "Online (Connected)" : "Offline", daemonRunning ? COLOR_GREEN : COLOR_RED));
-        layout.addView(createKeyValueRow("Memory Access: ", "process_vm_readv / pread64", COLOR_CYAN));
+
+        mTeleEngineModeVal = createValueTextView(conn, COLOR_GREEN);
+        layout.addView(createDynamicKeyValueRow("Engine Mode: ", mTeleEngineModeVal));
+
+        mTeleTargetGameVal = createValueTextView(pid > 0 ? (game + " [" + pid + "]") : "Waiting for Game", pid > 0 ? COLOR_GREEN : COLOR_TEXT_MUTED);
+        layout.addView(createDynamicKeyValueRow("Target Game: ", mTeleTargetGameVal));
+
+        mTeleDaemonVal = createValueTextView(daemonRunning ? "Online (Connected)" : "Offline", daemonRunning ? COLOR_GREEN : COLOR_RED);
+        layout.addView(createDynamicKeyValueRow("Daemon Stream: ", mTeleDaemonVal));
+
+        layout.addView(createKeyValueRow("Memory Access: ", memoryAccessMode(), COLOR_CYAN));
+
         layout.addView(createKeyValueRow("Central Offsets: ", "gameoffsets.h (Unified C++)", COLOR_CYAN));
 
         sv.addView(layout);
         return sv;
+    }
+
+    /**
+     * The real memory path of the engine.
+     *
+     * The panel used to show a hardcoded "process_vm_readv / pread64", but
+     * both the app engine and the root daemon read and write through the
+     * kernel driver - so the native side reports the truth.
+     */
+    private String memoryAccessMode() {
+        try {
+            String mode = NativeBridge.getMemoryAccessMode();
+            return (mode == null || mode.isEmpty()) ? "Not connected" : mode;
+        } catch (Throwable t) {
+            return "Not connected";
+        }
     }
 
     // =========================================================================
@@ -1012,18 +1044,18 @@ public class NinLiteFloatingMenuView {
 
     public void expandMenu() {
         if (mCollapsedView != null) mCollapsedView.setVisibility(View.GONE);
-        if (mExpandedView != null) mExpandedView.setVisibility(View.VISIBLE);
-        try {
-            mWindowManager.updateViewLayout(mRootFrame, mParams);
-        } catch (Throwable ignored) {}
+        if (mExpandedView != null) {
+            mExpandedView.setVisibility(View.VISIBLE);
+            mExpandedView.setAlpha(1.0f);
+        }
     }
 
     public void collapseToLogo() {
         if (mExpandedView != null) mExpandedView.setVisibility(View.GONE);
-        if (mCollapsedView != null) mCollapsedView.setVisibility(View.VISIBLE);
-        try {
-            mWindowManager.updateViewLayout(mRootFrame, mParams);
-        } catch (Throwable ignored) {}
+        if (mCollapsedView != null) {
+            mCollapsedView.setVisibility(View.VISIBLE);
+            mCollapsedView.setAlpha(1.0f);
+        }
     }
 
     private View.OnTouchListener createLogoTouchListener() {

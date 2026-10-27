@@ -113,4 +113,9 @@
     <string name="menu_tactical_3_sub">PRECISION</string>
     <string name="menu_tactical_4_name">DELTA</string>
     <string name="menu_tactical_4_sub">STEALTH</string>
+
+    <!-- Reference Mod Menu (DSL driven floating menu) -->
+    <!-- The colour of the value inside a slider label is part of the HTML
+         label of the row, so it is kept as a string resource. -->
+    <string name="menu_dsl_number_color">#41c300</string>
 </resources>

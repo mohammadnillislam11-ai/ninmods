@@ -178,7 +178,11 @@ static bool IsProcessActiveForeground(pid_t pid) {
     char oomPath[64];
     snprintf(oomPath, sizeof(oomPath), "/proc/%d/oom_score_adj", pid);
     FILE* fp = fopen(oomPath, "r");
-    if (!fp) return false;
+    if (!fp) {
+        // If oom_score_adj cannot be opened (DAC permission denied on modern Android),
+        // assume true so we never erroneously ignore an active game process!
+        return true;
+    }
     int score = 1000;
     if (fscanf(fp, "%d", &score) == 1) {
         fclose(fp);
@@ -191,77 +195,23 @@ static bool IsProcessActiveForeground(pid_t pid) {
     return true;
 }
 
-// Encontra o PID do processo com prioridade estrita para Free Fire Normal (com.dts.freefireth)
-// e validação contra processos suspensos/em cache do Android
+#include "Detection/GameDetection.h"
+
+/*
+ * Finds the PID of the game process.
+ *
+ * The detection itself lives in the dedicated engine
+ * (jni/src/Detection/GameDetection.cpp): it scans /proc with root rights
+ * first, because since Android 9 an app may not read the cmdline of a
+ * process of another user. This function is only the thin adapter the rest
+ * of the engine uses.
+ */
 inline pid_t FindGamePid() {
-    // 1. Pass 1: Look specifically for Normal Free Fire (com.dts.freefireth or com.dts.freefirein)
-    DIR* dir = opendir("/proc");
-    if (dir) {
-        struct dirent* entry;
-        while ((entry = readdir(dir)) != nullptr) {
-            if (entry->d_type == DT_DIR) {
-                char* endptr = nullptr;
-                pid_t pid = strtol(entry->d_name, &endptr, 10);
-                if (endptr && *endptr == '\0' && pid > 0) {
-                    char cmdlinePath[64];
-                    snprintf(cmdlinePath, sizeof(cmdlinePath), "/proc/%d/cmdline", pid);
-                    FILE* fp = fopen(cmdlinePath, "rb");
-                    if (fp) {
-                        char cmdline[256] = {0};
-                        size_t n = fread(cmdline, 1, sizeof(cmdline) - 1, fp);
-                        fclose(fp);
-                        if (n > 0) {
-                            cmdline[n] = '\0';
-                            if (strstr(cmdline, "com.dts.freefireth") != nullptr || strstr(cmdline, "com.dts.freefirein") != nullptr) {
-                                closedir(dir);
-                                g_isGameMax.store(false, std::memory_order_relaxed);
-                                NIN_LOGI("DAEMON", "Found Game PID: %d (com.dts.freefireth/in via /proc)", pid);
-                                return pid;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        closedir(dir);
+    NinDetection::GameProcess process = NinDetection::Detect();
+    if (process.isDetected && process.pid > 0) {
+        g_isGameMax.store(process.isMax, std::memory_order_relaxed);
+        return process.pid;
     }
-
-    // 2. Pass 2: Look for active Free Fire MAX (com.dts.freefiremax)
-    dir = opendir("/proc");
-    if (dir) {
-        struct dirent* entry;
-        while ((entry = readdir(dir)) != nullptr) {
-            if (entry->d_type == DT_DIR) {
-                char* endptr = nullptr;
-                pid_t pid = strtol(entry->d_name, &endptr, 10);
-                if (endptr && *endptr == '\0' && pid > 0) {
-                    char cmdlinePath[64];
-                    snprintf(cmdlinePath, sizeof(cmdlinePath), "/proc/%d/cmdline", pid);
-                    FILE* fp = fopen(cmdlinePath, "rb");
-                    if (fp) {
-                        char cmdline[256] = {0};
-                        size_t n = fread(cmdline, 1, sizeof(cmdline) - 1, fp);
-                        fclose(fp);
-                        if (n > 0) {
-                            cmdline[n] = '\0';
-                            if (strstr(cmdline, "com.dts.freefiremax") != nullptr) {
-                                if (IsProcessActiveForeground(pid)) {
-                                    closedir(dir);
-                                    g_isGameMax.store(true, std::memory_order_relaxed);
-                                    NIN_LOGI("DAEMON", "Found Game PID: %d (com.dts.freefiremax active foreground)", pid);
-                                    return pid;
-                                } else {
-                                    NIN_LOGI("DAEMON", "Ignoring cached dormant background com.dts.freefiremax (PID: %d)", pid);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        closedir(dir);
-    }
-
     return 0;
 }
 

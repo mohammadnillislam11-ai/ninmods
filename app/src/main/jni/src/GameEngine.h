@@ -54,6 +54,10 @@ struct Response {
     int VisibleEnemyCount;                // On-screen enemies
     int VisibleNearOffScreenEnemyCount;   // Off-screen but near screen edges
     int ProximityEnemyCount;              // Enemies within 30m of local player
+    /* The threat counter of the reference engine: the enemies in front of
+     * the camera and the ones behind it. */
+    int EnemiesInFront;
+    int EnemiesBehind;
     PlayerData Players[maxplayerCount];
 };
 
@@ -880,6 +884,8 @@ inline void CreateDataList(Response& SendResponse) {
     SendResponse.VisibleEnemyCount = 0;
     SendResponse.VisibleNearOffScreenEnemyCount = 0;
     SendResponse.ProximityEnemyCount = 0;
+    SendResponse.EnemiesInFront = 0;
+    SendResponse.EnemiesBehind = 0;
 
     if (!Actived.activar) return;
 
@@ -1357,6 +1363,32 @@ inline void CreateDataList(Response& SendResponse) {
             SendResponse.ProximityEnemyCount++;
         }
 
+        /*
+         * THREAT COUNTER (reference engine)
+         * ---------------------------------
+         * The counter of the reference engine splits the enemies into the
+         * ones in front of the camera and the ones behind it. The test is a
+         * dot product between the direction to the enemy and the forward
+         * vector of the view matrix.
+         */
+        {
+            Vector3 camPos(g_camPosX.load(std::memory_order_relaxed),
+                           g_camPosY.load(std::memory_order_relaxed),
+                           g_camPosZ.load(std::memory_order_relaxed));
+            if (camPos == Vector3::Zero()) {
+                camPos = LocalPosition;
+            }
+            Vector3 viewForward = {matrix._13, matrix._23, matrix._33};
+            Vector3 toEnemy = EnemyPosition - camPos;
+            float dotProduct = toEnemy.X * viewForward.X + toEnemy.Y * viewForward.Y +
+                               toEnemy.Z * viewForward.Z;
+            if (dotProduct >= 0.0f) {
+                SendResponse.EnemiesInFront++;
+            } else {
+                SendResponse.EnemiesBehind++;
+            }
+        }
+
         // Screen projection.
         // Entities that are completely outside the viewport are dropped, but
         // entities that are only PARTIALLY visible are kept - the previous
@@ -1380,8 +1412,10 @@ inline void CreateDataList(Response& SendResponse) {
             }
         }
 
+        /* The radius of the aim circle is the reference formula: the angle
+         * is a share of the screen width, not of the screen height. */
         float fovRadius = (pPlayer.AimFov / 180.0f) *
-                          (g_screenHeight.load(std::memory_order_relaxed) / 2.0f);
+                          (g_screenWidth.load(std::memory_order_relaxed) * 0.55f);
 
         // Populate Response
         auto *data = &SendResponse.Players[SendResponse.PlayerCount];
@@ -1430,30 +1464,63 @@ inline void CreateDataList(Response& SendResponse) {
         }
 
         // Silent Aim & Aimbot evaluation
+        /*
+         * THE TARGET SELECTION OF THE REFERENCE ENGINE
+         * ----------------------------------------------
+         *  - the target has to be ON the screen,
+         *  - the FOV circle is only checked for the silent aim and for the
+         *    hard aim (the collider lock uses the closest target),
+         *  - the target that is closest to the crosshair wins.
+         */
         bool aimActive = (pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock);
         bool shouldIgnoreForAim = (pPlayer.ignoreKnocked && isKnocked);
-        float screenDist = sqrt(pow(LocationHeadBox.X - g_screenWidth.load(std::memory_order_relaxed)/2, 2) +
-                                pow(LocationHeadBox.Y - g_screenHeight.load(std::memory_order_relaxed)/2, 2));
-        if (aimActive && !shouldIgnoreForAim && isWithinFOV(LocationHeadBox, fovRadius) && distanceToEnemy <= pPlayer.AimDistance) {
-            float priorityValue = pPlayer.targetByDistance ? distanceToEnemy : screenDist;
+        float screenWidth = (float)g_screenWidth.load(std::memory_order_relaxed);
+        float screenHeight = (float)g_screenHeight.load(std::memory_order_relaxed);
+        float screenDist = sqrt(pow(LocationHeadBox.X - screenWidth / 2, 2) +
+                                pow(LocationHeadBox.Y - screenHeight / 2, 2));
+        bool targetOnScreen = (LocationHeadBox.X >= 0.0f && LocationHeadBox.X <= screenWidth &&
+                               LocationHeadBox.Y >= 0.0f && LocationHeadBox.Y <= screenHeight);
+        bool fovPass = !(pPlayer.silen4a || pPlayer.aimbot) || isWithinFOV(LocationHeadBox, fovRadius);
+        if (aimActive && !shouldIgnoreForAim && targetOnScreen && fovPass &&
+            distanceToEnemy <= pPlayer.AimDistance) {
+            float priorityValue = screenDist;
             if (priorityValue < bestPriority) {
                 bestPriority = priorityValue;
-                // Target bone selection (Head vs Chest/Body)
-                // The chest point is interpolated between the HEAD and the HIP
-                // (exactly like the reference engine). Interpolating towards
-                // the feet produced a point near the knees.
-                Vector3 targetPos = EnemyPosition;
-                if (!pPlayer.silentAimHead) {
-                    Vector3 hipPos = Vector3::Zero();
-                    uintptr_t hipTF = GetPlayerHipTF(enemyList);
-                    if (hipTF) hipPos = GetNodePosition(hipTF);
-                    if (hipPos == Vector3::Zero()) hipPos = EnemyPositionPe;
-                    if (hipPos != Vector3::Zero()) {
-                        targetPos.X = EnemyPosition.X + (hipPos.X - EnemyPosition.X) * 0.35f;
-                        targetPos.Y = EnemyPosition.Y + (hipPos.Y - EnemyPosition.Y) * 0.35f;
-                        targetPos.Z = EnemyPosition.Z + (hipPos.Z - EnemyPosition.Z) * 0.35f;
-                    }
+
+                /*
+                 * THE HEAD / CHEST PATTERN
+                 * -------------------------
+                 * The chest point is interpolated between the HEAD and the
+                 * HIP (exactly like the reference engine). Interpolating
+                 * towards the feet produced a point near the knees.
+                 */
+                Vector3 headPos = EnemyPosition;
+                Vector3 chestPos = EnemyPosition;
+                Vector3 hipPos = Vector3::Zero();
+                uintptr_t hipTF = GetPlayerHipTF(enemyList);
+                if (hipTF) hipPos = GetNodePosition(hipTF);
+                if (hipPos == Vector3::Zero()) hipPos = EnemyPositionPe;
+                if (hipPos != Vector3::Zero()) {
+                    chestPos.X = EnemyPosition.X + (hipPos.X - EnemyPosition.X) * 0.35f;
+                    chestPos.Y = EnemyPosition.Y + (hipPos.Y - EnemyPosition.Y) * 0.35f;
+                    chestPos.Z = EnemyPosition.Z + (hipPos.Z - EnemyPosition.Z) * 0.35f;
                 }
+
+                bool useChest = false;
+                if (pPlayer.KillInChest && Health > 0 && Health < 50) {
+                    /* A weak target is shot into the chest. */
+                    useChest = true;
+                } else if (pPlayer.ChestRate > 0) {
+                    static int aimTickCounter = 0;
+                    aimTickCounter++;
+                    if (aimTickCounter > 100) aimTickCounter = 0;
+                    float threshold = (float)pPlayer.ChestRate * 10.0f;
+                    useChest = ((float)aimTickCounter < threshold);
+                } else if (!pPlayer.silentAimHead) {
+                    useChest = true;
+                }
+
+                Vector3 targetPos = useChest ? chestPos : headPos;
                 bestTargetPos = targetPos;
                 bestTargetPosPe = EnemyPositionPe;
                 bestTargetObj = enemyList;
@@ -1638,6 +1705,42 @@ inline bool DaemonSyncRequest(int mode, bool enabled, int value) {
     Ninlite::Response resp;
     memset(&resp, 0, sizeof(resp));
     return g_daemonClient.Request(req, &resp);
+}
+
+/**
+ * Asks the Daemon (which runs as root) for the process of the game.
+ *
+ * Since Android 9 an App may not read /proc/<pid>/cmdline of a process of
+ * another user, so the App cannot find the game on its own. The Daemon can
+ * do it, because it runs with root rights.
+ *
+ * @param outPid    the pid of the game process (0 when it was not found)
+ * @param outIsMax  true for Free Fire MAX, false for Free Fire Normal
+ * @return true when the Daemon answered
+ */
+inline bool RequestDaemonDetect(pid_t &outPid, bool &outIsMax) {
+    outPid = 0;
+    outIsMax = false;
+
+    std::lock_guard<std::mutex> lock(g_daemonMutex);
+
+    Ninlite::Request req;
+    memset(&req, 0, sizeof(req));
+    req.mode = Ninlite::MODE_DETECT;
+    req.enabled = 1;
+
+    Ninlite::Response wire;
+    memset(&wire, 0, sizeof(wire));
+    if (!g_daemonClient.Request(req, &wire)) {
+        return false;
+    }
+    if (wire.detectedPid <= 0) {
+        return true;   /* the daemon answered, but the game is not running */
+    }
+
+    outPid = (pid_t)wire.detectedPid;
+    outIsMax = (strstr(wire.detectedPackage, "freefiremax") != nullptr);
+    return true;
 }
 
 inline Response RequestDaemonESP(int screenWidth, int screenHeight) {
