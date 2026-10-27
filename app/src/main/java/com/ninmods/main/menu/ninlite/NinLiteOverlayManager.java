@@ -73,6 +73,11 @@ public class NinLiteOverlayManager {
                 // Inform NativeBridge
                 NativeBridge.launchBrandOverlay("ninlite", hwid, hasActiveLicense, density, activeKey, serverUrl);
 
+                /* Attach the shared transparent hardware ESP surface. There
+                 * must only be ONE GL context: the main overlay manager owns
+                 * it, so this call is a no-op when it is already running. */
+                com.ninmods.main.overlay.NativeOverlayManager.attachEspSurface(mContext, mWindowManager);
+
                 if (mFloatingMenuView == null) {
                     mFloatingMenuView = new NinLiteFloatingMenuView(mContext, mWindowManager);
                     mWindowManager.addView(mFloatingMenuView.getRootFrame(), mFloatingMenuView.getLayoutParams());
@@ -96,6 +101,11 @@ public class NinLiteOverlayManager {
                     }
                     mFloatingMenuView.setAttached(false);
                     mFloatingMenuView = null;
+                }
+                /* Release the shared ESP surface only when the main overlay
+                 * manager is not running any more. */
+                if (!com.ninmods.main.overlay.NativeOverlayManager.isRunning()) {
+                    com.ninmods.main.overlay.NativeOverlayManager.detachEspSurface(mWindowManager);
                 }
                 mIsAttached = false;
                 AppLogger.log(TAG, "NINLITE overlay stopped cleanly");

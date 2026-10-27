@@ -80,8 +80,13 @@ public final class NativeBridge {
      */
     public static native void setFeatureState(int featId, boolean state);
     public static native void setFeatureFloat(int featId, float value);
+    /**
+     * Boolean helper. It only writes the STATE channel.
+     * It used to write BOTH the float and the state channel, which meant
+     * that a checkbox with id 101 also overwrote "MAX TARGET DISTANCE"
+     * (a float id) with 0 or 1 metres.
+     */
     public static void setFeatureEnabled(int featId, int value) {
-        setFeatureFloat(featId, (float) value);
         setFeatureState(featId, value != 0);
     }
     public static native boolean getFeatureState(int featId);

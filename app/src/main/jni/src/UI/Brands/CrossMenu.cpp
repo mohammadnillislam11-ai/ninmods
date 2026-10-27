@@ -1,5 +1,6 @@
 #include "CrossMenu.h"
 #include "../NativeOverlayController.h"
+#include "../Toggle.h"
 #include "../../BooleanClient.h"
 #if __has_include(<imgui.h>)
 #include <imgui.h>
@@ -48,8 +49,8 @@ void CrossMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
 
     ApplyTheme();
 
-    float scrW = (float)NativeOverlayController::s_ScreenWidth;
-    float scrH = (float)NativeOverlayController::s_ScreenHeight;
+    float scrW = (float)NativeOverlayController::s_ScreenWidth.load(std::memory_order_relaxed);
+    float scrH = (float)NativeOverlayController::s_ScreenHeight.load(std::memory_order_relaxed);
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(scrW, scrH));
@@ -65,7 +66,7 @@ void CrossMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
         ImGui::TextDisabled("| %s", GetSubtitle());
 
         float rightEdge = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
-        float btnW = 34.0f * (NativeOverlayController::s_DpiScale * 0.4f);
+        float btnW = 34.0f * (NativeOverlayController::s_DpiScale.load(std::memory_order_relaxed) * 0.4f);
         if (btnW < 36.0f) btnW = 36.0f;
 
         ImGui::SameLine(rightEdge - (btnW * 2.2f));
@@ -91,13 +92,13 @@ void CrossMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    ImGui::Checkbox("Cross Box", &pEspPlayer.espCaixa);
-                    ImGui::Checkbox("Cross Line", &pEspPlayer.espLinha);
-                    ImGui::Checkbox("Cross Distance", &pEspPlayer.espDistance);
-                    ImGui::Checkbox("Cross Health", &pEspPlayer.espHealth);
-                    ImGui::Checkbox("Cross Skeleton", &pEspPlayer.espSkeleton);
-                    ImGui::Checkbox("360 Indicator", &pEspPlayer.espIden360);
-                    ImGui::Checkbox("Threat Counter", &pEspPlayer.espDrawCount);
+                    AtomicCheckbox("Cross Box", &pEspPlayer.espCaixa);
+                    AtomicCheckbox("Cross Line", &pEspPlayer.espLinha);
+                    AtomicCheckbox("Cross Distance", &pEspPlayer.espDistance);
+                    AtomicCheckbox("Cross Health", &pEspPlayer.espHealth);
+                    AtomicCheckbox("Cross Skeleton", &pEspPlayer.espSkeleton);
+                    AtomicCheckbox("360 Indicator", &pEspPlayer.espIden360);
+                    AtomicCheckbox("Threat Counter", &pEspPlayer.espDrawCount);
                 }
                 ImGui::EndChild();
                 ImGui::EndTabItem();
@@ -109,15 +110,15 @@ void CrossMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    ImGui::Checkbox("Aim Lock Target", &pPlayer.aimbotlock);
-                    ImGui::Checkbox("Auto Aim Target", &pPlayer.aimbot);
-                    ImGui::Checkbox("Silent Headshot", &pPlayer.silen4a);
-                    ImGui::Checkbox("Draw FOV Circle", &showFOVCircle);
-                    ImGui::Checkbox("Aim Magnet", &pPlayer.aimMagnet);
+                    AtomicCheckbox("Aim Lock Target", &pPlayer.aimbotlock);
+                    AtomicCheckbox("Auto Aim Target", &pPlayer.aimbot);
+                    AtomicCheckbox("Silent Headshot", &pPlayer.silen4a);
+                    AtomicCheckbox("Draw FOV Circle", &showFOVCircle);
+                    AtomicCheckbox("Aim Magnet", &pPlayer.aimMagnet);
                     ImGui::Spacing();
-                    ImGui::SliderFloat("Target FOV", &pPlayer.AimFov, 15.0f, 180.0f, "%.0f deg");
-                    ImGui::SliderFloat("Target Range", &pPlayer.AimDistance, 10.0f, 300.0f, "%.0f m");
-                    ImGui::SliderInt("Headshot Rate", &pPlayer.headshotRate, 0, 100, "%d %%");
+                    AtomicSliderFloat("Target FOV", &pPlayer.AimFov, 15.0f, 180.0f, "%.0f deg");
+                    AtomicSliderFloat("Target Range", &pPlayer.AimDistance, 10.0f, 300.0f, "%.0f m");
+                    AtomicSliderInt("Headshot Rate", &pPlayer.headshotRate, 0, 100, "%d %%");
                 }
                 ImGui::EndChild();
                 ImGui::EndTabItem();

@@ -1,5 +1,6 @@
 #include "DeltaMenu.h"
 #include "../NativeOverlayController.h"
+#include "../Toggle.h"
 #include "../../BooleanClient.h"
 #if __has_include(<imgui.h>)
 #include <imgui.h>
@@ -48,8 +49,8 @@ void DeltaMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
 
     ApplyTheme();
 
-    float scrW = (float)NativeOverlayController::s_ScreenWidth;
-    float scrH = (float)NativeOverlayController::s_ScreenHeight;
+    float scrW = (float)NativeOverlayController::s_ScreenWidth.load(std::memory_order_relaxed);
+    float scrH = (float)NativeOverlayController::s_ScreenHeight.load(std::memory_order_relaxed);
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(scrW, scrH));
@@ -65,7 +66,7 @@ void DeltaMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
         ImGui::TextDisabled("| %s", GetSubtitle());
 
         float rightEdge = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
-        float btnW = 34.0f * (NativeOverlayController::s_DpiScale * 0.4f);
+        float btnW = 34.0f * (NativeOverlayController::s_DpiScale.load(std::memory_order_relaxed) * 0.4f);
         if (btnW < 36.0f) btnW = 36.0f;
 
         ImGui::SameLine(rightEdge - (btnW * 2.2f));
@@ -91,11 +92,11 @@ void DeltaMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    ImGui::Checkbox("Fast Aim Lock", &pPlayer.aimbotlock);
-                    ImGui::Checkbox("Silent Headshot", &pPlayer.silen4a);
-                    ImGui::Checkbox("Draw FOV Circle", &showFOVCircle);
-                    ImGui::Checkbox("Delta Speed Hack", &pPlayer.SpeedHackV2);
-                    ImGui::SliderFloat("Delta FOV", &pPlayer.AimFov, 20.0f, 150.0f, "%.0f deg");
+                    AtomicCheckbox("Fast Aim Lock", &pPlayer.aimbotlock);
+                    AtomicCheckbox("Silent Headshot", &pPlayer.silen4a);
+                    AtomicCheckbox("Draw FOV Circle", &showFOVCircle);
+                    AtomicCheckbox("Delta Speed Hack", &pPlayer.SpeedHackV2);
+                    AtomicSliderFloat("Delta FOV", &pPlayer.AimFov, 20.0f, 150.0f, "%.0f deg");
                 }
                 ImGui::EndChild();
                 ImGui::EndTabItem();
@@ -107,11 +108,11 @@ void DeltaMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    ImGui::Checkbox("Delta Box", &pEspPlayer.espCaixa);
-                    ImGui::Checkbox("Delta Line", &pEspPlayer.espLinha);
-                    ImGui::Checkbox("Delta Distance", &pEspPlayer.espDistance);
-                    ImGui::Checkbox("Delta Health", &pEspPlayer.espHealth);
-                    ImGui::Checkbox("Delta Skeleton", &pEspPlayer.espSkeleton);
+                    AtomicCheckbox("Delta Box", &pEspPlayer.espCaixa);
+                    AtomicCheckbox("Delta Line", &pEspPlayer.espLinha);
+                    AtomicCheckbox("Delta Distance", &pEspPlayer.espDistance);
+                    AtomicCheckbox("Delta Health", &pEspPlayer.espHealth);
+                    AtomicCheckbox("Delta Skeleton", &pEspPlayer.espSkeleton);
                 }
                 ImGui::EndChild();
                 ImGui::EndTabItem();

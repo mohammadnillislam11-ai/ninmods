@@ -132,6 +132,45 @@ inline bool SelectOptionRow(const char* label, bool selected) {
     return pressed;
 }
 
+/* ------------------------------------------------------------------
+ * ATOMIC-AWARE WIDGET WRAPPERS
+ * ------------------------------------------------------------------
+ * The feature flags are std::atomic (they are written by the JNI thread
+ * and read by the render / worker threads). ImGui's widgets need a plain
+ * bool* / float* / int*, so they cannot be pointed at an atomic directly -
+ * `&pPlayer.silen4a` is a std::atomic<bool>* and does not compile against
+ * ImGui::Checkbox(const char*, bool*).
+ *
+ * These wrappers load the value, let ImGui edit a local copy and store it
+ * back, which keeps the atomic semantics AND compiles.
+ * ------------------------------------------------------------------ */
+
+inline bool AtomicCheckbox(const char* label, std::atomic<bool>* state) {
+    if (!state) return false;
+    bool val = state->load(std::memory_order_relaxed);
+    bool changed = ImGui::Checkbox(label, &val);
+    if (changed) state->store(val, std::memory_order_relaxed);
+    return changed;
+}
+
+inline bool AtomicSliderFloat(const char* label, std::atomic<float>* v,
+                               float v_min, float v_max, const char* format = "%.1f") {
+    if (!v) return false;
+    float val = v->load(std::memory_order_relaxed);
+    bool changed = ImGui::SliderFloat(label, &val, v_min, v_max, format);
+    if (changed) v->store(val, std::memory_order_relaxed);
+    return changed;
+}
+
+inline bool AtomicSliderInt(const char* label, std::atomic<int>* v,
+                             int v_min, int v_max, const char* format = "%d") {
+    if (!v) return false;
+    int val = v->load(std::memory_order_relaxed);
+    bool changed = ImGui::SliderInt(label, &val, v_min, v_max, format);
+    if (changed) v->store(val, std::memory_order_relaxed);
+    return changed;
+}
+
 inline bool MobileSliderFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.1f") {
     if (!v) return false;
     ImGuiWindow* window = ImGui::GetCurrentWindow();
@@ -180,4 +219,17 @@ inline bool MobileSliderFloat(const char* label, float* v, float v_min, float v_
     window->DrawList->AddCircleFilled(ImVec2(thumb_x, track_y), thumb_radius, IM_COL32(250, 252, 255, 255));
     window->DrawList->AddCircle(ImVec2(thumb_x, track_y), thumb_radius, IM_COL32(180, 215, 255, 200), 0, 1.2f);
     return value_changed;
+}
+
+/* Atomic overload: the feature flags are std::atomic<float>, so the slider
+ * works on a local copy and stores the result back into the atomic. */
+inline bool MobileSliderFloat(const char* label, std::atomic<float>* v,
+                               float v_min, float v_max, const char* format = "%.1f") {
+    if (!v) return false;
+    float val = v->load(std::memory_order_relaxed);
+    if (MobileSliderFloat(label, &val, v_min, v_max, format)) {
+        v->store(val, std::memory_order_relaxed);
+        return true;
+    }
+    return false;
 }

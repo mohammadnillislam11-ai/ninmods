@@ -49,7 +49,11 @@ public class HeaderView {
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(context, 12), 0, dp(context, 14), 0);
-        header.setBackgroundColor(AppColors.MAGENTA_CARD); // Exactly matches card color
+
+        android.graphics.drawable.GradientDrawable headerBg = new android.graphics.drawable.GradientDrawable();
+        headerBg.setColor(AppColors.MAGENTA_CARD);
+        headerBg.setStroke(dp(context, 1), AppColors.MAGENTA_CARD_BORDER);
+        header.setBackground(headerBg);
 
         // 3-Line Hamburger Menu Button (opens sidebar drawer)
         HamburgerView menuBtn = new HamburgerView(context);
@@ -57,6 +61,14 @@ public class HeaderView {
         menuBtn.setContentDescription("Open navigation menu");
         menuBtn.setFocusable(true);
         menuBtn.setClickable(true);
+        menuBtn.setOnTouchListener((v, event) -> {
+            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                v.setAlpha(0.65f);
+            } else if (event.getAction() == android.view.MotionEvent.ACTION_UP || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                v.setAlpha(1.0f);
+            }
+            return false;
+        });
         menuBtn.setOnClickListener(v -> {
             if (headerListener != null) {
                 headerListener.onMenuClick();
@@ -67,7 +79,7 @@ public class HeaderView {
         LinearLayout brandBox = new LinearLayout(context);
         brandBox.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
         brandBox.setOrientation(LinearLayout.VERTICAL);
-        brandBox.setPadding(dp(context, 6), 0, 0, 0);
+        brandBox.setPadding(dp(context, 8), 0, 0, 0);
 
         TextView title = new TextView(context);
         title.setText(context.getString(R.string.app_name));
@@ -86,6 +98,14 @@ public class HeaderView {
         profileBtn.setContentDescription("Open profile");
         profileBtn.setFocusable(true);
         profileBtn.setClickable(true);
+        profileBtn.setOnTouchListener((v, event) -> {
+            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                v.setAlpha(0.65f);
+            } else if (event.getAction() == android.view.MotionEvent.ACTION_UP || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                v.setAlpha(1.0f);
+            }
+            return false;
+        });
 
         android.widget.ImageView pIcon = new android.widget.ImageView(context);
         android.widget.FrameLayout.LayoutParams pIconLp = new android.widget.FrameLayout.LayoutParams(

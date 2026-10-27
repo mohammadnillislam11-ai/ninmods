@@ -30,6 +30,7 @@ import com.ninmods.main.R;
 
 import java.io.DataOutputStream;
 import java.io.InputStream;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends BaseActivity {
 
@@ -387,9 +388,10 @@ public class MainActivity extends BaseActivity {
     }
 
     public static boolean requestSuperUser() {
+        Process process = null;
         try {
             // Official standard interactive su invocation (identical to loader software)
-            Process process = Runtime.getRuntime().exec("su");
+            process = Runtime.getRuntime().exec("su");
             DataOutputStream os = new DataOutputStream(process.getOutputStream());
 
             // Drain stdout & stderr in background to avoid Linux pipe buffer deadlocks
@@ -402,11 +404,25 @@ public class MainActivity extends BaseActivity {
             os.flush();
             os.close();
 
-            // Cleanly wait for official Magisk / KernelSU / APatch prompt response
-            int exitVal = process.waitFor();
+            /* Cleanly wait for the official Magisk / KernelSU / APatch prompt
+             * response. GEMINI.md rule 4 demands a GENEROUS window (>= 30s) so
+             * the user can actually read and approve the official dialog.
+             * The previous process.waitFor() had NO timeout at all, which
+             * parked the calling thread forever whenever the prompt stayed
+             * open. */
+            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+            if (!finished) {
+                AppLogger.log("SYSTEM", "requestSuperUser timed out after 30s - official prompt was not answered");
+                process.destroy();
+                return false;
+            }
+            int exitVal = process.exitValue();
             return exitVal == 0;
         } catch (Throwable t) {
             AppLogger.log("SYSTEM", "requestSuperUser exception: " + t.getMessage());
+            if (process != null) {
+                try { process.destroy(); } catch (Throwable ignored) {}
+            }
             return false;
         }
     }

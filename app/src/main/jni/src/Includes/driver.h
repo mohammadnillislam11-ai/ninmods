@@ -139,17 +139,38 @@ private:
     char active_node_name[128];
     std::atomic<int> in_flight_ops;
 
+    /* Serialises every driver operation.
+     * The engine reads/writes from the render thread AND from the aim
+     * threads at the same time. Without this lock two threads can race on
+     * `fd` (one closing it while the other is inside ioctl) and the
+     * self-healing `initDriver()` can be executed concurrently by both,
+     * leaking a file descriptor and leaving `fd` pointing at a closed
+     * descriptor. */
+    std::recursive_mutex m_lock;
+
+    enum class ProbeResult {
+        Verified,      /* the IOCTL really executed and returned our data  */
+        NotSupported,  /* ENOTTY: this node does not implement this IOCTL   */
+        Inconclusive   /* any other error: cannot prove it, cannot refute */
+    };
+
     // Self-test IOCTL read: Verifies real execution with a known magic
-    bool test_ioctl_read(int target_fd, int cmd) {
-        if (target_fd < 0) return false;
+    ProbeResult test_ioctl_read(int target_fd, int cmd) {
+        if (target_fd < 0) return ProbeResult::NotSupported;
         pid_t self_pid = getpid();
         uintptr_t test_magic = 0x5A5AA5A512345678ULL;
         uintptr_t read_back = 0;
         COPY_MEMORY test_cm = { self_pid, (uintptr_t)&test_magic, &read_back, sizeof(read_back) };
-        if (ioctl(target_fd, cmd, &test_cm) == 0 && read_back == test_magic) {
-            return true;
+        if (ioctl(target_fd, cmd, &test_cm) == 0) {
+            return (read_back == test_magic) ? ProbeResult::Verified
+                                             : ProbeResult::Inconclusive;
         }
-        return false;
+        /* ENOTTY / ENOSYS / EINVAL mean the node simply does not speak this
+         * IOCTL protocol - a definitive negative, never a "maybe". */
+        if (errno == ENOTTY || errno == ENOSYS || errno == EINVAL) {
+            return ProbeResult::NotSupported;
+        }
+        return ProbeResult::Inconclusive;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -186,7 +207,7 @@ private:
 
                         int test_fd = open(node, O_RDWR);
                         if (test_fd >= 0) {
-                            if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                            if (test_ioctl_read(test_fd, DEV_OP_READ_MEM) == ProbeResult::Verified) {
                                 fd = test_fd;
                                 active_mode = DRIVER_MODE_SYS_CLASS;
                                 active_read_cmd = DEV_OP_READ_MEM;
@@ -240,7 +261,7 @@ private:
                             chmod(node, 0666);
                             int test_fd = open(node, O_RDWR);
                             if (test_fd >= 0) {
-                                if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                                if (test_ioctl_read(test_fd, DEV_OP_READ_MEM) == ProbeResult::Verified) {
                                     fd = test_fd;
                                     active_mode = DRIVER_MODE_SYS_CLASS;
                                     active_read_cmd = DEV_OP_READ_MEM;
@@ -277,11 +298,23 @@ private:
         for (const char *node : official_nodes) {
             int test_fd = open(node, O_RDWR);
             if (test_fd >= 0) {
-                bool verified = test_ioctl_read(test_fd, DEV_OP_READ_MEM);
-                if (!verified && (strcmp(node, "/dev/BYNb") == 0 || strcmp(node, "/dev/mem_tool") == 0)) {
-                    verified = true;
+                ProbeResult probe = test_ioctl_read(test_fd, DEV_OP_READ_MEM);
+
+                /* A node that answers ENOTTY/ENOSYS/EINVAL definitively does
+                 * not implement the RT IOCTL protocol -> never accept it.
+                 * An inconclusive result is only tolerated for the two
+                 * canonical RT nodes, and it is logged as such so the state
+                 * is never reported as a verified driver. */
+                bool accepted = false;
+                if (probe == ProbeResult::Verified) {
+                    accepted = true;
+                } else if (probe == ProbeResult::Inconclusive &&
+                           (strcmp(node, "/dev/BYNb") == 0 || strcmp(node, "/dev/mem_tool") == 0)) {
+                    accepted = true;
+                    NIN_LOGE("c_driver", "[DRIVER_WARN] %s accepted on an inconclusive self-test - verify the driver actually reads memory.", node);
                 }
-                if (verified) {
+
+                if (accepted) {
                     fd = test_fd;
                     active_mode = DRIVER_MODE_RT_DEV;
                     active_read_cmd = DEV_OP_READ_MEM;
@@ -312,9 +345,12 @@ private:
         for (const char *node : proc_nodes) {
             int test_fd = open(node, O_RDWR);
             if (test_fd >= 0) {
-                bool verified = test_ioctl_read(test_fd, DEV_OP_READ_MEM);
-                if (!verified && strcmp(node, "/proc/uevents_records") == 0) {
+                ProbeResult probe = test_ioctl_read(test_fd, DEV_OP_READ_MEM);
+                bool verified = (probe == ProbeResult::Verified);
+                if (!verified && probe == ProbeResult::Inconclusive &&
+                    strcmp(node, "/proc/uevents_records") == 0) {
                     verified = true;
+                    NIN_LOGE("c_driver", "[DRIVER_WARN] %s accepted on an inconclusive self-test.", node);
                 }
                 if (verified) {
                     fd = test_fd;
@@ -371,7 +407,7 @@ private:
                 }
                 int test_fd = open(node, O_RDWR);
                 if (test_fd >= 0) {
-                    if (test_ioctl_read(test_fd, DEV_OP_READ_MEM)) {
+                    if (test_ioctl_read(test_fd, DEV_OP_READ_MEM) == ProbeResult::Verified) {
                         fd = test_fd;
                         active_mode = DRIVER_MODE_PROC_DEVICES;
                         active_read_cmd = DEV_OP_READ_MEM;
@@ -408,6 +444,7 @@ public:
     // Unified Linux Official Driver Discovery (Strictly Genuine Kernel Nodes)
     // ──────────────────────────────────────────────────────────────────
     bool initDriver() {
+        std::lock_guard<std::recursive_mutex> guard(m_lock);
         if (isConnected()) {
             return true;
         }
@@ -435,6 +472,7 @@ public:
     }
 
     void initialize(pid_t target_pid) {
+        std::lock_guard<std::recursive_mutex> guard(m_lock);
         this->pid = target_pid;
     }
 
@@ -499,6 +537,7 @@ public:
     // ──────────────────────────────────────────────────────────────────
     bool read(uintptr_t addr, void *buffer, size_t size) {
         if (addr == 0 || buffer == nullptr || size == 0 || this->pid <= 0) return false;
+        std::lock_guard<std::recursive_mutex> guard(m_lock);
         if (!isConnected() && !initDriver()) return false;
 
         in_flight_ops.fetch_add(1, std::memory_order_relaxed);
@@ -547,6 +586,7 @@ public:
     // ──────────────────────────────────────────────────────────────────
     bool write(uintptr_t addr, const void *buffer, size_t size) {
         if (addr == 0 || buffer == nullptr || size == 0 || this->pid <= 0) return false;
+        std::lock_guard<std::recursive_mutex> guard(m_lock);
         if (!isConnected() && !initDriver()) return false;
 
         in_flight_ops.fetch_add(1, std::memory_order_relaxed);
@@ -607,6 +647,7 @@ public:
     // ──────────────────────────────────────────────────────────────────
     uintptr_t getModuleBase(const char *name) {
         if (!name || this->pid <= 0) return 0;
+        std::lock_guard<std::recursive_mutex> guard(m_lock);
         if (!isConnected() && !initDriver()) return 0;
 
         if (fd >= 0) {
@@ -684,9 +725,11 @@ public:
     }
 
     void closeDriver() {
+        std::lock_guard<std::recursive_mutex> guard(m_lock);
         int old_fd = fd;
         fd = -1;
         active_mode = DRIVER_MODE_NONE;
+        memset(active_node_name, 0, sizeof(active_node_name));
         while (in_flight_ops.load(std::memory_order_relaxed) > 0) {
             usleep(100);
         }

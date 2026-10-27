@@ -689,7 +689,7 @@ public class NinLiteFloatingMenuView {
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                NativeBridge.setFeatureEnabled(305, position);
+                NativeBridge.setFeatureFloat(305, position);
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -711,11 +711,15 @@ public class NinLiteFloatingMenuView {
         layout.setOrientation(LinearLayout.VERTICAL);
 
         layout.addView(createSectionHeaderTitle("ESP Visuals"));
-        layout.addView(createCircleCheckboxRow("ESP Box", 101, true));
-        layout.addView(createCircleCheckboxRow("ESP Line", 102, false));
-        layout.addView(createCircleCheckboxRow("ESP Health Bar", 103, true));
-        layout.addView(createCircleCheckboxRow("ESP Distance", 104, true));
-        layout.addView(createCircleCheckboxRow("ESP Name", 105, false));
+        /* Feature ids 111..115 are used on purpose: 101/102 are already the
+         * "MAX TARGET DISTANCE" and "GAME SPEED" sliders of the main overlay
+         * menu. Sharing the numeric ids meant that ticking "ESP Box" also
+         * overwrote the aim range with 1 metre. */
+        layout.addView(createCircleCheckboxRow("ESP Box", 111, true));
+        layout.addView(createCircleCheckboxRow("ESP Line", 112, false));
+        layout.addView(createCircleCheckboxRow("ESP Health Bar", 113, true));
+        layout.addView(createCircleCheckboxRow("ESP Distance", 114, true));
+        layout.addView(createCircleCheckboxRow("ESP Name", 115, false));
 
         layout.addView(createAccentSliderRow("Box Style (0-3)", 201, 0, 3, 0));
         layout.addView(createAccentSliderRow("Line Snap Mode", 202, 0, 2, 0));
@@ -887,7 +891,7 @@ public class NinLiteFloatingMenuView {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int actual = min + progress;
                 valTv.setText(String.valueOf(actual));
-                NativeBridge.setFeatureEnabled(featureId, actual);
+                NativeBridge.setFeatureFloat(featureId, actual);
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}

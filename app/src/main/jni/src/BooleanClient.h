@@ -1,5 +1,6 @@
 #pragma once
 #include "Unity/Color.hpp"
+#include <atomic>
 
 // Define enum types first
 enum BoxType {
@@ -20,54 +21,75 @@ enum LineType {
 #pragma clang diagnostic ignored "-Wc++17-extensions"
 #endif
 
+/**
+ * FEATURE FLAG STATE
+ * ------------------
+ * These flags are written by the Java/JNI thread (every switch, slider and
+ * dropdown in the menu) and read by the GL render thread, the scene worker
+ * thread and the aim worker threads at the same time.
+ *
+ * They used to be plain bool/int/float members, which is a data race: a
+ * reader could observe a value that was never written. Every scalar is
+ * therefore a std::atomic now. All of them are <= 4 bytes, so they are
+ * lock-free on AArch64 and cost nothing.
+ *
+ * `espColor` stays a plain Color on purpose: it is 16 bytes, and a
+ * std::atomic<Color> would need 16 byte atomics. A torn read can only ever
+ * produce a slightly wrong ESP colour - never a crash or a bad memory
+ * access - and the colour only changes when the user picks a new one.
+ */
 inline struct PlayerState {
-    bool aimbot = false;
-    bool aimhard = false;
-    bool fovawm = false;
-    bool selectTarget = false;
-    bool silen4a = false; 
-    float AimFov = 60;
-    float AimDistance = 150.0f;
-    bool NoRecoil = false;
-    bool aimbotlock = false;
-    bool SpeedHackV2 = false;
-    bool undercam = false;
-    bool PlayerToMe = false;
-    float AimFovScale = 1.20f;
-    bool targetByDistance = false;
-    bool silentAimHead = true;
-    float gameSpeed = 1.0f;
-    
-    bool aimMagnet = false;   
-    int headshotRate = 100;
-    bool ignoreBots = true;
-    bool ignoreKnocked = true;
+    std::atomic<bool> aimbot{false};
+    std::atomic<bool> aimhard{false};
+    std::atomic<bool> fovawm{false};
+    std::atomic<bool> selectTarget{false};
+    std::atomic<bool> silen4a{false};
+    std::atomic<float> AimFov{60.0f};
+    std::atomic<float> AimDistance{150.0f};
+    std::atomic<bool> NoRecoil{false};
+    std::atomic<bool> aimbotlock{false};
+    std::atomic<bool> SpeedHackV2{false};
+    std::atomic<bool> undercam{false};
+    std::atomic<bool> PlayerToMe{false};
+    std::atomic<float> AimFovScale{1.20f};
+    std::atomic<bool> targetByDistance{false};
+    std::atomic<bool> silentAimHead{true};
+    std::atomic<float> gameSpeed{1.0f};
+
+    std::atomic<bool> aimMagnet{false};
+    std::atomic<int> headshotRate{100};
+    std::atomic<bool> ignoreBots{true};
+    std::atomic<bool> ignoreKnocked{true};
+
+    // Extra delay (milliseconds) applied between two aim writes.
+    // Backs the "Legit Delay" control of the NINLITE menu.
+    std::atomic<float> legitDelayMs{0.0f};
 
 } pPlayer;
 
 
 inline struct ActivedState {
-    bool Bypass = false;
-    bool activar = false;
+    std::atomic<bool> Bypass{false};
+    std::atomic<bool> activar{false};
 } Actived;
 
 inline struct EspPlayerState {
-    bool espLinha = false;
-    bool espCaixa = false;
-    bool espHealth = false;    // Renamed from espInfo for clarity
-    bool espDistance = false;  // Renamed from espDistancia
-    bool espName = false;
-    bool espDrawCount = false;
-    bool espSkeleton = false;
-    bool espIden360 = false;
-    float textSize = 15.0f;    
+    std::atomic<bool> espLinha{false};
+    std::atomic<bool> espCaixa{false};
+    std::atomic<bool> espHealth{false};    // Renamed from espInfo for clarity
+    std::atomic<bool> espDistance{false};  // Renamed from espDistancia
+    std::atomic<bool> espName{false};
+    std::atomic<bool> espDrawCount{false};
+    std::atomic<bool> espSkeleton{false};
+    std::atomic<bool> espIden360{false};
+    std::atomic<float> textSize{15.0f};
     Color espColor = Color::White();
-    float thickness = 1.0f;
-    BoxType boxType = BOX_STROKE;
-    LineType lineType = LINE_TOP;
+    std::atomic<float> thickness{1.0f};
+    std::atomic<BoxType> boxType{BOX_STROKE};
+    std::atomic<LineType> lineType{LINE_TOP};
 } pEspPlayer;
 
-inline bool showFOVCircle = true;
+inline std::atomic<bool> showFOVCircle{true};
 
 #if defined(__clang__)
 #pragma clang diagnostic pop

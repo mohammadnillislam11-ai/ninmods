@@ -24,6 +24,8 @@
 #include <signal.h>
 #include <sstream>
 #include <string>
+#include <map>
+#include <utility>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <thread>
@@ -74,9 +76,12 @@ static int g_hackVersion = 1;
 
 inline bool isButrulVersion() { return g_hackVersion == 2; }
 
-inline bool securityChecksPassed() { return true; }
+/* These used to be hard coded to `true`, which meant every native
+ * authorisation gate was a no-op. They now mirror the genuine session state
+ * that the Java layer pushes through SecurityVault.nativeSetSession(). */
+inline bool securityChecksPassed() { return SecurityVault_IsSessionValid(); }
 
-inline bool NativeIsLoggedIn() { return true; }
+inline bool NativeIsLoggedIn() { return SecurityVault_IsSessionValid(); }
 
 // ============================================
 // EXISTING GLOBAL VARIABLES AND FUNCTIONS
@@ -103,9 +108,9 @@ inline ImU32 ToImU32(const Color &c, float alphaMultiplier = 1.0f) {
 }
 
 static void EnsureDriverConnected() {
-  if (driver && !driver->isConnected()) {
-    driver->initDriver();
-  }
+  /* Rate limited: the discovery probe costs several hundred syscalls and this
+   * function runs once per rendered frame. */
+  EnsureDriverConnectedThrottled();
 }
 
 void RenderHardwareESP(int screenWidth, int screenHeight) {
@@ -221,21 +226,31 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
 
   for (int i = 0; i < response.PlayerCount; i++) {
     const auto &player = response.Players[i];
-    if (player.Head == Vector3::Zero() || player.Toe == Vector3::Zero())
+    /* Behind the camera there is nothing to project. */
+    if (player.Head.Z <= 0.0f)
       continue;
+
+    Vector3 headPos = player.Head;
+    Vector3 toePos = player.Toe;
+    /* Degenerate foot projection (player right on top of the camera). */
+    if (toePos.Z <= 0.0f)
+      toePos = headPos;
 
     float distance = player.Distancia;
     float maxDist = (pPlayer.AimDistance > 150.0f) ? pPlayer.AimDistance : 350.0f;
     if (distance < 0.1f || distance > maxDist)
       continue;
 
-    float headToFeetHeight = std::abs(player.Toe.Y - player.Head.Y);
+    float headToFeetHeight = std::abs(toePos.Y - headPos.Y);
+    /* A degenerate projection must not collapse the box. */
+    if (headToFeetHeight < 3.0f)
+      headToFeetHeight = 3.0f;
     float boxHeight = headToFeetHeight * 1.15f;
     float width = boxHeight * 0.48f;
 
-    float boxY = player.Head.Y - (boxHeight * 0.12f);
-    float boxX = player.Head.X - (width * 0.5f) + totalXAdjust;
-    float adjustedHeadX = player.Head.X + totalXAdjust;
+    float boxY = headPos.Y - (boxHeight * 0.12f);
+    float boxX = headPos.X - (width * 0.5f) + totalXAdjust;
+    float adjustedHeadX = headPos.X + totalXAdjust;
 
     Color baseColor = pEspPlayer.espColor;
     if (player.Name)
@@ -326,13 +341,22 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
     }
 
     // --- ESP HEALTH BAR ---
-    if (pEspPlayer.espHealth) {
+    if (pEspPlayer.espHealth && player.Health > 0) {
+      /* Reference heuristic: a bot has a 100 HP pool, a real player 200
+       * (armour included). Health == 0 means "could not be read" and is not
+       * drawn at all - the old code defaulted to 100 and painted a full bar
+       * for every player whose HP could not be read. */
+      float maxHp = player.Name ? 100.0f : 200.0f;
       float curHp = (float)player.Health;
       if (curHp < 0.0f)
         curHp = 0.0f;
-      if (curHp > 200.0f)
-        curHp = 200.0f;
-      float pct = curHp / 200.0f;
+      if (curHp > maxHp)
+        curHp = maxHp;
+      float pct = curHp / maxHp;
+      if (pct < 0.0f)
+        pct = 0.0f;
+      if (pct > 1.0f)
+        pct = 1.0f;
 
       ImU32 hpCol = IM_COL32(70, 225, 90, 255);
       if (pct < 0.30f)
@@ -628,10 +652,15 @@ void DrawESP(ESP esp) {
 
   for (int i = 0; i < response.PlayerCount; i++) {
     auto player = response.Players[i];
-    if (player.Head == Vector3::Zero() || player.Toe == Vector3::Zero())
+    if (player.Head.Z <= 0.0f)
       continue;
     if (!Actived.activar)
       continue;
+
+    Vector3 headPos = player.Head;
+    Vector3 toePos = player.Toe;
+    if (toePos.Z <= 0.0f)
+      toePos = headPos;
 
     float distance = player.Distancia;
     if (distance < 0.1f || distance > 150.0f)
@@ -641,14 +670,16 @@ void DrawESP(ESP esp) {
     float thickness = (distance > 70.0f) ? 1.0f : globalThickness;
     float fSize = (distance > 70.0f) ? 10.0f : pEspPlayer.textSize;
 
-    float headToFeetHeight = std::abs(player.Toe.Y - player.Head.Y);
+    float headToFeetHeight = std::abs(toePos.Y - headPos.Y);
+    if (headToFeetHeight < 3.0f)
+      headToFeetHeight = 3.0f;
     float boxHeight = headToFeetHeight * 1.15f;
     float width = boxHeight * 0.48f;
 
     float totalXAdjust = g_espRightAdjust - g_espLeftAdjust;
 
-    float boxY = player.Head.Y - (boxHeight * 0.12f);
-    float boxX = player.Head.X - (width / 2.0f) + totalXAdjust;
+    float boxY = headPos.Y - (boxHeight * 0.12f);
+    float boxX = headPos.X - (width / 2.0f) + totalXAdjust;
 
     Color currentBoxColor = pEspPlayer.espColor;
     if (player.Name)
@@ -657,7 +688,7 @@ void DrawESP(ESP esp) {
       currentBoxColor = Color::Red(); // knocked (changed from Yellow to Red)
     Color strokeColor = Color(0, 0, 0, 255);
 
-    float adjustedHeadX = player.Head.X + totalXAdjust;
+    float adjustedHeadX = headPos.X + totalXAdjust;
 
     if (pEspPlayer.espLinha) {
       Vector3 lineStart, lineEnd;
@@ -706,7 +737,7 @@ void DrawESP(ESP esp) {
 
       const bool hasName = pEspPlayer.espName && !drawName.empty();
       const bool hasDistance = pEspPlayer.espDistance && !dStr.empty();
-      const bool hasHealth = pEspPlayer.espHealth;
+      const bool hasHealth = pEspPlayer.espHealth && player.Health > 0;
 
       if (hasName || hasDistance || hasHealth) {
         float fontSize = std::max(10.0f, fSize - 1.0f);
@@ -977,7 +1008,9 @@ Java_com_ninmods_main_overlay_Floater_ChangesID(JNIEnv *env, jclass clazz,
     pPlayer.silen4a = enabled;
     break;
   case 61:
-    pPlayer.silentAimHead = (value == 0);
+    /* Legacy id. Was inverted relative to every other entry point, so the
+     * same switch could turn head aim on when it was off. */
+    pPlayer.silentAimHead = (value != 0);
     break;
   case 62:
     pPlayer.targetByDistance = (value == 1);
@@ -1177,6 +1210,7 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeInit(JNIEnv *env,
 
     ImGui_ImplOpenGL3_Init("#version 300 es");
     g_ImGuiInitialized = true;
+    NativeOverlayController::SetImGuiReady(true);
     MenuRouter::Initialize();
     LOGD("GLES3 ImGui Hardware ESP & MenuRouter initialized with DPI scale: "
          "%.2f and TrueType vector font (24px)",
@@ -1191,8 +1225,8 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeResize(JNIEnv *env,
                                                          jint height) {
   g_ScreenWidth = width;
   g_ScreenHeight = height;
-  g_screenWidth = width;
-  g_screenHeight = height;
+  g_screenWidth.store(width, std::memory_order_relaxed);
+  g_screenHeight.store(height, std::memory_order_relaxed);
   glViewport(0, 0, width, height);
   if (g_ImGuiInitialized) {
     ImGuiIO &io = ImGui::GetIO();
@@ -1210,8 +1244,17 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeStep(JNIEnv *env,
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
+  /* Apply the queued Android touch events BEFORE NewFrame so that ImGuiIO is
+   * only ever written by the render thread. */
+  NativeOverlayController::DrainTouchEvents();
+
   ImGui_ImplOpenGL3_NewFrame();
   ImGui::NewFrame();
+
+  /* Publish the capture flag for the Android input thread. It must be read on
+   * the render thread, because the input thread cannot safely touch ImGuiIO
+   * while this thread is building the frame. */
+  NativeOverlayController::PublishWantCaptureMouse();
 
   // 1. ESP Overlay (Pure Hardware ESP drawing loop: Boxes, Skeletons, Lines,
   // Distance, Health)
@@ -1232,6 +1275,7 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeShutdown(JNIEnv *env,
     ImGui_ImplOpenGL3_Shutdown();
     ImGui::DestroyContext();
     g_ImGuiInitialized = false;
+    NativeOverlayController::SetImGuiReady(false);
     LOGD("GLES3 ImGui Hardware ESP shutdown cleanly");
   }
 }
@@ -1263,6 +1307,18 @@ Java_com_ninmods_main_core_NativeBridge_launchBrandOverlay(
                                       (bool)isLicenseActive);
   if (!isLicenseActive) {
     LicensePopup::Open(hwid, prefill, sUrl);
+  }
+
+  /* Cache the Java NativeBridge class on the JNI thread so the GL render
+   * thread can call into it without FindClass() (which fails there). */
+  if (g_NativeBridgeClassRef == nullptr) {
+    jclass local = env->FindClass("com/ninmods/main/core/NativeBridge");
+    if (local != nullptr) {
+      g_NativeBridgeClassRef = (jclass)env->NewGlobalRef(local);
+      env->DeleteLocalRef(local);
+    } else if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+    }
   }
 
   // Register verify handler to call Java AuthApiController
@@ -1326,6 +1382,25 @@ Java_com_ninmods_main_core_NativeBridge_onLicenseResult(JNIEnv *env,
     env->ReleaseStringUTFChars(jMsg, msg);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_setKeyFromJava(JNIEnv *env,
+                                                        jclass clazz,
+                                                        jstring jKey) {
+  /* NativeBridge.java declares setKeyFromJava(String) but there was NO C++
+   * export for it, so the VERIFY and PASTE buttons of the licence dialog
+   * threw an UnsatisfiedLinkError on the first tap and the verification flow
+   * never reached AuthManager.updateActiveLicense(). */
+  if (!jKey) return;
+  const char* chars = env->GetStringUTFChars(jKey, nullptr);
+  if (!chars) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    return;
+  }
+  std::string key(chars);
+  env->ReleaseStringUTFChars(jKey, chars);
+  LicensePopup::SetKey(key);
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_handleTouch(JNIEnv *env, jclass clazz,
                                                     jint action, jfloat x,
@@ -1335,54 +1410,71 @@ Java_com_ninmods_main_core_NativeBridge_handleTouch(JNIEnv *env, jclass clazz,
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isMenuOpen(JNIEnv *env, jclass clazz) {
-  return (jboolean)NativeOverlayController::s_MenuOpen;
+  return (jboolean)NativeOverlayController::s_MenuOpen.load(
+      std::memory_order_relaxed);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_setMenuOpen(JNIEnv *env, jclass clazz,
                                                     jboolean open) {
-  NativeOverlayController::s_MenuOpen = (bool)open;
+  NativeOverlayController::s_MenuOpen.store((bool)open,
+                                            std::memory_order_relaxed);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isOverlayActive(JNIEnv *env,
                                                         jclass clazz) {
-  return (jboolean)NativeOverlayController::s_Initialized;
+  return (jboolean)NativeOverlayController::s_Initialized.load(
+      std::memory_order_relaxed);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_closeOverlay(JNIEnv *env,
-                                                     jclass clazz) {
-  NativeOverlayController::s_Initialized = false;
-  NativeOverlayController::s_MenuOpen = false;
+                                                      jclass clazz) {
+  NativeOverlayController::s_Initialized.store(false, std::memory_order_relaxed);
+  NativeOverlayController::s_MenuOpen.store(false, std::memory_order_relaxed);
 }
 
+/* ------------------------------------------------------------------
+ * DAEMON CONTROL SYNC (fire and forget)
+ * ------------------------------------------------------------------
+ * The daemon control messages are pushed from the UI thread (a switch, a
+ * slider drag). Doing the socket round trip inline blocked the UI for up to
+ * 200 ms per event - a single slider drag produced dozens of sequential
+ * blocking round trips.
+ *
+ * The requests are therefore queued and delivered by one background worker.
+ * Only the LATEST value per mode is kept, which is exactly the semantics of
+ * a feature flag / slider.
+ */
+static std::mutex g_daemonSyncMutex;
+static std::map<int, std::pair<bool, int>> g_daemonSyncQueue;
+static std::atomic<bool> g_daemonSyncWorkerStarted{false};
+
 static void SyncWithNinLiteDaemon(int mode, bool isOn, int value) {
-  int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-  if (sock < 0) return;
-  sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
-  addr.sun_path[0] = '\0';
-  strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-  struct timeval tv{0, 150000};
-  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-  if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
-    struct {
-      int Mode;
-      bool m_IsOn;
-      int value;
-      int ScreenWidth;
-      int ScreenHeight;
-    } req{};
-    req.Mode = mode;
-    req.m_IsOn = isOn;
-    req.value = value;
-    uint32_t len = htonl(sizeof(req));
-    send(sock, &len, sizeof(len), 0);
-    send(sock, &req, sizeof(req), 0);
+  {
+    std::lock_guard<std::mutex> lock(g_daemonSyncMutex);
+    g_daemonSyncQueue[mode] = std::make_pair(isOn, value);
   }
-  close(sock);
+
+  if (!g_daemonSyncWorkerStarted.exchange(true)) {
+    std::thread([]() {
+      while (true) {
+        std::map<int, std::pair<bool, int>> pending;
+        {
+          std::lock_guard<std::mutex> lock(g_daemonSyncMutex);
+          if (g_daemonSyncQueue.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            continue;
+          }
+          pending.swap(g_daemonSyncQueue);
+        }
+        for (auto &entry : pending) {
+          DaemonSyncRequest(entry.first, entry.second.first, entry.second.second);
+        }
+      }
+    }).detach();
+  }
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1395,7 +1487,7 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
   // ESP Features
   case 1:
     Actived.activar = bState;
-    SyncWithNinLiteDaemon(3, bState, 0);
+    SyncWithNinLiteDaemon(Ninlite::MODE_MASTER, bState, 0);
     break;
   case 2:
     pEspPlayer.espCaixa = bState;
@@ -1460,38 +1552,43 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
     pPlayer.undercam = bState;
     break;
   // NINLITE Checkbox & Switch Features
-  case 101:
+  // Ids 111..115: 101/102 belong to the "MAX TARGET DISTANCE" and
+  // "GAME SPEED" sliders of the main overlay menu. Sharing the numeric ids
+  // meant that a single NINLITE checkbox also overwrote an unrelated value.
+  case 111:
     pEspPlayer.espCaixa = bState;
     Actived.activar = true;
     break;
-  case 102:
+  case 112:
     pEspPlayer.espLinha = bState;
     Actived.activar = true;
     break;
-  case 103:
+  case 113:
     pEspPlayer.espHealth = bState;
     Actived.activar = true;
     break;
-  case 104:
+  case 114:
     pEspPlayer.espDistance = bState;
     Actived.activar = true;
     break;
-  case 105:
+  case 115:
     pEspPlayer.espName = bState;
     Actived.activar = true;
     break;
   case 301:
+    /* "Silent Aim Enable" must not silently switch the separate
+     * "AIMBOT AUTO LOCK" feature on or off - that used to leave the Java
+     * switch showing a stale state while the native flag had changed. */
     pPlayer.silen4a = bState;
-    pPlayer.aimbot = bState;
-    SyncWithNinLiteDaemon(57, bState, 0);
+    SyncWithNinLiteDaemon(Ninlite::MODE_SILENT, bState, 0);
     break;
   case 302:
     pPlayer.ignoreKnocked = bState;
-    SyncWithNinLiteDaemon(55, bState, 0);
+    SyncWithNinLiteDaemon(Ninlite::MODE_IGNORE_KNOCK, bState, 0);
     break;
   case 999:
     Actived.activar = bState;
-    SyncWithNinLiteDaemon(3, bState, 0);
+    SyncWithNinLiteDaemon(Ninlite::MODE_MASTER, bState, 0);
     NIN_LOGI("NINLITE", "Root Engine state toggled: %d", bState ? 1 : 0);
     break;
 
@@ -1509,9 +1606,11 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env,
   switch (featId) {
   case 100:
     pPlayer.AimFov = fVal;
+    SyncWithNinLiteDaemon(Ninlite::MODE_AIM_FOV, true, (int)fVal);
     break;
   case 101:
     pPlayer.AimDistance = fVal;
+    SyncWithNinLiteDaemon(Ninlite::MODE_AIM_DISTANCE, true, (int)fVal);
     break;
   case 102:
     pPlayer.gameSpeed = fVal;
@@ -1526,16 +1625,30 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env,
     break;
   case 303:
     pPlayer.AimFov = fVal;
-    SyncWithNinLiteDaemon(58, true, (int)fVal);
+    SyncWithNinLiteDaemon(Ninlite::MODE_AIM_FOV, true, (int)fVal);
     break;
   case 304:
-    pPlayer.AimFovScale = 1.0f + (fVal * 0.1f);
-    SyncWithNinLiteDaemon(62, true, (int)fVal);
+    /* "Legit Delay" (0..10). It used to overwrite the FOV circle scale and
+     * was additionally forwarded to the Daemon as "chest shot rate", so one
+     * slider controlled three unrelated things. */
+    pPlayer.legitDelayMs = fVal;
+    SyncWithNinLiteDaemon(Ninlite::MODE_LEGIT_DELAY, true, (int)fVal);
     break;
   case 305:
-    // Silent Target: 0 = Legit, 1 = Head, 2 = Chest, 3 = Neck
-    pPlayer.silentAimHead = ((int)fVal == 1 || (int)fVal == 0);
-    SyncWithNinLiteDaemon(70, true, ((int)fVal == 1) ? 100 : 0);
+    /* Silent Target: 0 = Legit, 1 = Head, 2 = Chest, 3 = Neck.
+     * The old expression evaluated to true for BOTH "Legit" and "Head",
+     * so choosing "Legit" silently enabled head-only aiming. */
+    {
+      int selection = (int)fVal;
+      pPlayer.silentAimHead = (selection == 1);
+      if (selection == 1) {
+        SyncWithNinLiteDaemon(Ninlite::MODE_HEAD_RATE, true, 3);
+        SyncWithNinLiteDaemon(Ninlite::MODE_CHEST_RATE, true, 0);
+      } else {
+        SyncWithNinLiteDaemon(Ninlite::MODE_HEAD_RATE, true, 0);
+        SyncWithNinLiteDaemon(Ninlite::MODE_CHEST_RATE, true, 3);
+      }
+    }
     break;
   default:
     break;
@@ -1599,7 +1712,7 @@ Java_com_ninmods_main_core_NativeBridge_isKernelDriverConnected(JNIEnv *env,
                                                                 jclass clazz) {
   if (driver && driver->isConnected() && driver->getFd() >= 0)
     return JNI_TRUE;
-  if (driver && driver->initDriver())
+  if (EnsureDriverConnectedThrottled())
     return JNI_TRUE;
   return JNI_FALSE;
 }
@@ -1609,8 +1722,8 @@ Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env,
                                                             jclass clazz) {
   char buf[512];
   bool connected = (driver && driver->isConnected() && driver->getFd() >= 0);
-  if (!connected && driver) {
-    connected = driver->initDriver();
+  if (!connected) {
+    connected = EnsureDriverConnectedThrottled();
   }
   const char *node = (connected && strlen(driver->getNodeName()) > 0)
                          ? driver->getNodeName()
@@ -1619,8 +1732,11 @@ Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env,
   int fd = connected ? driver->getFd() : -1;
   pid_t targetPid = (connected && driver) ? driver->getPid() : 0;
 
-  int entities = connected ? s_cachedResponse.PlayerCount : 0;
-  int visible = connected ? s_cachedResponse.VisibleEnemyCount : 0;
+  /* The cached snapshot is published by the scene worker under a lock, so it
+   * must be read through the lock protected accessor. */
+  Response cached = GetCachedResponseSnapshot();
+  int entities = connected ? cached.PlayerCount : 0;
+  int visible = connected ? cached.VisibleEnemyCount : 0;
   bool espActive = Actived.activar;
   bool aimActive = pPlayer.aimbot;
 
@@ -1645,20 +1761,24 @@ Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env,
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_ninmods_main_core_NativeBridge_getDetectedGamePid(JNIEnv *env, jclass clazz) {
-  if (target_pid > 0 && kill(target_pid, 0) == 0) {
-    return (jint)target_pid;
+  pid_t pid = target_pid.load(std::memory_order_relaxed);
+  if (pid > 0 && kill(pid, 0) == 0) {
+    return (jint)pid;
   }
-  target_pid = FindGamePid();
-  return (jint)target_pid;
+  pid = FindGamePid();
+  target_pid.store(pid, std::memory_order_relaxed);
+  return (jint)pid;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isLiveGameDetected(JNIEnv *env, jclass clazz) {
-  if (target_pid > 0 && kill(target_pid, 0) == 0) {
+  pid_t pid = target_pid.load(std::memory_order_relaxed);
+  if (pid > 0 && kill(pid, 0) == 0) {
     return JNI_TRUE;
   }
-  target_pid = FindGamePid();
-  return (target_pid > 0) ? JNI_TRUE : JNI_FALSE;
+  pid = FindGamePid();
+  target_pid.store(pid, std::memory_order_relaxed);
+  return (pid > 0) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1692,9 +1812,10 @@ Java_com_ninmods_main_core_NativeBridge_isNinliteSetupDone(JNIEnv *env, jclass c
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getDetectedGameTitle(JNIEnv *env, jclass clazz) {
-  pid_t pid = (target_pid > 0 && kill(target_pid, 0) == 0) ? target_pid : FindGamePid();
+  pid_t known = target_pid.load(std::memory_order_relaxed);
+  pid_t pid = (known > 0 && kill(known, 0) == 0) ? known : FindGamePid();
   if (pid > 0) {
-    target_pid = pid;
+    target_pid.store(pid, std::memory_order_relaxed);
     char cmdline[256] = {0};
     char path[64];
     snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
@@ -1754,6 +1875,11 @@ Java_com_ninmods_main_core_ModeSelectActivity_setModeNative(JNIEnv *env,
 }
 
 extern "C" JavaVM *g_JavaVM = nullptr;
+
+/* Global reference to the Java NativeBridge class.
+ * Resolved on the JNI thread (which has the app class loader) and reused by
+ * the GL render thread, where FindClass() would always fail. */
+jclass g_NativeBridgeClassRef = nullptr;
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
   g_JavaVM = vm;

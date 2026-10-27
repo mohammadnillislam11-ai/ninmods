@@ -1,5 +1,6 @@
 #include "BullMenu.h"
 #include "../NativeOverlayController.h"
+#include "../Toggle.h"
 #include "../../BooleanClient.h"
 #if __has_include(<imgui.h>)
 #include <imgui.h>
@@ -48,8 +49,8 @@ void BullMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
 
     ApplyTheme();
 
-    float scrW = (float)NativeOverlayController::s_ScreenWidth;
-    float scrH = (float)NativeOverlayController::s_ScreenHeight;
+    float scrW = (float)NativeOverlayController::s_ScreenWidth.load(std::memory_order_relaxed);
+    float scrH = (float)NativeOverlayController::s_ScreenHeight.load(std::memory_order_relaxed);
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(scrW, scrH));
@@ -66,7 +67,7 @@ void BullMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
         ImGui::TextDisabled("| %s", GetSubtitle());
 
         float rightEdge = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
-        float btnW = 34.0f * (NativeOverlayController::s_DpiScale * 0.4f);
+        float btnW = 34.0f * (NativeOverlayController::s_DpiScale.load(std::memory_order_relaxed) * 0.4f);
         if (btnW < 36.0f) btnW = 36.0f;
 
         ImGui::SameLine(rightEdge - (btnW * 2.2f));
@@ -92,19 +93,19 @@ void BullMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    ImGui::Checkbox("Silent Aim 360", &pPlayer.silen4a);
-                    ImGui::Checkbox("Aimbot Direct Track", &pPlayer.aimbot);
-                    ImGui::Checkbox("Auto Aim Lock", &pPlayer.aimbotlock);
-                    ImGui::Checkbox("Draw FOV Circle", &showFOVCircle);
-                    ImGui::Checkbox("Aim Magnet V2", &pPlayer.aimMagnet);
-                    ImGui::Checkbox("Ignore Knocked", &pPlayer.ignoreKnocked);
-                    ImGui::Checkbox("Ignore Bots", &pPlayer.ignoreBots);
+                    AtomicCheckbox("Silent Aim 360", &pPlayer.silen4a);
+                    AtomicCheckbox("Aimbot Direct Track", &pPlayer.aimbot);
+                    AtomicCheckbox("Auto Aim Lock", &pPlayer.aimbotlock);
+                    AtomicCheckbox("Draw FOV Circle", &showFOVCircle);
+                    AtomicCheckbox("Aim Magnet V2", &pPlayer.aimMagnet);
+                    AtomicCheckbox("Ignore Knocked", &pPlayer.ignoreKnocked);
+                    AtomicCheckbox("Ignore Bots", &pPlayer.ignoreBots);
 
                     ImGui::Spacing();
                     ImGui::Separator();
-                    ImGui::SliderFloat("FOV Circle", &pPlayer.AimFov, 20.0f, 200.0f, "%.0f deg");
-                    ImGui::SliderFloat("Lock Range", &pPlayer.AimDistance, 10.0f, 300.0f, "%.0f m");
-                    ImGui::SliderInt("Headshot Rate", &pPlayer.headshotRate, 0, 100, "%d %%");
+                    AtomicSliderFloat("FOV Circle", &pPlayer.AimFov, 20.0f, 200.0f, "%.0f deg");
+                    AtomicSliderFloat("Lock Range", &pPlayer.AimDistance, 10.0f, 300.0f, "%.0f m");
+                    AtomicSliderInt("Headshot Rate", &pPlayer.headshotRate, 0, 100, "%d %%");
                 }
                 ImGui::EndChild();
                 ImGui::EndTabItem();
@@ -116,13 +117,13 @@ void BullMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    ImGui::Checkbox("Bull Box ESP", &pEspPlayer.espCaixa);
-                    ImGui::Checkbox("Bull Tracer Line", &pEspPlayer.espLinha);
-                    ImGui::Checkbox("Enemy Distance", &pEspPlayer.espDistance);
-                    ImGui::Checkbox("Health Meter", &pEspPlayer.espHealth);
-                    ImGui::Checkbox("Skeleton Bones", &pEspPlayer.espSkeleton);
-                    ImGui::Checkbox("360 Radar Sensor", &pEspPlayer.espIden360);
-                    ImGui::Checkbox("Threat Counter HUD", &pEspPlayer.espDrawCount);
+                    AtomicCheckbox("Bull Box ESP", &pEspPlayer.espCaixa);
+                    AtomicCheckbox("Bull Tracer Line", &pEspPlayer.espLinha);
+                    AtomicCheckbox("Enemy Distance", &pEspPlayer.espDistance);
+                    AtomicCheckbox("Health Meter", &pEspPlayer.espHealth);
+                    AtomicCheckbox("Skeleton Bones", &pEspPlayer.espSkeleton);
+                    AtomicCheckbox("360 Radar Sensor", &pEspPlayer.espIden360);
+                    AtomicCheckbox("Threat Counter HUD", &pEspPlayer.espDrawCount);
                 }
                 ImGui::EndChild();
                 ImGui::EndTabItem();
@@ -134,12 +135,12 @@ void BullMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    ImGui::Checkbox("No Recoil Stabilizer", &pPlayer.NoRecoil);
-                    ImGui::Checkbox("Bull Speed Boost", &pPlayer.SpeedHackV2);
+                    AtomicCheckbox("No Recoil Stabilizer", &pPlayer.NoRecoil);
+                    AtomicCheckbox("Bull Speed Boost", &pPlayer.SpeedHackV2);
                     if (pPlayer.SpeedHackV2) {
-                        ImGui::SliderFloat("Multiplier", &pPlayer.gameSpeed, 1.0f, 3.5f, "%.1fx");
+                        AtomicSliderFloat("Multiplier", &pPlayer.gameSpeed, 1.0f, 3.5f, "%.1fx");
                     }
-                    ImGui::Checkbox("Memory Anticheat Shield", &Actived.Bypass);
+                    AtomicCheckbox("Memory Anticheat Shield", &Actived.Bypass);
                 }
                 ImGui::EndChild();
                 ImGui::EndTabItem();

@@ -10,6 +10,7 @@
 #include "Includes/Logger.h"
 #include "Includes/NativeCrypto.h"
 #include "Includes/driver.h"
+#include "Includes/Utils.h"
 
 // ============================================================================
 // BANKING-GRADE APPLICATION SECURITY & DRIVER INQUIRY JNI EXPORTS
@@ -27,7 +28,7 @@ Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env,
   std::string status_text = "Inactive";
 
   // 1. Primary: Check Unified c_driver Engine
-  if (driver && (driver->isConnected() || driver->initDriver())) {
+  if (driver && (driver->isConnected() || EnsureDriverConnectedThrottled())) {
     is_active = true;
     active_node = (strlen(driver->getNodeName()) > 0) ? driver->getNodeName()
                                                       : "/dev/BYNb";
@@ -97,21 +98,46 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_auth_SecurityVault_nativeSignRequest(
     JNIEnv *env, jclass clazz, jstring jPayload, jlong timestamp,
     jstring jNonce, jstring jHwid) {
-  const char *payload =
-      jPayload ? env->GetStringUTFChars(jPayload, nullptr) : "";
-  const char *nonce = jNonce ? env->GetStringUTFChars(jNonce, nullptr) : "";
-  const char *hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : "";
+  /* GetStringUTFChars returns NULL when the JVM is out of memory or when an
+   * exception is pending. Building a std::string from that NULL pointer is
+   * undefined behaviour and crashed the process inside the licence flow. */
+  const char *payload = "";
+  const char *nonce = "";
+  const char *hwid = "";
+  bool payloadOk = false, nonceOk = false, hwidOk = false;
+
+  if (jPayload) {
+    payload = env->GetStringUTFChars(jPayload, nullptr);
+    payloadOk = (payload != nullptr);
+    if (!payloadOk) payload = "";
+  }
+  if (jNonce) {
+    nonce = env->GetStringUTFChars(jNonce, nullptr);
+    nonceOk = (nonce != nullptr);
+    if (!nonceOk) nonce = "";
+  }
+  if (jHwid) {
+    hwid = env->GetStringUTFChars(jHwid, nullptr);
+    hwidOk = (hwid != nullptr);
+    if (!hwidOk) hwid = "";
+  }
+
+  if ((jPayload && !payloadOk) || (jNonce && !nonceOk) || (jHwid && !hwidOk)) {
+    NIN_LOGE("SECURITY", ">>> [SIGN_FAILED] GetStringUTFChars returned NULL <<<");
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    return env->NewStringUTF("");
+  }
 
   std::string data = std::string(payload) + "|" + std::to_string(timestamp) +
                      "|" + nonce + "|" + hwid;
   std::string sig =
       NativeCrypto::Sha256(data + "N1N_B4NK1NG_S3CUR1TY_V90_K3RN3L");
 
-  if (jPayload)
+  if (jPayload && payloadOk)
     env->ReleaseStringUTFChars(jPayload, payload);
-  if (jNonce)
+  if (jNonce && nonceOk)
     env->ReleaseStringUTFChars(jNonce, nonce);
-  if (jHwid)
+  if (jHwid && hwidOk)
     env->ReleaseStringUTFChars(jHwid, hwid);
 
   return env->NewStringUTF(sig.c_str());
@@ -122,7 +148,16 @@ Java_com_ninmods_main_auth_SecurityVault_nativeVerifyIntegrity(
     JNIEnv *env, jclass clazz, jobject context, jstring certDigest) {
   // 1. Anti-Debugging Check (/proc/self/status TracerPid)
   FILE *fp = fopen("/proc/self/status", "r");
-  if (fp) {
+  if (!fp) {
+    /* The previous implementation skipped the whole check and returned
+     * "verified" whenever /proc could not be read - a fail-open integrity
+     * gate. If we cannot prove the process is clean we must not claim it is. */
+    NIN_LOGE("SECURITY",
+             ">>> [TAMPER_CHECK_FAILED] /proc/self/status unreadable - "
+             "integrity cannot be proven <<<");
+    return JNI_FALSE;
+  }
+  {
     char line[256];
     while (fgets(line, sizeof(line), fp)) {
       if (strncmp(line, "TracerPid:", 10) == 0) {
@@ -141,7 +176,13 @@ Java_com_ninmods_main_auth_SecurityVault_nativeVerifyIntegrity(
 
   // 2. Anti-Hook Framework Check (/proc/self/maps)
   FILE *mf = fopen("/proc/self/maps", "r");
-  if (mf) {
+  if (!mf) {
+    NIN_LOGE("SECURITY",
+             ">>> [TAMPER_CHECK_FAILED] /proc/self/maps unreadable - "
+             "integrity cannot be proven <<<");
+    return JNI_FALSE;
+  }
+  {
     char mapLine[512];
     while (fgets(mapLine, sizeof(mapLine), mf)) {
       if (strstr(mapLine, "frida-agent") || strstr(mapLine, "libfrida") ||
@@ -166,18 +207,27 @@ Java_com_ninmods_main_auth_SecurityVault_nativeSetSession(
       jToken ? env->GetStringUTFChars(jToken, nullptr) : nullptr;
   const char *hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : nullptr;
 
-  g_session_verified = false;
-  memset(g_security_session, 0, sizeof(g_security_session));
-  memset(g_security_hwid, 0, sizeof(g_security_hwid));
+  {
+    std::lock_guard<std::mutex> lock(g_security_mutex);
+    g_session_verified.store(false, std::memory_order_relaxed);
+    memset(g_security_session, 0, sizeof(g_security_session));
+    memset(g_security_hwid, 0, sizeof(g_security_hwid));
+    g_security_expiry_epoch = 0;
 
-  if (token && strlen(token) > 0 && hwid && strlen(hwid) > 0 && expirySec > 0) {
-    strncpy(g_security_session, token, sizeof(g_security_session) - 1);
-    strncpy(g_security_hwid, hwid, sizeof(g_security_hwid) - 1);
-    g_session_verified = true;
-    NIN_LOGI(
-        "SECURITY",
-        ">>> [VAULT_UNLOCKED] Verified session active. Expiry: %lld sec. <<<",
-        (long long)expirySec);
+    if (token && strlen(token) > 0 && hwid && strlen(hwid) > 0 && expirySec > 0) {
+      strncpy(g_security_session, token, sizeof(g_security_session) - 1);
+      g_security_session[sizeof(g_security_session) - 1] = '\0';
+      strncpy(g_security_hwid, hwid, sizeof(g_security_hwid) - 1);
+      g_security_hwid[sizeof(g_security_hwid) - 1] = '\0';
+      /* The expiry used to be validated and then thrown away, so a session
+       * stayed valid for the whole life of the process. */
+      g_security_expiry_epoch = (long long)time(nullptr) + (long long)expirySec;
+      g_session_verified.store(true, std::memory_order_relaxed);
+      NIN_LOGI(
+          "SECURITY",
+          ">>> [VAULT_UNLOCKED] Verified session active. Expiry: %lld sec. <<<",
+          (long long)expirySec);
+    }
   }
 
   if (token)
@@ -189,5 +239,5 @@ Java_com_ninmods_main_auth_SecurityVault_nativeSetSession(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_auth_SecurityVault_nativeIsSessionValid(JNIEnv *env,
                                                               jclass clazz) {
-  return g_session_verified ? JNI_TRUE : JNI_FALSE;
+  return SecurityVault_IsSessionValid() ? JNI_TRUE : JNI_FALSE;
 }

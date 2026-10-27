@@ -13,14 +13,30 @@
 #include <inttypes.h>
 #include <fcntl.h>
 #include <sys/uio.h>
+#include <chrono>
+#include <atomic>
 #include "Logger.h"
 #include "NativeCrypto.h"
 #include "driver.h"
 
-inline pid_t target_pid = -1;
-inline uintptr_t libAddress = 0, anogs = 0;
+/* The target PID and the libil2cpp base are written by the JNI thread
+ * (getDetectedGamePid / getDetectedGameTitle) AND by the scene worker thread
+ * (InitMemoryAccess / GetModuleBase), while they are read by the render
+ * thread and by the aim workers on every single memory access. They used to
+ * be plain variables, which is a data race: a reader could pick up a PID
+ * that belongs to a different game process. */
+inline std::atomic<pid_t> target_pid{-1};
+inline std::atomic<uintptr_t> libAddress{0};
+inline uintptr_t anogs = 0;
 inline int driver_fd = -1;
 inline char active_driver_node[128] = {0};
+
+/* Which build of the game is currently attached.
+ * false = Free Fire Normal (com.dts.freefireth / freefirein)
+ * true  = Free Fire MAX    (com.dts.freefiremax)
+ * The two builds use different field offsets, so the whole engine resolves
+ * its offsets through this single flag. */
+inline std::atomic<bool> g_isGameMax{false};
 
 static inline int OpenDriver() {
     if (driver && driver->isConnected()) {
@@ -48,6 +64,29 @@ static inline bool IsDriverConnected() {
     return (driver && driver->isConnected());
 }
 
+/**
+ * Throttled driver (re)connection.
+ *
+ * The discovery probe walks /sys/class, /sys/dev/char and four device nodes
+ * and performs an IOCTL self test - several hundred syscalls in total.
+ * Calling it from the render loop (60 times per second) was a serious
+ * performance problem on every device where the driver is not loaded yet.
+ * The probe is now rate limited; a live connection is always returned
+ * immediately.
+ */
+static inline bool EnsureDriverConnectedThrottled(int cooldownMs = 2000) {
+    if (!driver) return false;
+    if (driver->isConnected()) return true;
+
+    static std::atomic<int64_t> s_lastAttempt{0};
+    int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now().time_since_epoch()).count();
+    int64_t last = s_lastAttempt.load(std::memory_order_relaxed);
+    if (now - last < cooldownMs) return false;
+    s_lastAttempt.store(now, std::memory_order_relaxed);
+    return driver->initDriver();
+}
+
 static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, size_t size) {
     if (pid <= 0 || address == 0 || buffer == nullptr || size == 0) return false;
     if (!driver || !driver->isConnected()) {
@@ -59,7 +98,9 @@ static inline bool DriverReadMemory(pid_t pid, uintptr_t address, void* buffer, 
     if (ret) {
         static uint32_t s_read_success_count = 0;
         if ((++s_read_success_count % 500) == 1) {
-            NIN_LOGI("DRIVER_A2Z", "[IOCTL_READ_OK] Sampled: pid=%d, addr=0x%lx, size=%zu bytes, total_reads=%u", pid, (unsigned long)address, size, s_read_success_count);
+            /* logcat only: this runs hundreds of times per frame and writing
+             * it to the persistent log file would stall the render loop. */
+            NIN_LOGD("DRIVER_A2Z", "[IOCTL_READ_OK] Sampled: pid=%d, addr=0x%lx, size=%zu bytes, total_reads=%u", pid, (unsigned long)address, size, s_read_success_count);
         }
         return true;
     } else {
@@ -80,10 +121,20 @@ static inline bool DriverWriteMemory(pid_t pid, uintptr_t address, const void* b
     driver->initialize(pid);
     bool ret = driver->write(address, buffer, size);
     if (ret) {
-        NIN_LOGI("DRIVER_A2Z", "[IOCTL_WRITE_OK] Written %zu bytes to pid=%d at addr=0x%lx", size, pid, (unsigned long)address);
+        /* The aim engine performs several writes per frame at 250 Hz.
+         * Logging every single one filled the persistent log file and
+         * serialised the whole engine behind the logger mutex, which is a
+         * guaranteed frame-rate collapse. Sample it instead. */
+        static uint32_t s_write_ok_count = 0;
+        if ((++s_write_ok_count % 200) == 1) {
+            NIN_LOGD("DRIVER_A2Z", "[IOCTL_WRITE_OK] Sampled: %zu bytes -> pid=%d addr=0x%lx (total=%u)", size, pid, (unsigned long)address, s_write_ok_count);
+        }
         return true;
     } else {
-        NIN_LOGE("DRIVER_A2Z", "[IOCTL_WRITE_FAIL] Write failed on pid=%d at addr=0x%lx, size=%zu", pid, (unsigned long)address, size);
+        static uint32_t s_write_err_count = 0;
+        if ((++s_write_err_count % 50) == 1) {
+            NIN_LOGE("DRIVER_A2Z", "[IOCTL_WRITE_FAIL] Write failed on pid=%d at addr=0x%lx, size=%zu", pid, (unsigned long)address, size);
+        }
         return false;
     }
 }
@@ -163,6 +214,7 @@ inline pid_t FindGamePid() {
                             cmdline[n] = '\0';
                             if (strstr(cmdline, "com.dts.freefireth") != nullptr || strstr(cmdline, "com.dts.freefirein") != nullptr) {
                                 closedir(dir);
+                                g_isGameMax.store(false, std::memory_order_relaxed);
                                 NIN_LOGI("DAEMON", "Found Game PID: %d (com.dts.freefireth/in via /proc)", pid);
                                 return pid;
                             }
@@ -195,6 +247,7 @@ inline pid_t FindGamePid() {
                             if (strstr(cmdline, "com.dts.freefiremax") != nullptr) {
                                 if (IsProcessActiveForeground(pid)) {
                                     closedir(dir);
+                                    g_isGameMax.store(true, std::memory_order_relaxed);
                                     NIN_LOGI("DAEMON", "Found Game PID: %d (com.dts.freefiremax active foreground)", pid);
                                     return pid;
                                 } else {
@@ -238,7 +291,7 @@ inline uintptr_t FindLibrary(const char* name, int index) {
     char dname[128], fname[128];
 
     snprintf(dname, sizeof(dname), "%s", name);
-    snprintf(fname, sizeof(fname), "/proc/%d/maps", target_pid);
+    snprintf(fname, sizeof(fname), "/proc/%d/maps", target_pid.load());
     FILE* p = fopen(fname, "r");
     if (p) {
         while (fgets(line, sizeof(line), p)) {
@@ -260,7 +313,7 @@ template<class T>
 T Read(uintptr_t address) {
     T buf{};
     if (address == 0) return buf;
-    if (DriverReadMemory(target_pid, address, &buf, sizeof(T))) {
+    if (DriverReadMemory(target_pid.load(), address, &buf, sizeof(T))) {
         return buf;
     }
     memset(&buf, 0, sizeof(T));
@@ -275,7 +328,7 @@ inline std::string Read<std::string>(uintptr_t address) {
     const size_t max_len = 4096;
     char buffer[max_len] = {0};
     
-    if (DriverReadMemory(target_pid, address, buffer, max_len - 1)) {
+    if (DriverReadMemory(target_pid.load(), address, buffer, max_len - 1)) {
         buffer[max_len - 1] = '\0';
         result = buffer;
     }
@@ -284,7 +337,7 @@ inline std::string Read<std::string>(uintptr_t address) {
 
 inline size_t vm_readv(long address, void *buffer, size_t size) {
     if (address == 0 || buffer == nullptr || size == 0) return 0;
-    if (DriverReadMemory(target_pid, (uintptr_t)address, buffer, size)) {
+    if (DriverReadMemory(target_pid.load(), (uintptr_t)address, buffer, size)) {
         return size;
     }
     return 0;
@@ -294,7 +347,7 @@ inline size_t vm_readv(long address, void *buffer, size_t size) {
 template<typename T>
 inline bool Write(uintptr_t address, T value) {
     if (address == 0) return false;
-    return DriverWriteMemory(target_pid, address, &value, sizeof(T));
+    return DriverWriteMemory(target_pid.load(), address, &value, sizeof(T));
 }
 
 inline uintptr_t getMemoryAddr(uintptr_t address) {
@@ -318,7 +371,7 @@ inline std::vector<uint8_t> ParseHexBytes(const std::string& hexString) {
 
 inline bool WriteIO(uintptr_t address, const std::vector<uint8_t>& bytes) {
     if (address == 0 || bytes.empty()) return false;
-    return DriverWriteMemory(target_pid, address, bytes.data(), bytes.size());
+    return DriverWriteMemory(target_pid.load(), address, bytes.data(), bytes.size());
 }
 
 inline bool WriteIO(uintptr_t address, const std::string& hexString) {
@@ -326,19 +379,12 @@ inline bool WriteIO(uintptr_t address, const std::string& hexString) {
     return WriteIO(address, bytes);
 }
 
-struct D3DMatrix {
-    float _11, _12, _13, _14;
-    float _21, _22, _23, _24;
-    float _31, _32, _33, _34;
-    float _41, _42, _43, _44;
-};
-
-struct Vector4 {
-    float X;
-    float Y;
-    float Z;
-    float W;
-};
+/* D3DMatrix and Vector4 used to be declared here. They now live in
+ * Includes/TransformTypes.h, which is the single shared definition used by the
+ * in-process engine (GameEngine.h) AND by the root Daemon. Declaring them in
+ * both places produced a duplicate definition (compile error) as soon as both
+ * headers were pulled into the same translation unit. */
+#include "TransformTypes.h"
 
 class MonoDictionary {
 public:
@@ -509,17 +555,17 @@ inline void getCharacterName(uintptr_t address, UTF8 *transcoding, size_t bufSiz
 inline bool WriteBytes(uintptr_t address, const void* data, size_t size) {
     if (size == 0) return true;
     if (address == 0 || data == nullptr) return false;
-    return DriverWriteMemory(target_pid, address, data, size);
+    return DriverWriteMemory(target_pid.load(), address, data, size);
 }
 
 inline bool ReadBytes(uintptr_t address, void* buffer, size_t size) {
     if (size == 0 || buffer == nullptr || address == 0) return false;
-    return DriverReadMemory(target_pid, address, buffer, size);
+    return DriverReadMemory(target_pid.load(), address, buffer, size);
 }
 
 // Initialize the Kernel Driver connection
 inline bool InitMemoryAccess(pid_t pid) {
-    target_pid = pid;
+    target_pid.store(pid, std::memory_order_relaxed);
     return IsDriverConnected();
 }
 
@@ -530,7 +576,7 @@ inline void CleanupMemoryAccess() {
     }
     driver_fd = -1;
     active_driver_node[0] = '\0';
-    target_pid = -1;
+    target_pid.store(-1, std::memory_order_relaxed);
 }
 
 #endif // UTILS

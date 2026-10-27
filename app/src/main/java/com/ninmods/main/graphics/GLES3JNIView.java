@@ -4,10 +4,25 @@ import android.content.Context;
 import android.graphics.PixelFormat;
 import android.opengl.GLSurfaceView;
 import android.util.AttributeSet;
+import android.util.Log;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 public class GLES3JNIView extends GLSurfaceView implements GLSurfaceView.Renderer {
+
+    /* The native library must be loaded before ANY native method of this class
+     * is called. It used to be loaded only by NativeBridge's static block, so
+     * the ESP surface silently died with an UnsatisfiedLinkError whenever the
+     * GL surface was created before NativeBridge was touched. Loading it here
+     * as well is idempotent (System.loadLibrary is a no-op when the library is
+     * already loaded in this process). */
+    static {
+        try {
+            System.loadLibrary("ninmods");
+        } catch (UnsatisfiedLinkError e) {
+            Log.e("GLES3JNIView", "Failed to load libninmods.so - the ESP surface cannot render", e);
+        }
+    }
 
     public GLES3JNIView(Context context) {
         super(context);

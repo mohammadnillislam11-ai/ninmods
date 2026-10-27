@@ -228,6 +228,9 @@ constexpr uintptr_t Matrix_Stride = 0x30;
 constexpr uintptr_t MatrixDataSize = 0x30;
 constexpr uintptr_t TransformIndexSize = 0x4;
 constexpr uintptr_t TMatrix_Position = 0x00;
+// Local scale component inside the Transform matrix structure (reference
+// implementation: STORM_MODS Offsets.h -> Scale).
+constexpr uintptr_t Transform_Scale = 0xAC;
 
 // Player State & Combat
 constexpr uintptr_t Player_Rotation =

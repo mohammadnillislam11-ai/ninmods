@@ -22,14 +22,19 @@
 
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
+#include "Includes/TransformTypes.h"
 #include "Includes/gameoffsets.h"
+#include "Includes/NinliteProtocol.h"
 #include "BooleanClient.h"
 #include "src/Unity/Vector3.hpp"
 #include "src/Unity/Vector2.hpp"
 #include "src/Unity/Quaternion.hpp"
 #include "src/Unity/Color.hpp"
 
-#define maxplayerCount 200
+/* The reference engine uses 100 as well. The wire protocol and the daemon
+ * both cap the entity list at 100, so a bigger buffer only doubled the
+ * per-frame memcpy without ever being used. */
+#define maxplayerCount 100
 
 struct PlayerData {
     Vector3 Head;
@@ -52,9 +57,47 @@ struct Response {
     PlayerData Players[maxplayerCount];
 };
 
-inline int g_screenWidth = 0;
-inline int g_screenHeight = 0;
+/* The screen size is written by the GL thread (nativeResize) and read by the
+ * scene worker thread (which builds the daemon request) and by the aim
+ * threads. It used to be a plain int, which is a data race. */
+inline std::atomic<int> g_screenWidth{0};
+inline std::atomic<int> g_screenHeight{0};
 inline std::map<uintptr_t, Vector3> BasePosMap;
+
+/* ------------------------------------------------------------------
+ * GAME VARIANT AWARENESS
+ * ------------------------------------------------------------------
+ * Free Fire Normal and Free Fire MAX use DIFFERENT field offsets for the
+ * very same logical fields (head bone, dead flag, firing flag, aim
+ * rotation, ...). The engine used to probe both offsets unconditionally,
+ * which produced two classes of real bugs:
+ *   - reading the wrong field as "isDead" silently removed live enemies
+ *     from the ESP,
+ *   - writing the MAX aim rotation into the Normal build corrupted an
+ *     unrelated game object field.
+ * Every offset that differs between the two builds now goes through the
+ * helpers below.
+ * ------------------------------------------------------------------ */
+inline bool IsGameMaxBuild() { return g_isGameMax.load(std::memory_order_relaxed); }
+
+inline uintptr_t OffIsDead() {
+    return IsGameMaxBuild() ? Offsets::Max::Player_IsDead : Offsets::Normal::Player_IsDead;
+}
+inline uintptr_t OffIsFiring() {
+    return IsGameMaxBuild() ? Offsets::Max::Player_IsFiring : Offsets::Normal::Player_IsFiring;
+}
+inline uintptr_t OffPlayerRotation() {
+    return IsGameMaxBuild() ? Offsets::Max::Player_Rotation : Offsets::Normal::Player_Rotation;
+}
+inline uintptr_t OffAimingInfo() {
+    return IsGameMaxBuild() ? Offsets::AimingInfoAlt : Offsets::AimingInfo;
+}
+inline uintptr_t OffPlayerName() {
+    return IsGameMaxBuild() ? Offsets::NamePtrOld : Offsets::NamePtr;
+}
+inline uintptr_t OffIsClientBot() {
+    return IsGameMaxBuild() ? Offsets::Max::Player_IsBot : Offsets::Normal::Player_IsBot;
+}
 
 // ========== Pointer Validation (Strict ARM64 64-bit User Space Pointer) ==========
 inline bool IsValidUserPointer64(uintptr_t ptr) {
@@ -69,30 +112,48 @@ inline bool IsValidUserPointer64(uintptr_t ptr) {
 
 // ==================== ENGINE CORE (TRANSFORMS & MATH) ====================
 inline uintptr_t GetPlayerSpineTF(uintptr_t player) {
-    auto ptr = Read<uintptr_t>(player + Offsets::Spine);
-    if (!ptr || ptr < 0x10000000) {
-        ptr = Read<uintptr_t>(player + Offsets::SpineFallback);
+    uintptr_t off = IsGameMaxBuild() ? Offsets::SpineFallback : Offsets::Spine;
+    uintptr_t ptr = Read<uintptr_t>(player + off);
+    if (!IsValidUserPointer64(ptr)) {
+        ptr = Read<uintptr_t>(player + Offsets::Spine);
     }
-    return ptr;
+    return IsValidUserPointer64(ptr) ? ptr : 0;
 }
 
 inline uintptr_t GetPlayerHeadTF(uintptr_t player) {
-    auto ptr = Read<uintptr_t>(player + Offsets::Head);
-    if (!ptr || ptr < 0x10000000) {
+    /* The previous implementation always probed the NORMAL head offset
+     * (0x6B0) first. On Free Fire MAX that address is the HIP bone, so the
+     * whole ESP box was anchored on the hip instead of the head. */
+    uintptr_t off = IsGameMaxBuild() ? Offsets::Max::Bone_Head : Offsets::Normal::Bone_Head;
+    uintptr_t ptr = Read<uintptr_t>(player + off);
+    if (!IsValidUserPointer64(ptr)) {
         ptr = Read<uintptr_t>(player + Offsets::HeadFallback);
     }
-    if (!ptr || ptr < 0x10000000) {
+    /* 0x6B0 is the HIP bone on MAX - never fall back to it as a "head". */
+    if (!IsValidUserPointer64(ptr) && !IsGameMaxBuild()) {
         ptr = Read<uintptr_t>(player + Offsets::HeadOld);
     }
-    return ptr;
+    return IsValidUserPointer64(ptr) ? ptr : 0;
+}
+
+inline uintptr_t GetPlayerHipTF(uintptr_t player) {
+    uintptr_t off = IsGameMaxBuild() ? Offsets::Max::Bone_Hip : Offsets::Normal::Bone_Hip;
+    uintptr_t ptr = Read<uintptr_t>(player + off);
+    return IsValidUserPointer64(ptr) ? ptr : 0;
 }
 
 inline uintptr_t GetPlayerPeTF(uintptr_t player) {
-    auto ptr = Read<uintptr_t>(player + Offsets::Feet);
-    if (!ptr || ptr < 0x10000000) {
+    /* Root / feet bone. MAX uses 0x6D0 (0x6E0 is the ankle there), Normal
+     * uses 0x6E0. */
+    uintptr_t off = IsGameMaxBuild() ? Offsets::Max::Bone_Feet : Offsets::Feet;
+    uintptr_t ptr = Read<uintptr_t>(player + off);
+    if (!IsValidUserPointer64(ptr)) {
         ptr = Read<uintptr_t>(player + Offsets::FeetFallback);
     }
-    return ptr;
+    if (!IsValidUserPointer64(ptr) && !IsGameMaxBuild()) {
+        ptr = Read<uintptr_t>(player + Offsets::Normal::Bone_Root);
+    }
+    return IsValidUserPointer64(ptr) ? ptr : 0;
 }
 
 inline uintptr_t GetPlayerMainCamera(uintptr_t player) {
@@ -106,11 +167,9 @@ inline uintptr_t GetPlayerMainCamera(uintptr_t player) {
     return ptr;
 }
 
-struct Matrix {
-    Vector4 Position;
-    Quaternion Rotation;
-    Vector4 Scale;
-};
+/* The Unity TRS matrix (position / rotation / scale) is declared ONCE in
+ * Includes/TransformTypes.h. It used to be declared here as well, which
+ * produced a duplicate definition once the shared header was introduced. */
 
 static Vector3 GetPosition(uintptr_t Transform) {
     auto pos = Vector3::Zero();
@@ -273,8 +332,8 @@ static auto WorldToScreenPoint(D3DMatrix viewMatrix, Vector3 ScreenPos) {
     auto v12 = (ScreenPos.X * viewMatrix._14) + (ScreenPos.Y * viewMatrix._24) + (ScreenPos.Z * viewMatrix._34) + viewMatrix._44;
 
     if (v12 >= 0.001f) {
-        auto v13 = (float)g_screenWidth / 2.0f;
-        auto v14 = (float)g_screenHeight / 2.0f;
+        auto v13 = (float)g_screenWidth.load(std::memory_order_relaxed) / 2.0f;
+        auto v14 = (float)g_screenHeight.load(std::memory_order_relaxed) / 2.0f;
 
         result.X = v13 + (v13 * v9) / v12;
         result.Y = v14 - (v14 * v10) / v12;
@@ -292,21 +351,14 @@ inline bool IsValidPlayerObject(uintptr_t player) {
     if (!IsValidUserPointer64(cam)) cam = Read<uintptr_t>(player + Offsets::MainCameraTransformAlt);
     if (IsValidUserPointer64(cam)) return true;
 
-    // 2. Check HeadBone Transform
-    uintptr_t head = Read<uintptr_t>(player + Offsets::Head);
-    if (!IsValidUserPointer64(head)) head = Read<uintptr_t>(player + Offsets::HeadFallback);
-    if (!IsValidUserPointer64(head)) head = Read<uintptr_t>(player + Offsets::HeadOld);
-    if (IsValidUserPointer64(head)) return true;
+    // 2. Check HeadBone Transform (game build aware)
+    if (IsValidUserPointer64(GetPlayerHeadTF(player))) return true;
 
-    // 3. Check Feet Transform
-    uintptr_t feet = Read<uintptr_t>(player + Offsets::Feet);
-    if (!IsValidUserPointer64(feet)) feet = Read<uintptr_t>(player + Offsets::FeetFallback);
-    if (IsValidUserPointer64(feet)) return true;
+    // 3. Check Feet Transform (game build aware)
+    if (IsValidUserPointer64(GetPlayerPeTF(player))) return true;
 
-    // 4. Check Spine Transform
-    uintptr_t spine = Read<uintptr_t>(player + Offsets::Spine);
-    if (!IsValidUserPointer64(spine)) spine = Read<uintptr_t>(player + Offsets::SpineFallback);
-    if (IsValidUserPointer64(spine)) return true;
+    // 4. Check Spine Transform (game build aware)
+    if (IsValidUserPointer64(GetPlayerSpineTF(player))) return true;
 
     return false;
 }
@@ -315,7 +367,7 @@ inline bool IsValidPlayerObject(uintptr_t player) {
 inline bool is_elf_header(uintptr_t addr) {
     if (addr == 0 || !IsDriverConnected()) return false;
     unsigned char magic[4] = {0};
-    if (DriverReadMemory(target_pid, addr, magic, 4)) {
+    if (DriverReadMemory(target_pid.load(), addr, magic, 4)) {
         return (magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F');
     }
     magic[0] = Read<uint8_t>(addr);
@@ -477,15 +529,27 @@ inline void RestoreAllPositions() {
     BasePosMap.clear();
 }
 
-inline uintptr_t currentBestTargetObj = 0;
+inline uintptr_t currentBestTargetObj = 0;              // guarded by g_aimStateMutex
 inline std::atomic<bool> keepAiming{false};
 inline std::thread aimThread;
-inline Vector3 currentBestTargetPos = Vector3::Zero();
+inline Vector3 currentBestTargetPos = Vector3::Zero();  // guarded by g_aimStateMutex
 
-inline uintptr_t ShareLocalPlayer = 0;
-inline uintptr_t ShareEnemy = 0;
-inline D3DMatrix ViewMatrix;
-inline Vector3 MainCameraTransformPos = Vector3::Zero();
+/* Shared between the render thread (producer) and the aim / magnet worker
+ * threads (consumers). These were plain globals before, which is a data race:
+ * the worker could read a half written pointer and act on a stale or freed
+ * game object. */
+inline std::atomic<uintptr_t> ShareLocalPlayer{0};
+inline std::atomic<uintptr_t> ShareEnemy{0};
+inline D3DMatrix ViewMatrix;                             // render thread only
+inline Vector3 MainCameraTransformPos = Vector3::Zero(); // render thread only
+
+/* Snapshot of the camera basis/position for the worker threads (lock free). */
+inline std::atomic<float> g_camFwdX{0.0f};
+inline std::atomic<float> g_camFwdY{0.0f};
+inline std::atomic<float> g_camFwdZ{0.0f};
+inline std::atomic<float> g_camPosX{0.0f};
+inline std::atomic<float> g_camPosY{0.0f};
+inline std::atomic<float> g_camPosZ{0.0f};
 
 inline bool speedHackEnabled = false;
 
@@ -510,7 +574,7 @@ inline void getUTF8(char* dst, uintptr_t addr) {
     memset(raw, 0, sizeof(raw));
     size_t toRead = (size_t)(stringLen * 2);
     if (toRead > sizeof(raw)) toRead = sizeof(raw);
-    DriverReadMemory(target_pid, addr + Offsets::StringChars, raw, toRead);
+    DriverReadMemory(target_pid.load(), addr + Offsets::StringChars, raw, toRead);
 
     int j = 0;
     for (int i = 0; i < (stringLen * 2) && (i + 1) < (int)toRead; i += 2) {
@@ -541,8 +605,8 @@ inline void getUTF8(char* dst, uintptr_t addr) {
 }
 
 inline bool isWithinFOV(Vector3 screenPos, float fovRadius) {
-    float screenCenterX = g_screenWidth / 2.0f;
-    float screenCenterY = g_screenHeight / 2.0f;
+    float screenCenterX = g_screenWidth.load(std::memory_order_relaxed) / 2.0f;
+    float screenCenterY = g_screenHeight.load(std::memory_order_relaxed) / 2.0f;
     float deltaX = screenPos.X - screenCenterX;
     float deltaY = screenPos.Y - screenCenterY;
     float distanceFromCenter = sqrt(deltaX * deltaX + deltaY * deltaY);
@@ -590,7 +654,8 @@ inline void ContinuousAimWorker() {
             continue;
         }
 
-        uintptr_t currentSelf = IsValidPlayerObject(ShareLocalPlayer) ? ShareLocalPlayer : 0;
+        uintptr_t sharedSelf = ShareLocalPlayer.load(std::memory_order_relaxed);
+        uintptr_t currentSelf = IsValidPlayerObject(sharedSelf) ? sharedSelf : 0;
         if (!IsValidUserPointer64(currentSelf)) {
             usleep(10000);
             continue;
@@ -609,15 +674,19 @@ inline void ContinuousAimWorker() {
             continue;
         }
 
-        int mIsFiring = Read<int>(currentSelf + Offsets::IsFiring);
-        if (mIsFiring <= 0) mIsFiring = Read<int>(currentSelf + Offsets::IsFiringOld);
-        if (mIsFiring <= 0) mIsFiring = Read<bool>(currentSelf + Offsets::Player_FiringStateAlt) ? 1 : 0;
+        /* The firing flag is a single byte in both builds (the reference
+         * implementation reads it as a bool). Reading it as an int pulled in
+         * three neighbouring bytes and produced false "is firing" states. */
+        const uintptr_t fireOff = OffIsFiring();
+        int mIsFiring = Read<bool>(currentSelf + fireOff) ? 1 : 0;
 
         bool shouldLock = pPlayer.aimbotlock || (mIsFiring > 0);
 
         // 1. Camera LookRotation Aimbot & ViewRotation
         if ((pPlayer.aimbot || pPlayer.aimbotlock) && shouldLock) {
-            Vector3 camPos = MainCameraTransformPos;
+            Vector3 camPos(g_camPosX.load(std::memory_order_relaxed),
+                           g_camPosY.load(std::memory_order_relaxed),
+                           g_camPosZ.load(std::memory_order_relaxed));
             if (camPos == Vector3::Zero()) {
                 uintptr_t myCam = GetPlayerMainCamera(currentSelf);
                 if (IsValidUserPointer64(myCam)) camPos = GetPosition(myCam);
@@ -631,24 +700,22 @@ inline void ContinuousAimWorker() {
 
             Quaternion targetRot = GetRotationToTheLocation(targetPos, aimHeight, camPos);
 
-            Write<Quaternion>(currentSelf + Offsets::PlayerRotation, targetRot);
-            Write<Quaternion>(currentSelf + Offsets::PlayerRotationOld, targetRot);
-            Write<Quaternion>(currentSelf + Offsets::Player_ViewRotation, targetRot);
+            /* Write ONLY the rotation field that belongs to the running build.
+             * The previous code wrote 0x61C AND 0x214; on Free Fire Normal
+             * 0x214 is an unrelated object field, so every aim tick silently
+             * corrupted the local player object. */
+            Write<Quaternion>(currentSelf + OffPlayerRotation(), targetRot);
 
             int rotCount = Read<int>(currentSelf + Offsets::CallSetAimRotationCount);
             if (rotCount >= 0) {
                 Write<int>(currentSelf + Offsets::CallSetAimRotationCount, rotCount + 1);
             }
-            int rotCountAlt = Read<int>(currentSelf + Offsets::CallSetAimRotationCountAlt);
-            if (rotCountAlt >= 0) {
-                Write<int>(currentSelf + Offsets::CallSetAimRotationCountAlt, rotCountAlt + 1);
-            }
         }
 
         // 2. Silent Bullet Ray Redirection
         if (pPlayer.silen4a && shouldLock) {
-            uint64_t aimingInfo = Read<uint64_t>(currentSelf + Offsets::AimingInfo);
-            if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(currentSelf + Offsets::AimingInfoAlt);
+            uintptr_t aimInfoOff = OffAimingInfo();
+            uint64_t aimingInfo = Read<uint64_t>(currentSelf + aimInfoOff);
             if (!IsValidUserPointer64(aimingInfo)) aimingInfo = Read<uint64_t>(currentSelf + Offsets::AimingInfoOld);
             if (IsValidUserPointer64(aimingInfo)) {
                 Vector3 rayStart = Read<Vector3>(aimingInfo + Offsets::AimingStartPos);
@@ -658,9 +725,11 @@ inline void ContinuousAimWorker() {
                     float dist = Vector3::Magnitude(diff);
                     if (dist >= 0.5f && dist <= 500.0f) {
                         Vector3 dir = diff / dist;
+                        /* 0x40 is the ray direction slot in both builds.
+                         * The second write to 0xD0 and the raw 0x71 poke were
+                         * magic constants with no reference implementation -
+                         * they corrupted unrelated aiming state. */
                         Write<Vector3>(aimingInfo + Offsets::AimingDirection, dir);
-                        Write<Vector3>(aimingInfo + Offsets::AimingDirectionAlt, dir);
-                        Write<bool>(aimingInfo + 0x71, false);
                     }
                 }
             }
@@ -672,13 +741,21 @@ inline void ContinuousAimWorker() {
             if (IsValidUserPointer64(headCollider)) {
                 Write<uintptr_t>(targetObj + Offsets::Player_AimTargetWrite, headCollider);
             }
-            if (IsValidUserPointer64(currentSelf)) {
+            /* The aim-target / assist-state offsets (0x670 / 0x668) are only
+             * documented for the Normal build. Writing them blindly on MAX
+             * corrupted an unrelated field, so the MAX build keeps the head
+             * collider redirect only - exactly like the reference engine. */
+            if (!IsGameMaxBuild()) {
                 Write<uintptr_t>(currentSelf + Offsets::AimTarget, targetObj);
                 Write<int>(currentSelf + Offsets::EAimAssistState, 1);
             }
         }
 
-        usleep(4000); // 250Hz smooth iteration rate
+        /* 250Hz smooth iteration rate + the optional "Legit Delay" pause. */
+        int extraDelay = (int)pPlayer.legitDelayMs;
+        if (extraDelay < 0) extraDelay = 0;
+        if (extraDelay > 50) extraDelay = 50;
+        usleep((useconds_t)(4000 + extraDelay * 1000));
     }
 }
 
@@ -697,34 +774,42 @@ inline void UpdateAimMagnetFast() {
         }
         usleep(10000);  // 10ms active sleep
         
-        uintptr_t localP = ShareLocalPlayer;
-        uintptr_t enemy = ShareEnemy;
-        
+        uintptr_t localP = ShareLocalPlayer.load(std::memory_order_relaxed);
+        uintptr_t enemy = ShareEnemy.load(std::memory_order_relaxed);
+
         if (!localP || !enemy) continue;
-        
+
+        /* Snapshot of the camera state published by the render thread. */
+        const float fwdX = g_camFwdX.load(std::memory_order_relaxed);
+        const float fwdY = g_camFwdY.load(std::memory_order_relaxed);
+        const float fwdZ = g_camFwdZ.load(std::memory_order_relaxed);
+        const Vector3 camPos(g_camPosX.load(std::memory_order_relaxed),
+                             g_camPosY.load(std::memory_order_relaxed),
+                             g_camPosZ.load(std::memory_order_relaxed));
+
         if (pPlayer.aimMagnet) {
-            int mIsFiring = Read<int>(localP + Offsets::IsFiring);
+            int mIsFiring = Read<int>(localP + OffIsFiring());
             if (mIsFiring <= 0) mIsFiring = Read<int>(localP + Offsets::IsFiringOld);
             if (mIsFiring <= 0 && !pPlayer.PlayerToMe) continue;
         }
-        
+
         auto headTF = GetPlayerHeadTF(enemy);
         auto feetTF = GetPlayerPeTF(enemy);
-        
+
         if (!headTF || !feetTF) continue;
-        
+
         Vector3 currentHeadPos = GetNodePosition(headTF);
         Vector3 currentRootPos = GetNodePosition(feetTF);
-        
+
         if (currentHeadPos == Vector3::Zero() || currentRootPos == Vector3::Zero()) continue;
-        
+
         Vector3 newRootPos;
         if (pPlayer.PlayerToMe) {
             Vector3 localPos = GetNodePosition(localP);
             Vector3 vForward;
-            vForward.X = ViewMatrix._13;
+            vForward.X = fwdX;
             vForward.Y = 0.0f;
-            vForward.Z = ViewMatrix._33;
+            vForward.Z = fwdZ;
             float fLen = sqrtf(vForward.X * vForward.X + vForward.Z * vForward.Z);
             if (fLen > 0.001f) {
                 vForward.X /= fLen;
@@ -736,24 +821,24 @@ inline void UpdateAimMagnetFast() {
             newRootPos.Y = localPos.Y;
         } else {
             Vector3 vForward;  // 'vForward' avoids std::forward conflict
-            vForward.X = ViewMatrix._13;
-            vForward.Y = ViewMatrix._23;
-            vForward.Z = ViewMatrix._33;
-            
+            vForward.X = fwdX;
+            vForward.Y = fwdY;
+            vForward.Z = fwdZ;
+
             float len = sqrtf(vForward.X * vForward.X + vForward.Y * vForward.Y + vForward.Z * vForward.Z);
             if (len < 0.001f) continue;
-            
+
             vForward.X /= len;
             vForward.Y /= len;
             vForward.Z /= len;
-            
-            float depth = Vector3::Distance(MainCameraTransformPos, currentHeadPos);
+
+            float depth = Vector3::Distance(camPos, currentHeadPos);
             if (depth < 0.1f) continue;
-            
+
             Vector3 targetHeadPos;
-            targetHeadPos.X = MainCameraTransformPos.X + vForward.X * depth;
-            targetHeadPos.Y = MainCameraTransformPos.Y + vForward.Y * depth;
-            targetHeadPos.Z = MainCameraTransformPos.Z + vForward.Z * depth;
+            targetHeadPos.X = camPos.X + vForward.X * depth;
+            targetHeadPos.Y = camPos.Y + vForward.Y * depth;
+            targetHeadPos.Z = camPos.Z + vForward.Z * depth;
             
             Vector3 offset;
             offset.X = targetHeadPos.X - currentHeadPos.X;
@@ -799,24 +884,27 @@ inline void CreateDataList(Response& SendResponse) {
     if (!Actived.activar) return;
 
     static pid_t s_last_verified_pid = -1;
-    if (target_pid <= 0 || kill(target_pid, 0) != 0) {
-        target_pid = FindGamePid();
-        if (target_pid <= 0) {
-            libAddress = 0;
+    pid_t currentPid = target_pid.load(std::memory_order_relaxed);
+    if (currentPid <= 0 || kill(currentPid, 0) != 0) {
+        currentPid = FindGamePid();
+        target_pid.store(currentPid, std::memory_order_relaxed);
+        if (currentPid <= 0) {
+            libAddress.store(0, std::memory_order_relaxed);
             return;
         }
-        InitMemoryAccess(target_pid);
+        InitMemoryAccess(currentPid);
     }
 
-    if (target_pid != s_last_verified_pid) {
-        libAddress = 0;
-        s_last_verified_pid = target_pid;
+    if (currentPid != s_last_verified_pid) {
+        libAddress.store(0, std::memory_order_relaxed);
+        s_last_verified_pid = currentPid;
     }
 
-    if (libAddress == 0) {
-        libAddress = GetModuleBase(target_pid, "libil2cpp.so");
-        if (libAddress == 0) return;
-        if (!IsDriverConnected()) InitMemoryAccess(target_pid);
+    if (libAddress.load(std::memory_order_relaxed) == 0) {
+        uintptr_t base = GetModuleBase(currentPid, "libil2cpp.so");
+        libAddress.store(base, std::memory_order_relaxed);
+        if (base == 0) return;
+        if (!IsDriverConnected()) InitMemoryAccess(currentPid);
     }
 
     static time_t lastLogTime = 0;
@@ -839,7 +927,7 @@ inline void CreateDataList(Response& SendResponse) {
 
     if (!localPlayer) {
         for (uintptr_t fOff : facadeOffsets) {
-            uintptr_t classPtr = Read<uintptr_t>(libAddress + fOff);
+            uintptr_t classPtr = Read<uintptr_t>(libAddress.load(std::memory_order_relaxed) + fOff);
         if (!IsValidUserPointer64(classPtr)) continue;
 
         // Static fields candidates: 0xB8 (GameFacade_P2 in MAX), 0x8 (GameFacade_Current in Normal), 0x0 (Direct)
@@ -895,7 +983,7 @@ inline void CreateDataList(Response& SendResponse) {
     if (!IsValidPlayerObject(localPlayer)) {
         if (shouldLog) {
             lastLogTime = now;
-            NIN_LOGI("DAEMON_ESP", "Scanning game memory in libil2cpp (0x%lx)... Waiting for local player spawn.", (unsigned long)libAddress);
+            NIN_LOGI("DAEMON_ESP", "Scanning game memory in libil2cpp (0x%lx)... Waiting for local player spawn.", (unsigned long)libAddress.load(std::memory_order_relaxed));
         }
         return;
     }
@@ -1023,13 +1111,23 @@ inline void CreateDataList(Response& SendResponse) {
     }
     if (!IsValidViewMatrix(matrix)) {
         Quaternion myCamRot = GetTransformRotation(myCam);
-        float aspect = (g_screenHeight > 0) ? ((float)g_screenWidth / (float)g_screenHeight) : 1.777778f;
+        float aspect = (g_screenHeight.load(std::memory_order_relaxed) > 0)
+                       ? ((float)g_screenWidth.load(std::memory_order_relaxed) /
+                          (float)g_screenHeight.load(std::memory_order_relaxed))
+                       : 1.777778f;
         matrix = BuildViewMatrix(myCamPos, myCamRot, 60.0f, aspect);
     } else if (pPlayer.undercam) {
         matrix._42 += 3.5f;
     }
     ViewMatrix = matrix;
     MainCameraTransformPos = myCamPos;
+    /* Publish the camera basis for the worker threads without a lock. */
+    g_camFwdX.store(matrix._13, std::memory_order_relaxed);
+    g_camFwdY.store(matrix._23, std::memory_order_relaxed);
+    g_camFwdZ.store(matrix._33, std::memory_order_relaxed);
+    g_camPosX.store(myCamPos.X, std::memory_order_relaxed);
+    g_camPosY.store(myCamPos.Y, std::memory_order_relaxed);
+    g_camPosZ.store(myCamPos.Z, std::memory_order_relaxed);
 
     // 5. Dictionary Resolution (from 5_6213160554375160447.h and ff max 5_6246536088102380429.h: 0xC0)
     uintptr_t dictionary = 0;
@@ -1143,9 +1241,7 @@ inline void CreateDataList(Response& SendResponse) {
         LocalPosition = GetNodePosition(localPlayer) + Vector3(0.0f, 1.85f, 0.0f);
     }
 
-    auto mIsFiring = Read<int>(localPlayer + Offsets::IsFiring);
-    if (mIsFiring == 0) mIsFiring = Read<int>(localPlayer + Offsets::IsFiringOld);
-    if (mIsFiring == 0) mIsFiring = Read<uint8_t>(localPlayer + Offsets::IsFiringAlt);
+    auto mIsFiring = Read<bool>(localPlayer + OffIsFiring()) ? 1 : 0;
 
     float bestPriority = 99999.0f;
     bool hasValidTarget = false;
@@ -1167,7 +1263,10 @@ inline void CreateDataList(Response& SendResponse) {
         if (!IsValidUserPointer64(enemyList) || enemyList == localPlayer) continue;
 
         // 1. Skip eliminated / dead players immediately
-        if (Read<bool>(enemyList + Offsets::isDead) || Read<bool>(enemyList + Offsets::isDeadAlt)) {
+        //    Only ONE offset is valid per build. Probing both made the engine
+        //    read an unrelated field as "isDead" and silently dropped live
+        //    enemies from the ESP.
+        if (Read<bool>(enemyList + OffIsDead())) {
             continue;
         }
 
@@ -1199,10 +1298,7 @@ inline void CreateDataList(Response& SendResponse) {
             }
         }
 
-        auto isClientBot = Read<bool>(enemyList + Offsets::IsClientBot);
-        if (isClientBot != 1 && isClientBot != 0) {
-            isClientBot = Read<bool>(enemyList + Offsets::IsClientBotOld);
-        }
+        auto isClientBot = Read<bool>(enemyList + OffIsClientBot());
 
         // Get Positions from Bone transforms (Normal: 0x6B0 / MAX: 0x6A8)
         uintptr_t headTF = GetPlayerHeadTF(enemyList);
@@ -1231,12 +1327,31 @@ inline void CreateDataList(Response& SendResponse) {
             SendResponse.ProximityEnemyCount++;
         }
 
-        // Screen projection
+        // Screen projection.
+        // Entities that are completely outside the viewport are dropped, but
+        // entities that are only PARTIALLY visible are kept - the previous
+        // "X < 0" test silently removed every enemy on the left half of the
+        // screen, even when the box was still half on screen.
         auto LocationHeadBox = WorldToScreenPoint(matrix, EnemyPosition);
         auto LocationToeBox = WorldToScreenPoint(matrix, EnemyPositionPe);
-        if (LocationHeadBox.X < 0 || LocationToeBox.X < 0 || LocationHeadBox.Z <= 0.0f) continue;
+        if (LocationHeadBox.Z <= 0.0f) continue;
 
-        float fovRadius = (pPlayer.AimFov / 180.0f) * (g_screenHeight / 2.0f);
+        {
+            const float kMargin = 220.0f;
+            float minX = std::min(LocationHeadBox.X, LocationToeBox.X);
+            float maxX = std::max(LocationHeadBox.X, LocationToeBox.X);
+            float minY = std::min(LocationHeadBox.Y, LocationToeBox.Y);
+            float maxY = std::max(LocationHeadBox.Y, LocationToeBox.Y);
+            if (maxX < -kMargin ||
+                minX > (float)g_screenWidth.load(std::memory_order_relaxed) + kMargin ||
+                maxY < -kMargin ||
+                minY > (float)g_screenHeight.load(std::memory_order_relaxed) + kMargin) {
+                continue;
+            }
+        }
+
+        float fovRadius = (pPlayer.AimFov / 180.0f) *
+                          (g_screenHeight.load(std::memory_order_relaxed) / 2.0f);
 
         // Populate Response
         auto *data = &SendResponse.Players[SendResponse.PlayerCount];
@@ -1247,8 +1362,11 @@ inline void CreateDataList(Response& SendResponse) {
         data->IsCaido = isKnocked;
         data->SpecialAbilities = specialStatus;
 
-        // Genuine Health reading
-        int Health = 100;
+        // Genuine Health reading.
+        // 0 means "unknown" - the renderer skips the health bar instead of
+        // showing a fake full bar (the previous default of 100 made every
+        // unreadable player look completely healed).
+        int Health = 0;
         uintptr_t curHPObj = Read<uintptr_t>(enemyList + Offsets::PlayerData_HP);
         if (!IsValidUserPointer64(curHPObj)) curHPObj = Read<uintptr_t>(enemyList + Offsets::DataPool);
         if (IsValidUserPointer64(curHPObj)) {
@@ -1273,7 +1391,7 @@ inline void CreateDataList(Response& SendResponse) {
         if (isClientBot) {
             strcpy(data->PlayerName, "Bot");
         } else {
-            uintptr_t NamePtr = Read<uintptr_t>(enemyList + Offsets::NamePtr); 
+            uintptr_t NamePtr = Read<uintptr_t>(enemyList + OffPlayerName());
             if (NamePtr <= 0x10000000) NamePtr = Read<uintptr_t>(enemyList + Offsets::NamePtrOld);
             if (NamePtr > 0x10000000) {
                 getUTF8(data->PlayerName, NamePtr);
@@ -1284,17 +1402,27 @@ inline void CreateDataList(Response& SendResponse) {
         // Silent Aim & Aimbot evaluation
         bool aimActive = (pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock);
         bool shouldIgnoreForAim = (pPlayer.ignoreKnocked && isKnocked);
-        float screenDist = sqrt(pow(LocationHeadBox.X - g_screenWidth/2, 2) + pow(LocationHeadBox.Y - g_screenHeight/2, 2));
+        float screenDist = sqrt(pow(LocationHeadBox.X - g_screenWidth.load(std::memory_order_relaxed)/2, 2) +
+                                pow(LocationHeadBox.Y - g_screenHeight.load(std::memory_order_relaxed)/2, 2));
         if (aimActive && !shouldIgnoreForAim && isWithinFOV(LocationHeadBox, fovRadius) && distanceToEnemy <= pPlayer.AimDistance) {
             float priorityValue = pPlayer.targetByDistance ? distanceToEnemy : screenDist;
             if (priorityValue < bestPriority) {
                 bestPriority = priorityValue;
                 // Target bone selection (Head vs Chest/Body)
+                // The chest point is interpolated between the HEAD and the HIP
+                // (exactly like the reference engine). Interpolating towards
+                // the feet produced a point near the knees.
                 Vector3 targetPos = EnemyPosition;
-                if (!pPlayer.silentAimHead && EnemyPositionPe != Vector3::Zero()) {
-                    targetPos.X = EnemyPosition.X + (EnemyPositionPe.X - EnemyPosition.X) * 0.35f;
-                    targetPos.Y = EnemyPosition.Y + (EnemyPositionPe.Y - EnemyPosition.Y) * 0.35f;
-                    targetPos.Z = EnemyPosition.Z + (EnemyPositionPe.Z - EnemyPosition.Z) * 0.35f;
+                if (!pPlayer.silentAimHead) {
+                    Vector3 hipPos = Vector3::Zero();
+                    uintptr_t hipTF = GetPlayerHipTF(enemyList);
+                    if (hipTF) hipPos = GetNodePosition(hipTF);
+                    if (hipPos == Vector3::Zero()) hipPos = EnemyPositionPe;
+                    if (hipPos != Vector3::Zero()) {
+                        targetPos.X = EnemyPosition.X + (hipPos.X - EnemyPosition.X) * 0.35f;
+                        targetPos.Y = EnemyPosition.Y + (hipPos.Y - EnemyPosition.Y) * 0.35f;
+                        targetPos.Z = EnemyPosition.Z + (hipPos.Z - EnemyPosition.Z) * 0.35f;
+                    }
                 }
                 bestTargetPos = targetPos;
                 bestTargetPosPe = EnemyPositionPe;
@@ -1306,12 +1434,12 @@ inline void CreateDataList(Response& SendResponse) {
         SendResponse.PlayerCount++;
     }
 
-    ShareLocalPlayer = localPlayer;
+    ShareLocalPlayer.store(localPlayer, std::memory_order_relaxed);
     if ((pPlayer.aimMagnet || pPlayer.PlayerToMe) && hasValidTarget) {
         EnsureAimMagnetThreadStarted();
-        ShareEnemy = bestTargetObj;
+        ShareEnemy.store(bestTargetObj, std::memory_order_relaxed);
     } else {
-        ShareEnemy = 0;
+        ShareEnemy.store(0, std::memory_order_relaxed);
         if (!hasValidTarget || (mIsFiring <= 0 && !pPlayer.PlayerToMe)) {
             RestoreAllPositions();
         }
@@ -1323,13 +1451,15 @@ inline void CreateDataList(Response& SendResponse) {
         const PlayerData& player = SendResponse.Players[i];
         Vector3 head = player.Head;
         if (head.Z <= 0.0f) continue;
-        bool onScreen = (head.X >= 0 && head.X <= g_screenWidth &&
-                         head.Y >= 0 && head.Y <= g_screenHeight);
+        const int screenW = g_screenWidth.load(std::memory_order_relaxed);
+        const int screenH = g_screenHeight.load(std::memory_order_relaxed);
+        bool onScreen = (head.X >= 0 && head.X <= screenW &&
+                         head.Y >= 0 && head.Y <= screenH);
         if (onScreen) {
             SendResponse.VisibleEnemyCount++;
         } else {
-            bool nearOffScreen = (head.X >= -offScreenMargin && head.X <= g_screenWidth + offScreenMargin &&
-                                  head.Y >= -offScreenMargin && head.Y <= g_screenHeight + offScreenMargin);
+            bool nearOffScreen = (head.X >= -offScreenMargin && head.X <= screenW + offScreenMargin &&
+                                  head.Y >= -offScreenMargin && head.Y <= screenH + offScreenMargin);
             if (nearOffScreen) {
                 SendResponse.VisibleNearOffScreenEnemyCount++;
             }
@@ -1351,7 +1481,7 @@ inline void CreateDataList(Response& SendResponse) {
     if (shouldLog) {
         lastLogTime = now;
         NIN_LOGI("OFFSET_AUDIT", "--- LIVE OFFSET VERIFICATION REPORT ---");
-        NIN_LOGI("OFFSET_AUDIT", "[1] libil2cpp.so Base: 0x%lx [OK]", (unsigned long)libAddress);
+        NIN_LOGI("OFFSET_AUDIT", "[1] libil2cpp.so Base: 0x%lx [OK]", (unsigned long)libAddress.load(std::memory_order_relaxed));
         NIN_LOGI("OFFSET_AUDIT", "[2] GameFacade Root: 0x%lx [%s]", (unsigned long)GameFacade_c, (IsValidUserPointer64(GameFacade_c) ? "VALID" : "NOT_FOUND"));
         NIN_LOGI("OFFSET_AUDIT", "[3] CurrentMatch: 0x%lx [%s]", (unsigned long)m_Match, (IsValidUserPointer64(m_Match) ? "IN_MATCH" : "IN_LOBBY"));
         NIN_LOGI("OFFSET_AUDIT", "[4] LocalPlayer: 0x%lx [%s]", (unsigned long)localPlayer, (IsValidUserPointer64(localPlayer) ? "SPAWNED" : "WAITING"));
@@ -1365,112 +1495,173 @@ inline void CreateDataList(Response& SendResponse) {
 inline std::mutex g_engineTransactionMutex;
 inline Response s_cachedResponse{};
 
-struct DaemonPlayerData {
-    Vector3 Head;
-    Vector3 Toe;
-    bool IsCaido;
-    float Distancia;
-    int Health;
-    bool Name;
-    char PlayerName[64];
-    int SpecialAbilities;
-    short WeaponId;
-};
+/* ------------------------------------------------------------------
+ * SCENE WORKER
+ * ------------------------------------------------------------------
+ * The entity scan touches hundreds of game memory pages through the
+ * kernel driver (hundreds of IOCTL round trips). It used to run directly
+ * on the GL render thread, so every single frame blocked on the memory
+ * scan - the overlay stuttered and the touch input lagged behind.
+ *
+ * The scan now runs in ONE dedicated worker thread that publishes a
+ * finished snapshot. The render thread only copies that snapshot, so it
+ * never waits for the memory scan. The worker paces itself: it aims for
+ * ~60 Hz while the driver is fast and slows down automatically when the
+ * driver is slow instead of queuing up work.
+ * ------------------------------------------------------------------ */
+inline std::atomic<bool> g_sceneWorkerStarted{false};
 
-struct DaemonResponse {
-    bool Success;
-    int PlayerCount;
-    int EnemiesInFront;
-    int EnemiesBehind;
-    DaemonPlayerData Players[100];
-};
+/* Forward declaration: the worker below needs the daemon transport, which is
+ * defined further down together with the shared client. */
+inline Response RequestDaemonESP(int screenWidth, int screenHeight);
+
+inline void SceneWorker() {
+    Response scratch{};   /* worker owned - never read by the render thread */
+
+    while (true) {
+        auto startedAt = std::chrono::steady_clock::now();
+        bool updated = false;
+
+        if (driver && driver->isConnected()) {
+            CreateDataList(scratch);
+            updated = true;
+        } else {
+            Response daemonResponse = RequestDaemonESP(
+                g_screenWidth.load(std::memory_order_relaxed),
+                g_screenHeight.load(std::memory_order_relaxed));
+            if (daemonResponse.Success) {
+                scratch = daemonResponse;
+                updated = true;
+            }
+        }
+
+        if (updated) {
+            /* Only the snapshot swap is locked - a few microseconds. */
+            std::lock_guard<std::mutex> lock(g_engineTransactionMutex);
+            s_cachedResponse = scratch;
+        }
+
+        long elapsed = (long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - startedAt).count();
+        long sleepMs = 16 - elapsed;
+        if (sleepMs < 4) sleepMs = 4;
+        if (sleepMs > 50) sleepMs = 50;
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+    }
+}
+
+inline void EnsureSceneWorkerStarted() {
+    if (g_sceneWorkerStarted.exchange(true)) return;
+    std::thread(SceneWorker).detach();
+}
+
+/* ------------------------------------------------------------------
+ * DAEMON LINK
+ * ------------------------------------------------------------------
+ * The wire structures live in Includes/NinliteProtocol.h and are shared
+ * with the Daemon, so the two sides can never disagree about the frame
+ * layout. The client keeps ONE persistent connection:
+ *  - a new socket per frame forced the Daemon to re-scan /proc and re-open
+ *    the game memory on every single frame,
+ *  - and every probe used to destroy the Daemon listener (the Daemon closed
+ *    its listening socket as soon as a client disconnected).
+ * ------------------------------------------------------------------ */
+inline Ninlite::SocketClient g_daemonClient;
+inline std::mutex g_daemonMutex;
 
 inline bool isNinLiteDaemonAvailable() {
-    int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (sock < 0) return false;
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    addr.sun_path[0] = '\0';
-    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-    struct timeval tv{0, 50000};
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-    bool connected = (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0);
-    close(sock);
-    return connected;
+    std::lock_guard<std::mutex> lock(g_daemonMutex);
+    if (g_daemonClient.IsConnected()) return true;
+
+    /* Throttled reconnect: at most once per second, so a missing Daemon can
+     * never turn into a per frame connect() storm. */
+    static std::atomic<int64_t> s_lastAttempt{0};
+    int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now().time_since_epoch()).count();
+    int64_t last = s_lastAttempt.load(std::memory_order_relaxed);
+    if (now - last < 1000) return false;
+    s_lastAttempt.store(now, std::memory_order_relaxed);
+    return g_daemonClient.Connect();
+}
+
+/* Sends a control request to the Daemon using the shared binary protocol.
+ * Safe to call from any thread (the client is mutex protected). */
+inline bool DaemonSyncRequest(int mode, bool enabled, int value) {
+    std::lock_guard<std::mutex> lock(g_daemonMutex);
+    Ninlite::Request req;
+    memset(&req, 0, sizeof(req));
+    req.mode = mode;
+    req.enabled = enabled ? 1u : 0u;
+    req.value = value;
+    Ninlite::Response resp;
+    memset(&resp, 0, sizeof(resp));
+    return g_daemonClient.Request(req, &resp);
 }
 
 inline Response RequestDaemonESP(int screenWidth, int screenHeight) {
     Response result{};
-    int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (sock < 0) return result;
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    addr.sun_path[0] = '\0';
-    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-    struct timeval tv{0, 100000};
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-    if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
-        struct {
-            int Mode;
-            bool m_IsOn;
-            int value;
-            int ScreenWidth;
-            int ScreenHeight;
-        } req{99, true, 0, screenWidth, screenHeight}; // Mode 99 = EspMode
-        
-        uint32_t len = htonl(sizeof(req));
-        if (send(sock, &len, sizeof(len), 0) > 0 && send(sock, &req, sizeof(req), 0) > 0) {
-            uint32_t respLen = 0;
-            if (recv(sock, &respLen, sizeof(respLen), MSG_WAITALL) == sizeof(respLen)) {
-                respLen = ntohl(respLen);
-                DaemonResponse dResp{};
-                if (respLen <= sizeof(dResp) && recv(sock, &dResp, respLen, MSG_WAITALL) == (ssize_t)respLen) {
-                    result.Success = dResp.Success;
-                    result.PlayerCount = dResp.PlayerCount;
-                    result.VisibleEnemyCount = dResp.EnemiesInFront;
-                    result.VisibleNearOffScreenEnemyCount = dResp.EnemiesBehind;
-                    for (int i = 0; i < dResp.PlayerCount && i < maxplayerCount; i++) {
-                        result.Players[i].Head = dResp.Players[i].Head;
-                        result.Players[i].Toe = dResp.Players[i].Toe;
-                        result.Players[i].IsCaido = dResp.Players[i].IsCaido;
-                        result.Players[i].Distancia = dResp.Players[i].Distancia;
-                        result.Players[i].Health = dResp.Players[i].Health;
-                        result.Players[i].Name = dResp.Players[i].Name;
-                        result.Players[i].WeaponId = dResp.Players[i].WeaponId;
-                        result.Players[i].SpecialAbilities = dResp.Players[i].SpecialAbilities;
-                        strncpy(result.Players[i].PlayerName, dResp.Players[i].PlayerName, sizeof(result.Players[i].PlayerName) - 1);
-                    }
-                }
-            }
-        }
+    std::lock_guard<std::mutex> lock(g_daemonMutex);
+
+    Ninlite::Request req;
+    memset(&req, 0, sizeof(req));
+    req.mode = Ninlite::MODE_ESP;
+    req.enabled = 1;
+    req.screenWidth = screenWidth;
+    req.screenHeight = screenHeight;
+
+    Ninlite::Response wire;
+    memset(&wire, 0, sizeof(wire));
+    if (!g_daemonClient.Request(req, &wire)) {
+        return result;
     }
-    close(sock);
+
+    result.Success = (wire.success != 0);
+    int count = wire.playerCount;
+    if (count < 0 || count > Ninlite::kMaxPlayers) count = 0;
+    result.PlayerCount = count;
+    result.VisibleEnemyCount = wire.visibleEnemyCount;
+    result.VisibleNearOffScreenEnemyCount = wire.visibleNearOffScreenEnemyCount;
+    result.ProximityEnemyCount = wire.proximityEnemyCount;
+
+    for (int i = 0; i < count && i < maxplayerCount; i++) {
+        const Ninlite::PlayerData& src = wire.players[i];
+        PlayerData& dst = result.Players[i];
+        dst.Head = Vector3(src.head[0], src.head[1], src.head[2]);
+        dst.Toe = Vector3(src.toe[0], src.toe[1], src.toe[2]);
+        dst.Distancia = src.distance;
+        dst.Health = src.health;
+        dst.SpecialAbilities = src.specialAbilities;
+        dst.WeaponId = (short)src.weaponId;
+        dst.IsCaido = (src.flags & Ninlite::PLAYER_FLAG_KNOCKED) != 0;
+        dst.Name = (src.flags & Ninlite::PLAYER_FLAG_BOT) != 0;
+        memset(dst.PlayerName, 0, sizeof(dst.PlayerName));
+        strncpy(dst.PlayerName, src.playerName, sizeof(dst.PlayerName) - 1);
+        dst.PlayerName[sizeof(dst.PlayerName) - 1] = '\0';
+    }
     return result;
 }
 
 inline Response getData(int screenWidth, int screenHeight) {
+    g_screenWidth.store(screenWidth, std::memory_order_relaxed);
+    g_screenHeight.store(screenHeight, std::memory_order_relaxed);
+    EnsureSceneWorkerStarted();
     std::lock_guard<std::mutex> lock(g_engineTransactionMutex);
-    g_screenWidth = screenWidth;
-    g_screenHeight = screenHeight;
+    return s_cachedResponse;
+}
 
-    if (driver && driver->isConnected()) {
-        CreateDataList(s_cachedResponse);
-        return s_cachedResponse;
-    }
-
-    Response daemonResponse = RequestDaemonESP(screenWidth, screenHeight);
-    if (daemonResponse.Success) {
-        return daemonResponse;
-    }
-
-    CreateDataList(s_cachedResponse);
+/* Lock protected access to the cached snapshot.
+ *
+ * The scene worker publishes the snapshot under g_engineTransactionMutex, so
+ * every reader MUST take the same lock. The JNI status query used to read
+ * s_cachedResponse directly without the lock, which is a data race on the
+ * whole structure (100 players). */
+inline Response GetCachedResponseSnapshot() {
+    std::lock_guard<std::mutex> lock(g_engineTransactionMutex);
     return s_cachedResponse;
 }
 
 inline bool isConnected() {
-    if (driver && (driver->isConnected() || driver->initDriver())) {
+    if (EnsureDriverConnectedThrottled()) {
         return true;
     }
     return isNinLiteDaemonAvailable();

@@ -6,13 +6,39 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdint>
+#include <ctime>
+#include <atomic>
+#include <mutex>
 
 // Global Banking-Grade Session Gatekeeper Variables
-inline bool g_session_verified = false;
+inline std::atomic<bool> g_session_verified{false};
 inline char g_security_session[128] = {0};
 inline char g_security_hwid[128] = {0};
+inline long long g_security_expiry_epoch = 0;
+inline std::mutex g_security_mutex;
 
+/**
+ * Real session gate.
+ *
+ * The previous implementation was a hard coded `return true;`, which made
+ * every native "authorisation" check a no-op (GEMINI.md rule 1 & 2: zero fake
+ * information). The gate now reflects the genuine state that the Java layer
+ * pushed through SecurityVault.nativeSetSession(), including the expiry that
+ * was previously validated and then thrown away.
+ */
 inline bool SecurityVault_IsSessionValid() {
+    std::lock_guard<std::mutex> lock(g_security_mutex);
+    if (!g_session_verified.load(std::memory_order_relaxed)) {
+        return false;
+    }
+    if (g_security_expiry_epoch > 0 &&
+        (long long)time(nullptr) >= g_security_expiry_epoch) {
+        g_session_verified.store(false, std::memory_order_relaxed);
+        memset(g_security_session, 0, sizeof(g_security_session));
+        memset(g_security_hwid, 0, sizeof(g_security_hwid));
+        g_security_expiry_epoch = 0;
+        return false;
+    }
     return true;
 }
 

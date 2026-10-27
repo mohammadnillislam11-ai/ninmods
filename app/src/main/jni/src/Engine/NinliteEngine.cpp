@@ -18,25 +18,19 @@ namespace NinliteEngine {
 static bool g_ninlite_setup_done_flag = false;
 static std::atomic<bool> g_ninlite_starting{false};
 
+/**
+ * Sends a control request to the root Daemon.
+ *
+ * CRITICAL FIX: this used to send an ASCII payload ("FEAT:3:1:0\n") while the
+ * Daemon expects a length prefixed BINARY frame. The Daemon therefore read
+ * the four ASCII bytes as a ~1.1 GB frame length and smashed its own stack,
+ * so the Daemon crashed the first time a feature was toggled - and
+ * StartEngine() itself toggles the master switch right after launch.
+ * The protocol is now shared with the Daemon through
+ * Includes/NinliteProtocol.h.
+ */
 void SyncFeature(int featId, bool enabled, int value) {
-    int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (sock < 0) return;
-
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    addr.sun_path[0] = '\0';
-    strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-
-    struct timeval tv{0, 200000};
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
-    if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
-        char pkt[64];
-        snprintf(pkt, sizeof(pkt), "FEAT:%d:%d:%d\n", featId, enabled ? 1 : 0, value);
-        send(sock, pkt, strlen(pkt), 0);
-    }
-    close(sock);
+    DaemonSyncRequest(featId, enabled, value);
 }
 
 bool CheckEmulatorDetected() {
@@ -69,41 +63,24 @@ const char* GetConnectionModeStr() {
     if (driver && driver->isConnected()) {
         return driver->getDriverModeName();
     }
-    if (driver && driver->initDriver()) {
+    if (EnsureDriverConnectedThrottled()) {
         return driver->getDriverModeName();
     }
-    int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (sock >= 0) {
-        sockaddr_un addr{};
-        addr.sun_family = AF_UNIX;
-        addr.sun_path[0] = '\0';
-        strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-        struct timeval tv{0, 150000};
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-        if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
-            close(sock);
-            return "Phantom IPC (Daemon)";
-        }
-        close(sock);
+    /* Non destructive probe: the shared client keeps the connection open, so
+     * the Daemon keeps serving instead of losing its listener. */
+    if (isNinLiteDaemonAvailable()) {
+        return "Phantom IPC (Daemon)";
     }
     return "Phantom (Standby)";
 }
 
 bool CheckShellDaemonRunning() {
-    int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (sock >= 0) {
-        sockaddr_un addr{};
-        addr.sun_family = AF_UNIX;
-        addr.sun_path[0] = '\0';
-        strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-        struct timeval tv{0, 150000};
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-        bool ok = (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0);
-        close(sock);
-        if (ok) return true;
+    /* Non destructive liveness probe (persistent, shared connection). */
+    if (isNinLiteDaemonAvailable()) {
+        return true;
     }
+
+    /* Fallback: look for the Daemon process itself. */
     DIR* dir = opendir("/proc");
     if (!dir) return false;
     struct dirent* entry;
@@ -133,64 +110,89 @@ void StartEngine(const std::string& nativeLibDir) {
     }
 
     std::thread([nativeLibDir]() {
-        // 1. Root Shell Injection via native popen
-        FILE* su = popen("su", "w");
+        /* --------------------------------------------------------------
+         * 1. Root shell injection.
+         *
+         * The previous implementation opened an INTERACTIVE `su` shell via
+         * popen("su","w"). That shell never terminates on its own: it stays
+         * open waiting for input, so the launching thread was parked forever
+         * and a SECOND root prompt was raised next to the official one the
+         * Java layer already requested (GEMINI.md rule 4).
+         *
+         * We now execute ONE non interactive `su -c '<script>'` command. It
+         * uses the official superuser binary, it returns as soon as the
+         * script is done, and the already granted root permission is reused
+         * (no second prompt).
+         * -------------------------------------------------------------- */
+        std::string script;
+        script += "killall -9 ninlite_daemon >/dev/null 2>&1\n";
+        script += "setenforce 0 >/dev/null 2>&1\n";
+
+        const char* selinuxRules[] = {
+            "allow su untrusted_app process ptrace",
+            "allow su untrusted_app_32 process ptrace",
+            "allow su untrusted_app_30 process ptrace",
+            "allow su untrusted_app_29 process ptrace",
+            "allow su priv_app process ptrace",
+            "allow su untrusted_app file { read write open getattr }",
+            "allow su untrusted_app_32 file { read write open getattr }",
+            "allow su untrusted_app_30 file { read write open getattr }",
+            "allow su priv_app file { read write open getattr }",
+            "allow su su file { execute execute_no_trans open read write }"
+        };
+        script += "if command -v magiskpolicy >/dev/null 2>&1; then\n";
+        for (const char* rule : selinuxRules) {
+            script += "  magiskpolicy --live ";
+            script += rule;
+            script += " >/dev/null 2>&1\n";
+        }
+        script += "elif command -v supolicy >/dev/null 2>&1; then\n";
+        for (const char* rule : selinuxRules) {
+            script += "  supolicy --live ";
+            script += rule;
+            script += " >/dev/null 2>&1\n";
+        }
+        script += "fi\n";
+
+        const std::string daemonLibPath = nativeLibDir + "/libninlite_daemon.so";
+        const std::string daemonAltPath = nativeLibDir + "/ninlite_daemon";
+        const std::string finalExecPath = "/data/local/tmp/ninlite_daemon";
+        /* Rule 15: the Daemon log also belongs in the Download folder. */
+        const std::string daemonLog = "/storage/emulated/0/Download/ninmods/ninlite_daemon.log";
+
+        script += "mkdir -p /storage/emulated/0/Download/ninmods >/dev/null 2>&1\n";
+        script += "if [ -f " + daemonLibPath + " ]; then cp -f " + daemonLibPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
+        script += "if [ ! -f " + finalExecPath + " ] && [ -f " + daemonAltPath + " ]; then cp -f " + daemonAltPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
+        script += "chmod 755 " + finalExecPath + " >/dev/null 2>&1\n";
+        script += "chmod 666 /dev/BYNb /dev/mem_tool /dev/nh /dev/wanbai >/dev/null 2>&1\n";
+        script += "nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+
+        std::string suCommand = "su -c '";
+        suCommand += script;
+        suCommand += "'";
+
+        FILE* su = popen(suCommand.c_str(), "r");
         if (su) {
-            fprintf(su, "killall -9 ninlite_daemon >/dev/null 2>&1\n");
-            fprintf(su, "setenforce 0 >/dev/null 2>&1\n");
-            const char* selinuxRules[] = {
-                "allow su untrusted_app process ptrace",
-                "allow su untrusted_app_32 process ptrace",
-                "allow su untrusted_app_30 process ptrace",
-                "allow su untrusted_app_29 process ptrace",
-                "allow su priv_app process ptrace",
-                "allow su untrusted_app file { read write open getattr }",
-                "allow su untrusted_app_32 file { read write open getattr }",
-                "allow su untrusted_app_30 file { read write open getattr }",
-                "allow su priv_app file { read write open getattr }",
-                "allow su su file { execute execute_no_trans open read write }"
-            };
-            fprintf(su, "if command -v magiskpolicy >/dev/null 2>&1; then\n");
-            for (const char* rule : selinuxRules) {
-                fprintf(su, "    magiskpolicy --live \"%s\" >/dev/null 2>&1\n", rule);
+            char drain[256];
+            while (fgets(drain, sizeof(drain), su)) {
+                /* drain so the pipe can never fill up and deadlock */
             }
-            fprintf(su, "elif command -v supolicy >/dev/null 2>&1; then\n");
-            for (const char* rule : selinuxRules) {
-                fprintf(su, "    supolicy --live \"%s\" >/dev/null 2>&1\n", rule);
+            int rc = pclose(su);
+            if (rc != 0) {
+                NIN_LOGE("NINLITE", "su -c returned %d - daemon launch failed", rc);
             }
-            fprintf(su, "fi\n");
-
-            std::string daemonLibPath = nativeLibDir + "/libninlite_daemon.so";
-            const char* finalExecPath = "/data/local/tmp/ninlite_daemon";
-            fprintf(su, "if [ -f \"%s\" ]; then\n", daemonLibPath.c_str());
-            fprintf(su, "    cp -f \"%s\" %s\n", daemonLibPath.c_str(), finalExecPath);
-            fprintf(su, "fi\n");
-            fprintf(su, "chmod 777 %s\n", finalExecPath);
-            fprintf(su, "nohup %s >/dev/null 2>&1 &\n", finalExecPath);
-            fprintf(su, "exit\n");
-            fflush(su);
-            pclose(su);
         }
 
-        // 2. Poll up to 2 seconds for daemon socket
-        for (int i = 0; i < 20; ++i) {
+        /* 2. Poll up to ~3 seconds for the Daemon socket (non destructive). */
+        for (int i = 0; i < 30; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-            if (sock >= 0) {
-                sockaddr_un addr{};
-                addr.sun_family = AF_UNIX;
-                addr.sun_path[0] = '\0';
-                strcpy(&addr.sun_path[1], "ninlite_daemon_stream");
-                if (connect(sock, (struct sockaddr*)&addr, sizeof(sa_family_t) + 1 + strlen("ninlite_daemon_stream")) == 0) {
-                    close(sock);
-                    break;
-                }
-                close(sock);
+            if (isNinLiteDaemonAvailable()) {
+                break;
             }
         }
 
-        // 3. Sync engine
-        SyncFeature(3, true, 0);
+        /* 3. Sync engine state over the shared binary protocol. */
+        SyncFeature(Ninlite::MODE_MASTER, true, 0);
         if (driver) {
             driver->initDriver();
         }
@@ -200,8 +202,12 @@ void StartEngine(const std::string& nativeLibDir) {
 }
 
 void StopEngine() {
-    SyncFeature(3, false, 0);
+    /* MODE_MASTER (3) only disables the feature flags; it does NOT stop the
+     * Daemon. MODE_STOP is the request that actually shuts the Daemon down,
+     * so both are sent - the master switch first, then the stop. */
+    SyncFeature(Ninlite::MODE_MASTER, false, 0);
     Actived.activar = false;
+    SyncFeature(Ninlite::MODE_STOP, false, 0);
 }
 
 bool IsSetupDone() {
@@ -211,13 +217,14 @@ bool IsSetupDone() {
 std::string GetStateJson() {
     bool shellOk = CheckShellDaemonRunning();
     bool driverOk = (driver && driver->isConnected() && driver->getFd() >= 0);
-    if (!driverOk && driver) {
-        driverOk = driver->initDriver();
+    if (!driverOk) {
+        driverOk = EnsureDriverConnectedThrottled();
     }
     bool shellActive = shellOk || driverOk;
 
-    pid_t pid = (target_pid > 0 && kill(target_pid, 0) == 0) ? target_pid : FindGamePid();
-    if (pid > 0) target_pid = pid;
+    pid_t known = target_pid.load(std::memory_order_relaxed);
+    pid_t pid = (known > 0 && kill(known, 0) == 0) ? known : FindGamePid();
+    if (pid > 0) target_pid.store(pid, std::memory_order_relaxed);
     bool gameDetected = (pid > 0);
 
     const char *gameName = "Free Fire Max";

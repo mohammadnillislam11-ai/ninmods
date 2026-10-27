@@ -2,6 +2,9 @@
 
 #include <string>
 #include <functional>
+#include <atomic>
+#include <mutex>
+#include <vector>
 #if __has_include(<GLES3/gl3.h>)
 #include <GLES3/gl3.h>
 #else
@@ -16,21 +19,30 @@
  *   2. Modal Driver Status Check Popup (Root / Non-Root preview)
  *   3. Modern Draggable Floating Logo (in compact 76dp overlay window)
  *   4. Active Brand Tactical Mod Menu (in expanded responsive overlay window)
+ *
+ * THREAD SAFETY: the shared flags are written from the JNI thread and read
+ * on the GL render thread. They are atomics now; the strings and the
+ * std::function callback are protected by a mutex.
  */
 class NativeOverlayController {
 public:
-    static bool s_Initialized;
-    static bool s_MenuOpen;
-    static bool s_DriverAlertDismissed;
-    static int s_ScreenWidth;
-    static int s_ScreenHeight;
-    static float s_DpiScale;
-    static float s_LogoX;
-    static float s_LogoY;
+    static std::atomic<bool> s_Initialized;
+    static std::atomic<bool> s_MenuOpen;
+    static std::atomic<bool> s_DriverAlertDismissed;
+    /* The screen size / DPI are written from the JNI thread (nativeResize,
+     * SetDpiScale) and read on the GL render thread -> they must be atomic. */
+    static std::atomic<int> s_ScreenWidth;
+    static std::atomic<int> s_ScreenHeight;
+    static std::atomic<float> s_DpiScale;
+    static std::atomic<float> s_LogoX;
+    static std::atomic<float> s_LogoY;
+    /* Strings and the callback are protected by s_StateMutex. */
     static std::string s_ActiveBrandId;
     static std::string s_DeviceHwid;
-    static GLuint s_LogoTexture;
+    static std::atomic<GLuint> s_LogoTexture;
     static std::function<void()> s_OpenLoaderCallback;
+
+    static std::mutex s_StateMutex;
 
     static void Initialize(int screenWidth, int screenHeight, float dpiScale, const std::string& brandId, const std::string& hwid, bool licenseActive = false);
     static void SetScreenSize(int width, int height);
@@ -48,6 +60,26 @@ public:
     // Check if any modal popup (License or Driver Alert) is currently requesting input
     static bool IsModalPopupActive();
 
-    // Native Touch Event Dispatcher
+    /* Touch input.
+     * The Android input thread must NOT write into ImGuiIO directly: the GL
+     * thread runs NewFrame() at the same time and ImGui is strictly single
+     * threaded. The events are queued here and applied by the render thread
+     * through DrainTouchEvents() right before NewFrame(). */
+    static void QueueTouchEvent(int action, float x, float y);
+    static void DrainTouchEvents();
     static bool HandleTouchEvent(int action, float x, float y);
+
+    /* Publishes ImGui::GetIO().WantCaptureMouse for the input thread.
+     * MUST be called from the render thread only (after NewFrame). */
+    static void PublishWantCaptureMouse();
+
+    /* Marks the ImGui context as existing / destroyed. */
+    static void SetImGuiReady(bool ready);
+
+private:
+    /* The last published WantCaptureMouse value. The input thread reads this
+     * instead of touching ImGuiIO, which the render thread owns. */
+    static std::atomic<bool> s_WantCaptureMouse;
+    /* True once the ImGui context exists. */
+    static std::atomic<bool> g_ImGuiInitializedForOverlay;
 };

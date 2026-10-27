@@ -39,8 +39,8 @@ void NinMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
 
     ApplyTheme();
 
-    float scrW = (float)NativeOverlayController::s_ScreenWidth;
-    float scrH = (float)NativeOverlayController::s_ScreenHeight;
+    float scrW = (float)NativeOverlayController::s_ScreenWidth.load(std::memory_order_relaxed);
+    float scrH = (float)NativeOverlayController::s_ScreenHeight.load(std::memory_order_relaxed);
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(scrW, scrH));
@@ -57,7 +57,8 @@ void NinMenu::RenderMenu(bool& isOpen, bool isKernelActive) {
         ImVec2 mousePos = ImGui::GetIO().MousePos;
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        float dpi = NativeOverlayController::s_DpiScale > 0.0f ? NativeOverlayController::s_DpiScale : 2.4f;
+        float dpi = NativeOverlayController::s_DpiScale.load(std::memory_order_relaxed) > 0.0f
+        ? NativeOverlayController::s_DpiScale.load(std::memory_order_relaxed) : 2.4f;
         float dpiFactor = dpi / 2.4f;
         float headerH = 50.0f * dpiFactor;
         float btnSz = 30.0f * dpiFactor;
