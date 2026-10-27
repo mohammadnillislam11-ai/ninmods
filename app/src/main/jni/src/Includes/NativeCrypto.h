@@ -42,6 +42,26 @@ inline bool SecurityVault_IsSessionValid() {
     return true;
 }
 
+/* ------------------------------------------------------------------
+ * SERVER SESSION TOKEN VERIFICATION
+ * ------------------------------------------------------------------
+ * The server issues the session token as
+ *
+ *     nin_sess_<random>.<expiryMs>.<sha256(random:hwid:expiryMs:SECRET)>
+ *
+ * and the client used to accept ANY non-empty string: nativeSetSession()
+ * only checked "is the string non-empty", so anyone who could call that
+ * JNI method (by editing the DEX, or by driving the app with an
+ * instrumented runtime) unlocked the whole engine without a licence.
+ *
+ * The signature is now recomputed here and compared in constant time.
+ * A token that the server did not issue therefore cannot unlock the
+ * native engine.
+ *
+ * NOTE: this function must stay BELOW the NativeCrypto namespace, because
+ * it uses NativeCrypto::Sha256().
+ * ------------------------------------------------------------------ */
+
 namespace NativeCrypto {
 
 // 32-bit bitwise rotation helpers
@@ -148,5 +168,71 @@ inline std::string Sha256(const std::string& input) {
 }
 
 } // namespace NativeCrypto
+
+/* ------------------------------------------------------------------
+ * SERVER SESSION TOKEN VERIFICATION
+ * ------------------------------------------------------------------
+ * The server issues the session token as
+ *
+ *     nin_sess_<random>.<expiryMs>.<sha256(random:hwid:expiryMs:SECRET)>
+ *
+ * and the client used to accept ANY non-empty string: nativeSetSession()
+ * only checked "is the string non-empty", so anyone who could reach that
+ * JNI method (by editing the DEX, or by driving the app with an
+ * instrumented runtime) unlocked the whole engine without a licence.
+ *
+ * The signature is now recomputed here and compared in constant time, so
+ * a token the server did not issue can never unlock the native engine.
+ * ------------------------------------------------------------------ */
+inline bool SecurityVault_VerifySessionToken(const char* token, const char* hwid) {
+    if (!token || !hwid) return false;
+
+    const std::string t(token);
+    const std::string h(hwid);
+
+    const std::string prefix = "nin_sess_";
+    if (t.size() <= prefix.size() || t.compare(0, prefix.size(), prefix) != 0) {
+        return false;
+    }
+
+    /* token = nin_sess_<random>.<expiryMs>.<sig> */
+    const std::string body = t.substr(prefix.size());
+    const size_t dot1 = body.find('.');
+    if (dot1 == std::string::npos) return false;
+    const size_t dot2 = body.find('.', dot1 + 1);
+    if (dot2 == std::string::npos) return false;
+
+    const std::string random = body.substr(0, dot1);
+    const std::string expiryStr = body.substr(dot1 + 1, dot2 - dot1 - 1);
+    const std::string sig = body.substr(dot2 + 1);
+
+    if (random.empty() || expiryStr.empty() || sig.empty()) return false;
+
+    /* The expiry must be a plain integer and must not be in the past. */
+    if (expiryStr.find_first_not_of("0123456789") != std::string::npos) return false;
+    const long long expiryMs = atoll(expiryStr.c_str());
+    if (expiryMs <= 0) return false;
+    if ((long long)time(nullptr) * 1000LL >= expiryMs) return false;
+
+    /* Recompute the server signature over the same payload.
+     *
+     * IMPORTANT: the server builds the signature as
+     *     sha256(payload + ':' + SECRET)
+     * so the colon MUST be part of the signed data. Leaving it out makes
+     * every legitimate token fail the check and locks every paying user
+     * out of the app. */
+    const std::string payload = random + ":" + h + ":" + expiryStr;
+    const std::string expected =
+        NativeCrypto::Sha256(payload + ":" + "N1N_B4NK1NG_S3CUR1TY_V90_K3RN3L");
+
+    /* Constant-time compare, so the check does not leak the expected
+     * signature through its timing. */
+    if (expected.size() != sig.size()) return false;
+    unsigned char diff = 0;
+    for (size_t i = 0; i < expected.size(); ++i) {
+        diff |= (unsigned char)(expected[i] ^ sig[i]);
+    }
+    return diff == 0;
+}
 
 #endif // NIN_NATIVE_CRYPTO_H

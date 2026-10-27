@@ -215,6 +215,21 @@ Java_com_ninmods_main_auth_SecurityVault_nativeSetSession(
     g_security_expiry_epoch = 0;
 
     if (token && strlen(token) > 0 && hwid && strlen(hwid) > 0 && expirySec > 0) {
+      /* The token MUST carry a valid server signature. Without this check
+       * any non-empty string unlocked the native engine, which made the
+       * whole licence gate worthless: editing the DEX to call
+       * SecurityVault.setNativeSession("x", "y", 999999) was enough.
+       *
+       * The signature covers the HWID, so a token issued for one device
+       * cannot be replayed on another one either. */
+      if (!SecurityVault_VerifySessionToken(token, hwid)) {
+        NIN_LOGE("SECURITY",
+                 ">>> [VAULT_REJECTED] Session token signature is missing or "
+                 "invalid - the engine stays locked <<<");
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        return;
+      }
+
       strncpy(g_security_session, token, sizeof(g_security_session) - 1);
       g_security_session[sizeof(g_security_session) - 1] = '\0';
       strncpy(g_security_hwid, hwid, sizeof(g_security_hwid) - 1);

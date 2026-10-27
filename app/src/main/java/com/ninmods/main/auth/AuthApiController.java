@@ -101,7 +101,10 @@ public final class AuthApiController {
                         double balance = resJson.optDouble("balance", 0.0);
                         String currency = resJson.optString("currency", "BDT");
                         int userId = resJson.optInt("user_id", 0);
-                        String sessionToken = resJson.optString("session_token", resJson.optString("token", apiKey));
+                        /* The API key is NOT a session token: it has no signature and
+                         * the native gate would reject it. Falling back to it made
+                         * the login look successful while the engine stayed locked. */
+                        String sessionToken = resJson.optString("session_token", resJson.optString("token", ""));
 
                         String realUsername = resJson.optString("username", usernameOrEmail != null ? usernameOrEmail : "");
                         String realEmail = resJson.optString("email", "");

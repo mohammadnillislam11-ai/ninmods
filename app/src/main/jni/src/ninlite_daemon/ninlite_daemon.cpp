@@ -686,7 +686,8 @@ static void CreateDataList(Ninlite::Response& res) {
 
     uintptr_t valuesPtr = entriesArray + Offsets::Dict_ArrayHeader;
 
-    const float maxDistance = (pPlayer.AimDistance > 1.0f) ? pPlayer.AimDistance : 250.0f;
+    const float aimDistanceVal = pPlayer.AimDistance.load(std::memory_order_relaxed);
+    const float maxDistance = (aimDistanceVal > 1.0f) ? aimDistanceVal : 250.0f;
     const float offScreenMargin = 40.0f;
 
     /* ------------------------------------------------------------------
@@ -851,9 +852,10 @@ static void CreateDataList(Ninlite::Response& res) {
 
         /* target selection */
         bool aimActive = (pPlayer.silen4a || pPlayer.aimhard || pPlayer.aimbotlock);
-        bool ignoreKnocked = pPlayer.IgnoreKnock && isKnocked;
-        float fovRadius = (pPlayer.AimFov > 0.0f)
-            ? (pPlayer.AimFov / 180.0f) * (screenH * 0.55f)
+        bool ignoreKnocked = pPlayer.IgnoreKnock.load(std::memory_order_relaxed) && isKnocked;
+        const float aimFovVal = pPlayer.AimFov.load(std::memory_order_relaxed);
+        float fovRadius = (aimFovVal > 0.0f)
+            ? (aimFovVal / 180.0f) * (screenH * 0.55f)
             : (screenH * 0.55f);
 
         if (aimActive && !ignoreKnocked && isWithinFOV(screenHead, fovRadius) && distance <= maxDistance) {

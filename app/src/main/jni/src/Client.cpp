@@ -1237,9 +1237,30 @@ Java_com_ninmods_main_graphics_GLES3JNIView_nativeResize(JNIEnv *env,
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_graphics_GLES3JNIView_nativeStep(JNIEnv *env,
-                                                       jclass clazz) {
+                                                        jclass clazz) {
   if (!g_ImGuiInitialized)
     return;
+
+  /* HARDWARE ESP GATE
+   * ------------------------------------------------------------------
+   * The hardware ESP (this function) was the one path in the whole app
+   * that was NOT behind the native session gate: only the two legacy
+   * Canvas/Floater exports were guarded. Anyone who could set
+   * Actived.activar (a plain flag reachable from the Java menu) got the
+   * full ESP even without a verified server session.
+   *
+   * The gate is the native one - SecurityVault_IsSessionValid() - not a
+   * Java-side boolean, because a Java boolean can be flipped by editing
+   * the DEX, while this flag lives in the native library and is only set
+   * by SecurityVault.nativeSetSession() after the server handed out a
+   * signed session token. */
+  if (!SecurityVault_IsSessionValid()) {
+    /* Nothing may be drawn and nothing may be read from the game while
+     * there is no verified session. */
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    return;
+  }
 
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
