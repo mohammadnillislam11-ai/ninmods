@@ -110,10 +110,32 @@ public class ParticleNetworkView extends View {
         // 2: Deep Cyber Violet (#D050FF)
         particlePaints[2] = createPaint(0xAAD050FF);
 
-        // Keep 100% hardware-accelerated on all Android versions (Zero software layer OOM / Zero Mali RenderEffect black screen bugs)
+        /*
+         * Paint an opaque backdrop on the view itself.
+         *
+         * onDraw() returns early while the size is still unknown, and the
+         * screens above this view are transparent. Without an opaque
+         * background the window background (#0A0C12) showed through, which
+         * is indistinguishable from a black screen.
+         */
         try {
-            setLayerType(LAYER_TYPE_HARDWARE, null);
+            setBackgroundColor(BG_COLOR);
         } catch (Throwable ignored) {}
+
+        /*
+         * Deliberately NO setLayerType() call here.
+         *
+         * A software layer (LAYER_TYPE_SOFTWARE) forced a full screen bitmap
+         * and ran out of memory on low end Mali devices, which rendered as a
+         * solid black screen. A hardware layer (LAYER_TYPE_HARDWARE) is
+         * better than software but still allocates an offscreen frame buffer
+         * for the whole screen, and that allocation is exactly what fails on
+         * the affected Mali / Android 7-11 devices.
+         *
+         * Without an explicit layer type the view is drawn straight into the
+         * hardware accelerated window surface: still 100% hardware
+         * accelerated, but without the extra full screen buffer.
+         */
     }
 
     public void restoreDefaultBlur() {

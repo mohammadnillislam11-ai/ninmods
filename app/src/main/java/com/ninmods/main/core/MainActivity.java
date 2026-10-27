@@ -61,16 +61,26 @@ public class MainActivity extends BaseActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Initialize logging & telemetry subsystem with application context
-        AppLogger.init(this);
-        AppLogger.log("SYSTEM", "=== NINMODS Engine Initialized (Version: " + getString(R.string.app_version) + ") ===");
+        try {
+            // Initialize logging & telemetry subsystem with application context
+            AppLogger.init(this);
+            AppLogger.log("SYSTEM", "=== NINMODS Engine Initialized (Version: " + getString(R.string.app_version) + ") ===");
 
-        // Always show branded loading view immediately (eliminates blank / black screens)
-        buildSplashView();
+            // Always show branded loading view immediately (eliminates blank / black screens)
+            buildSplashView();
 
-        // Start step-by-step permission sequence starting with official SuperUser request
-        currentStep = STEP_ROOT;
-        executeCurrentStep();
+            // Start step-by-step permission sequence starting with official SuperUser request
+            currentStep = STEP_ROOT;
+            executeCurrentStep();
+        } catch (Throwable t) {
+            // The window background is a near black colour, so an exception
+            // before buildSplashView() used to leave the user on a completely
+            // black screen. Show the failure instead.
+            AppLogger.logE("SYSTEM", "Startup failed: " + t.getMessage(), t);
+            showFatalError("NINMODS could not start",
+                    "Something went wrong while preparing the app on this device. "
+                            + "Please reload the app or reinstall the latest release.");
+        }
     }
 
     @Override

@@ -25,7 +25,19 @@ import java.util.Locale;
 public final class AppLogger {
     private static final String TAG = "NINMODS_LOG";
     private static final Object LOCK = new Object();
-    private static final SimpleDateFormat SDF = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US);
+
+    /*
+     * SimpleDateFormat is NOT thread safe. A single shared instance was
+     * formatted from the UI thread, from the background thread that requests
+     * root and from the log writer thread at the same time, which can make
+     * format() throw. Because AppLogger.log() is called from onCreate()
+     * BEFORE the first view is set, such an exception left the user on the
+     * bare (black) window background. One formatter per thread removes the
+     * race completely.
+     */
+    private static final ThreadLocal<SimpleDateFormat> SDF =
+            ThreadLocal.withInitial(() -> new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US));
+
     private static final int MAX_MEMORY_LOG_ENTRIES = 300;
     private static final LinkedList<String> sMemoryLogBuffer = new LinkedList<>();
 
@@ -100,7 +112,7 @@ public final class AppLogger {
         log("SYSTEM", "==================================================");
         log("SYSTEM", "=== NINMODS GENUINE SYSTEM DIAGNOSTIC LOG STARTED ===");
         log("SYSTEM", "==================================================");
-        log("SYSTEM", "Timestamp: " + SDF.format(new Date()));
+        log("SYSTEM", "Timestamp: " + formatTimestamp());
         log("SYSTEM", "Device: " + Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.PRODUCT + ")");
         log("SYSTEM", "Hardware: " + Build.HARDWARE + " | Board: " + Build.BOARD);
         log("SYSTEM", "Primary ABI: " + (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "arm64-v8a"));
@@ -150,20 +162,35 @@ public final class AppLogger {
     }
 
     public static void log(String subTag, String message) {
-        Log.i(TAG, "[" + subTag + "] " + message);
-        String time = SDF.format(new Date());
-        String line = "[" + time + "] [" + subTag + "] " + message;
-        recordInMemory(line);
-        writeToDownloadFile(line);
+        try {
+            Log.i(TAG, "[" + subTag + "] " + message);
+            String line = "[" + formatTimestamp() + "] [" + subTag + "] " + message;
+            recordInMemory(line);
+            writeToDownloadFile(line);
+        } catch (Throwable ignored) {
+            // Logging must never take the app down.
+        }
     }
 
     public static void logE(String subTag, String message, Throwable t) {
-        Log.e(TAG, "[" + subTag + "] " + message, t);
-        String time = SDF.format(new Date());
-        String fullMsg = message + (t != null ? " : " + t.getMessage() : "");
-        String line = "[" + time + "] [ERROR][" + subTag + "] " + fullMsg;
-        recordInMemory(line);
-        writeToDownloadFile(line);
+        try {
+            Log.e(TAG, "[" + subTag + "] " + message, t);
+            String fullMsg = message + (t != null ? " : " + t.getMessage() : "");
+            String line = "[" + formatTimestamp() + "] [ERROR][" + subTag + "] " + fullMsg;
+            recordInMemory(line);
+            writeToDownloadFile(line);
+        } catch (Throwable ignored) {
+            // Logging must never take the app down.
+        }
+    }
+
+    /** Formats the current timestamp without ever throwing. */
+    private static String formatTimestamp() {
+        try {
+            return SDF.get().format(new Date());
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     private static void recordInMemory(String formattedLine) {

@@ -35,6 +35,13 @@ public final class SecurityVault {
     private static boolean sInitialized = false;
     private static boolean sIsTampered = false;
     private static String sTamperReason = "";
+    /*
+     * True when the native security library could not be loaded on this
+     * device. That is NOT the same as tampering: the native gate simply
+     * cannot be satisfied, so the engine stays locked, but the account must
+     * still be able to sign in.
+     */
+    private static boolean sNativeUnavailable = false;
 
     static {
         try {
@@ -83,13 +90,18 @@ public final class SecurityVault {
                     AppLogger.logE(TAG, sTamperReason, null);
                 }
             } catch (UnsatisfiedLinkError ule) {
-                /* The native library is the component that actually gates the
-                 * engine. If it cannot be loaded the build cannot be
-                 * verified, and an unverifiable build must not be allowed to
-                 * run - failing open here is what made the checks pointless. */
-                sIsTampered = true;
-                sTamperReason = "Native security library unavailable";
-                AppLogger.logE(TAG, sTamperReason, ule);
+                /*
+                 * The native library is the component that actually gates the
+                 * Ring 0 engine. If it cannot be loaded the build cannot be
+                 * verified - but that is a MISSING LIBRARY, not a TAMPERED
+                 * BUILD. Blocking every account on such a device would lock
+                 * the user out of the app completely, while the engine
+                 * stays locked anyway because the native gate cannot be
+                 * satisfied. The integrity check therefore fails closed for
+                 * the engine and stays open for the login itself.
+                 */
+                sNativeUnavailable = true;
+                AppLogger.logE(TAG, "Native security library is unavailable on this device", ule);
             }
 
             // 4. Hand the verdict to the native library: while the tamper
@@ -173,6 +185,14 @@ public final class SecurityVault {
      */
     public static boolean isTampered() {
         return sIsTampered;
+    }
+
+    /**
+     * True when the native security library could not be loaded. The engine
+     * stays locked in that case, but the account may still sign in.
+     */
+    public static boolean isNativeUnavailable() {
+        return sNativeUnavailable;
     }
 
     public static String getTamperReason() {

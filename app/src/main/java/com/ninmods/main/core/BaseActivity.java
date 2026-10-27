@@ -39,6 +39,109 @@ public abstract class BaseActivity extends Activity {
             }
         }
         ensureBaseWrapper();
+
+        /*
+         * Attach the base wrapper IMMEDIATELY.
+         *
+         * Every screen in this app is built programmatically, and the window
+         * background is a near black colour (#0A0C12). When a subclass threw
+         * an exception while building its own view - before it had a chance
+         * to call setContentView() - the user was left staring at that bare
+         * window background, which is exactly the "black screen" that was
+         * reported for fresh installs.
+         *
+         * Attaching the wrapper here means that a later failure can never
+         * produce an empty window any more: the themed background is already
+         * on screen and showFatalError() can put a readable message on top of
+         * it.
+         */
+        if (baseRoot.getParent() == null) {
+            super.setContentView(baseRoot);
+        }
+    }
+
+    /**
+     * Shows a readable error panel instead of leaving the user with an empty
+     * (black) window. Used whenever a screen fails while it is being built.
+     *
+     * @param title   short headline
+     * @param message human readable explanation
+     */
+    protected void showFatalError(String title, String message) {
+        try {
+            if (contentContainer == null) {
+                ensureBaseWrapper();
+            }
+            if (contentContainer == null) return;
+
+            contentContainer.removeAllViews();
+
+            android.widget.LinearLayout panel = new android.widget.LinearLayout(this);
+            panel.setOrientation(android.widget.LinearLayout.VERTICAL);
+            panel.setGravity(android.view.Gravity.CENTER);
+            panel.setPadding(dp(28), dp(28), dp(28), dp(28));
+            android.widget.FrameLayout.LayoutParams panelLp = new android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.Gravity.CENTER
+            );
+            panel.setLayoutParams(panelLp);
+
+            android.widget.TextView titleView = new android.widget.TextView(this);
+            titleView.setText(title);
+            titleView.setTextColor(AppColors.WHITE);
+            titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18);
+            titleView.setGravity(android.view.Gravity.CENTER);
+            titleView.setPadding(0, 0, 0, dp(14));
+            panel.addView(titleView);
+
+            android.widget.TextView messageView = new android.widget.TextView(this);
+            messageView.setText(message);
+            messageView.setTextColor(AppColors.MAGENTA_TEXT_DIM);
+            messageView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+            messageView.setGravity(android.view.Gravity.CENTER);
+            panel.addView(messageView);
+
+            android.widget.Button retry = new android.widget.Button(this);
+            android.widget.LinearLayout.LayoutParams retryLp = new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(44)
+            );
+            retryLp.topMargin = dp(20);
+            retry.setLayoutParams(retryLp);
+            retry.setText("RELOAD APP");
+            retry.setTextColor(AppColors.WHITE);
+            retry.setOnClickListener(v -> {
+                try {
+                    android.content.Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                    if (intent != null) {
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                | android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                    }
+                    finish();
+                } catch (Throwable ignored) {
+                    finish();
+                }
+            });
+            panel.addView(retry);
+
+            contentContainer.addView(panel, panelLp);
+
+            if (baseRoot.getParent() == null) {
+                super.setContentView(baseRoot);
+            }
+        } catch (Throwable ignored) {
+            // Nothing else can be done - the window keeps the themed
+            // background that was attached in onCreate().
+        }
+    }
+
+    private int dp(int value) {
+        return (int) android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_DIP,
+                value,
+                getResources().getDisplayMetrics()
+        );
     }
 
     /**

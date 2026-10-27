@@ -26,6 +26,7 @@ import android.widget.Toast;
 
 import com.ninmods.main.R;
 import com.ninmods.main.core.AppColors;
+import com.ninmods.main.core.AppLogger;
 import com.ninmods.main.core.BaseActivity;
 import com.ninmods.main.core.DashboardActivity;
 import com.ninmods.main.core.Prefs;
@@ -52,7 +53,16 @@ public class LoginActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        buildView();
+        try {
+            buildView();
+        } catch (Throwable t) {
+            // Never leave the user with an empty (black) window: show what
+            // went wrong and offer a reload instead.
+            AppLogger.logE("SYSTEM", "Login screen failed to build: " + t.getMessage(), t);
+            showFatalError("Could not open the login screen",
+                    "The interface could not be created on this device. "
+                            + "Please reload the app or reinstall the latest release.");
+        }
     }
 
     private void buildView() {

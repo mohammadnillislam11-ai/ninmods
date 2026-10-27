@@ -43,7 +43,15 @@ public class ResetPasswordActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        buildView();
+        try {
+            buildView();
+        } catch (Throwable t) {
+            // Never leave the user with an empty (black) window.
+            com.ninmods.main.core.AppLogger.logE("SYSTEM", "Reset password screen failed to build: " + t.getMessage(), t);
+            showFatalError("Could not open the reset screen",
+                    "The interface could not be created on this device. "
+                            + "Please reload the app or reinstall the latest release.");
+        }
     }
 
     private void buildView() {

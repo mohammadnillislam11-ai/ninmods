@@ -563,9 +563,14 @@ public final class AuthManager {
      * Returns "" for a null/blank password so an empty hash is never treated as "no password set".
      */
     public static String hashPassword(String password) {
-        // Normalize exactly like the server does (login/register/reset all send password.trim()).
+        /*
+         * The password is NOT trimmed: the server stopped trimming it as well
+         * (trimming silently changes the credential, so an account whose
+         * password contains leading or trailing spaces could never sign in).
+         * The local hash must therefore cover exactly the characters that
+         * are sent to the server.
+         */
         if (password == null) return "";
-        password = password.trim();
         if (password.isEmpty()) return "";
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
