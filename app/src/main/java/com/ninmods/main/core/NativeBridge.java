@@ -76,6 +76,44 @@ public final class NativeBridge {
     public static native void closeOverlay();
 
     /**
+     * Runs a shell script as root through Magisk' su and returns its exit code.
+     *
+     * The app process must NOT fork(). The Android app sandbox answers a
+     * plain fork() with SIGSYS and kills the whole process, which is why
+     * system() and popen() are unusable in this app. Runtime.exec() on the
+     * Java side uses the allowed posix_spawn() path, so the spawn has to be
+     * done here and the native side calls this method through the JNI.
+     *
+     * @param script the shell script to run as root
+     * @return the exit code of the script, or -1 when it could not run
+     */
+    public static int runAsRoot(String script) {
+        if (script == null || script.isEmpty()) {
+            return -1;
+        }
+        try {
+            Process process = new ProcessBuilder("su", "-c", script)
+                    .redirectErrorStream(true)
+                    .start();
+
+            // Drain the output so the pipe can never fill up and deadlock.
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    AppLogger.log(TAG, line);
+                }
+            }
+
+            return process.waitFor();
+        } catch (Throwable t) {
+            Log.e(TAG, "runAsRoot failed", t);
+            AppLogger.logE(TAG, "runAsRoot failed: " + t.getMessage(), t);
+            return -1;
+        }
+    }
+
+    /**
      * Direct Semi-JNI switch & hack control for Android Floating Window.
      */
     public static native void setFeatureState(int featId, boolean state);

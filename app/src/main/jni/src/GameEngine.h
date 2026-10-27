@@ -886,6 +886,35 @@ inline void CreateDataList(Response& SendResponse) {
     static pid_t s_last_verified_pid = -1;
     pid_t currentPid = target_pid.load(std::memory_order_relaxed);
     if (currentPid <= 0 || kill(currentPid, 0) != 0) {
+        /*
+         * THROTTLED GAME LOOKUP
+         * ----------------------
+         * FindGamePid() walks the whole /proc tree and opens plus reads the
+         * cmdline of every single process on the device. That is several
+         * hundred file reads.
+         *
+         * This function runs from the scene worker, which ticks at 60 Hz, and
+         * the lookup was repeated on EVERY tick while the game was not
+         * running (or had just been closed). The result was a continuous
+         * storm of /proc reads - roughly 50 to 60 full process scans per
+         * second - which starved the device and made the whole screen appear
+         * to freeze. The overlay was open over the launcher in exactly that
+         * situation: the game is in the background, so the scan never
+         * succeeded and never stopped.
+         *
+         * The lookup is now done at most once every 1.5 seconds.
+         */
+        static std::atomic<int64_t> s_next_pid_scan_ms{0};
+        const int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::steady_clock::now().time_since_epoch())
+                                  .count();
+        if (nowMs < s_next_pid_scan_ms.load(std::memory_order_relaxed)) {
+            /* Too soon for another scan - keep the previous state and let the
+             * next tick try again. */
+            return;
+        }
+        s_next_pid_scan_ms.store(nowMs + 1500, std::memory_order_relaxed);
+
         currentPid = FindGamePid();
         target_pid.store(currentPid, std::memory_order_relaxed);
         if (currentPid <= 0) {
@@ -1544,9 +1573,21 @@ inline void SceneWorker() {
 
         long elapsed = (long)std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - startedAt).count();
+
         long sleepMs = 16 - elapsed;
         if (sleepMs < 4) sleepMs = 4;
         if (sleepMs > 50) sleepMs = 50;
+
+        /*
+         * Nothing was updated - the game is not running (or not reachable).
+         * Ticking at 60 Hz in that state is pointless work: the worker would
+         * hammer the driver/proc lookups for nothing and keep the device
+         * busy. Back off to a slow poll instead.
+         */
+        if (!updated) {
+            sleepMs = 250;
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
     }
 }

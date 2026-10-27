@@ -1,4 +1,4 @@
-#ifndef UTILS
+﻿#ifndef UTILS
 #define UTILS
 
 #include <jni.h>
@@ -18,7 +18,6 @@
 #include "Logger.h"
 #include "NativeCrypto.h"
 #include "driver.h"
-#include "ShellExec.h"
 
 /* The target PID and the libil2cpp base are written by the JNI thread
  * (getDetectedGamePid / getDetectedGameTitle) AND by the scene worker thread
@@ -270,17 +269,56 @@ inline pid_t FindPid(const char *PackageName) {
     if (PackageName != nullptr && (strstr(PackageName, "freefire") != nullptr)) {
         return FindGamePid();
     }
-    char text[69];
-    snprintf(text, sizeof(text), "pidof %s 2>/dev/null", PackageName);
-
-    /* posix_spawn() instead of popen(): popen() uses fork(), which the
-     * Android app sandbox answers with SIGSYS. See Includes/ShellExec.h. */
-    char output[32] = {0};
-    if (RunShellCommand(text, output, sizeof(output)) == 0) {
-        pid_t pid = (pid_t)atoi(output);
-        return pid;
+    if (PackageName == nullptr) {
+        return 0;
     }
-    return 0;
+
+    /*
+     * NO PROCESS SPAWNING HERE.
+     *
+     * This used to run "pidof <package>" through popen(), which forks().
+     * The Android app sandbox answers a plain fork() with SIGSYS and kills
+     * the process, and spawning a shell just to read a PID is expensive on
+     * a phone anyway.
+     *
+     * The same answer is obtained by reading /proc/<pid>/cmdline directly,
+     * which costs no process at all and is what FindGamePid() does.
+     */
+    DIR *dir = opendir("/proc");
+    if (dir == nullptr) {
+        return 0;
+    }
+
+    pid_t found = 0;
+    struct dirent *entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr) {
+        char *endptr = nullptr;
+        pid_t pid = strtol(entry->d_name, &endptr, 10);
+        if (endptr == nullptr || *endptr != '\0' || pid <= 0) {
+            continue;
+        }
+
+        char cmdlinePath[64];
+        snprintf(cmdlinePath, sizeof(cmdlinePath), "/proc/%d/cmdline", pid);
+        FILE *fp = fopen(cmdlinePath, "rb");
+        if (fp == nullptr) {
+            continue;
+        }
+        char cmdline[256] = {0};
+        size_t n = fread(cmdline, 1, sizeof(cmdline) - 1, fp);
+        fclose(fp);
+
+        if (n > 0) {
+            cmdline[n] = '\0';
+            if (strstr(cmdline, PackageName) != nullptr) {
+                found = pid;
+                break;
+            }
+        }
+    }
+    closedir(dir);
+
+    return found;
 }
 
 // Encontra o endereço base de uma biblioteca dentro do processo alvo

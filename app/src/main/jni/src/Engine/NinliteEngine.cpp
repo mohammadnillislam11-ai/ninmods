@@ -3,7 +3,7 @@
 #include "NinliteEngine.h"
 #include "Includes/Logger.h"
 #include "Includes/driver.h"
-#include "Includes/ShellExec.h"
+#include "Includes/JavaShell.h"
 #include "GameEngine.h"
 #include <dirent.h>
 #include <unistd.h>
@@ -168,16 +168,11 @@ void StartEngine(const std::string& nativeLibDir) {
         script += "chmod 666 /dev/BYNb /dev/mem_tool /dev/nh /dev/wanbai >/dev/null 2>&1\n";
         script += "nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
 
-        std::string suCommand = "su -c '";
-        suCommand += script;
-        suCommand += "'";
-
-        /* Run the script through posix_spawn() instead of popen().
-         * popen() uses fork(), which the Android app sandbox answers with
-         * SIGSYS - the same crash that the global driver constructor used to
-         * cause while the splash screen was still up. */
-        char suOutput[512];
-        int rc = RunShellCommand(suCommand.c_str(), suOutput, sizeof(suOutput));
+        /* The script is run by the Java side (NativeBridge.runAsRoot).
+         * The app process must not fork(): the Android sandbox answers a
+         * plain fork() with SIGSYS and kills the process. Runtime.exec() in
+         * Java uses the allowed posix_spawn() path. */
+        int rc = RunRootScriptViaJava(script);
         if (rc != 0) {
             NIN_LOGE("NINLITE", "su -c returned %d - daemon launch failed", rc);
         }
