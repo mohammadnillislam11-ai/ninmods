@@ -1,4 +1,4 @@
-﻿#ifndef UTILS
+#ifndef UTILS
 #define UTILS
 
 #include <jni.h>
