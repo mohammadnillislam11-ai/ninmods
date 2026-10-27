@@ -221,8 +221,8 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
     return;
 
   float totalXAdjust = g_espRightAdjust - g_espLeftAdjust;
-  float globalThickness =
-      pEspPlayer.thickness > 0.5f ? pEspPlayer.thickness : 1.5f;
+  float thicknessVal = pEspPlayer.thickness.load(std::memory_order_relaxed);
+  float globalThickness = (thicknessVal > 0.5f) ? thicknessVal : 1.5f;
 
   for (int i = 0; i < response.PlayerCount; i++) {
     const auto &player = response.Players[i];
@@ -237,7 +237,8 @@ void RenderHardwareESP(int screenWidth, int screenHeight) {
       toePos = headPos;
 
     float distance = player.Distancia;
-    float maxDist = (pPlayer.AimDistance > 150.0f) ? pPlayer.AimDistance : 350.0f;
+    float aimDistanceVal = pPlayer.AimDistance.load(std::memory_order_relaxed);
+    float maxDist = (aimDistanceVal > 150.0f) ? aimDistanceVal : 350.0f;
     if (distance < 0.1f || distance > maxDist)
       continue;
 
@@ -667,8 +668,8 @@ void DrawESP(ESP esp) {
       continue;
 
     // Dynamic distance scaling for clean visuals
-    float thickness = (distance > 70.0f) ? 1.0f : globalThickness;
-    float fSize = (distance > 70.0f) ? 10.0f : pEspPlayer.textSize;
+    float textSizeVal = pEspPlayer.textSize.load(std::memory_order_relaxed);
+    float fSize = (distance > 70.0f) ? 10.0f : textSizeVal;
 
     float headToFeetHeight = std::abs(toePos.Y - headPos.Y);
     if (headToFeetHeight < 3.0f)

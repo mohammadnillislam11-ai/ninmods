@@ -993,7 +993,8 @@ inline void CreateDataList(Response& SendResponse) {
     if ((speedHackEnabled || pPlayer.SpeedHackV2) && IsValidUserPointer64(BaseGame)) {
         uintptr_t timeService = Read<uintptr_t>(BaseGame + Offsets::BaseGameTimeService);
         if (IsValidUserPointer64(timeService)) {
-            float mult = (pPlayer.gameSpeed > 0.1f) ? pPlayer.gameSpeed : 1.5f;
+            float speedSetting = pPlayer.gameSpeed.load(std::memory_order_relaxed);
+            float mult = (speedSetting > 0.1f) ? speedSetting : 1.5f;
             float speedVal = 0.03299999982f * mult;
             Write<float>(timeService + Offsets::TimeServiceSpeed, speedVal);
             speedWasActive = true;
