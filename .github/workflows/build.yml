@@ -53,17 +53,41 @@ jobs:
           ./gradlew assembleDebug --stacktrace
 
       - name: Sign & Align APK
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          # Must stay in sync with SecurityVault_ExpectedCertDigest() in
+          # app/src/main/jni/src/Includes/NativeCrypto.h
+          EXPECTED_CERT_SHA256: 46f9c3598550d9a66915913d38d1229585f661c14c3179900ba49839faac984e
         run: |
           APK_SRC=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
           echo "Found APK at: $APK_SRC"
           APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
           if [ -z "$APP_VER" ]; then APP_VER="90.1"; fi
           echo "Building Main_V${APP_VER}.apk"
+          KS_PASS="${RELEASE_KEYSTORE_PASSWORD:-ninmods123}"
+          KEY_ALIAS="${RELEASE_KEY_ALIAS:-ninmods}"
+          KEY_PASS="${RELEASE_KEY_PASSWORD:-$KS_PASS}"
           if [ ! -f "release.keystore" ]; then
-            keytool -genkey -v -keystore release.keystore -alias ninmods -keyalg RSA -keysize 2048 -validity 10000 -storepass ninmods123 -keypass ninmods123 -dname "CN=NINMODS, OU=Mobile, O=NIN, L=Dhaka, S=Dhaka, C=BD"
+            echo "::error::release.keystore is missing."
+            echo "::error::The application refuses to start when it was signed with a certificate other than the one compiled into the native library, so the build cannot silently generate a new key."
+            exit 1
+          fi
+          # The application itself refuses to run when the signing certificate
+          # does not match the fingerprint compiled into NativeCrypto.h.
+          # A keystore that does not match therefore has to fail the build
+          # instead of shipping an APK that locks itself out on the device.
+          ACTUAL_SHA256=$(keytool -list -v -keystore release.keystore -storepass "$KS_PASS" -alias "$KEY_ALIAS" 2>/dev/null | grep 'SHA256:' | sed -E 's/.*SHA256: ([0-9A-F:]+).*/\1/' | tr -d ':' | tr 'A-F' 'a-f')
+          echo "Keystore certificate SHA-256: $ACTUAL_SHA256"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::Signing certificate fingerprint mismatch: keystore=$ACTUAL_SHA256 expected=$EXPECTED_CERT_SHA256"
+            echo "::error::When the release key is rotated, update SecurityVault_ExpectedCertDigest() in app/src/main/jni/src/Includes/NativeCrypto.h and the RELEASE_CERT_SHA256 value in the backend .env."
+            exit 1
           fi
           $ANDROID_HOME/build-tools/34.0.0/zipalign -p -f 4 "$APK_SRC" main_aligned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:ninmods123 --key-pass pass:ninmods123 --v4-signing-enabled false --out "Main_V${APP_VER}.apk" main_aligned.apk
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass pass:"$KS_PASS" --key-pass pass:"$KEY_PASS" --v4-signing-enabled false --out "Main_V${APP_VER}.apk" main_aligned.apk
+          find . -name "*.idsig" -delete
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "Main_V${APP_VER}.apk"
 
       - name: Fetch Latest Loader APK (Preserve Original Version)

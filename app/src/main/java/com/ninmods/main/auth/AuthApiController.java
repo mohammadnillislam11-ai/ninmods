@@ -59,6 +59,37 @@ public final class AuthApiController {
 
     private AuthApiController() {}
 
+    /**
+     * Refuses the request when the application integrity checks flagged this
+     * build.
+     *
+     * The checks (hook detection, anti-debug and the release certificate
+     * fingerprint) used to be run but their result was only written to the
+     * log - nothing ever acted on it, so a patched APK could keep using the
+     * API normally. A build that cannot be proven genuine is now rejected
+     * before any request is made, and the native library is put into the
+     * locked state (see SecurityVault.init).
+     *
+     * @return true when the caller must abort the request
+     */
+    private static boolean blockedByTamperCheck(Context context, ApiCallback callback) {
+        SecurityVault.init(context);
+
+        if (!SecurityVault.isTampered()) {
+            return false;
+        }
+
+        String reason = SecurityVault.getTamperReason();
+        Log.e(TAG, "Request refused - integrity check failed: " + reason);
+
+        if (callback != null) {
+            mainHandler.post(() -> callback.onError(
+                    "This build failed the integrity check and cannot be used. "
+                            + "Please install the official release."));
+        }
+        return true;
+    }
+
     public static String getServerBaseUrl(Context context) {
         return Prefs.with(context).readString(PREF_SERVER_BASE_URL, DEFAULT_SERVER_URL);
     }
@@ -79,14 +110,16 @@ public final class AuthApiController {
      * Supports login via either Username or Email.
      */
     public static void login(Context context, String usernameOrEmail, String password, final ApiCallback callback) {
-        SecurityVault.init(context);
+        if (blockedByTamperCheck(context, callback)) return;
 
         executor.execute(() -> {
             try {
                 String hwid = getHwid(context);
                 JSONObject payload = new JSONObject();
                 payload.put("username", usernameOrEmail != null ? usernameOrEmail.trim() : "");
-                payload.put("password", password != null ? password.trim() : "");
+                /* The password is NOT trimmed: trimming would silently change
+                 * the credential, and the backend no longer trims it either. */
+                payload.put("password", password != null ? password : "");
                 payload.put("hwid", hwid);
                 payload.put("deviceModel", Build.MANUFACTURER + " " + Build.MODEL);
                 payload.put("androidVersion", Build.VERSION.RELEASE);
@@ -177,7 +210,7 @@ public final class AuthApiController {
     }
 
     public static void register(Context context, String username, String email, String password, String telephone, String refCode, final ApiCallback callback) {
-        SecurityVault.init(context);
+        if (blockedByTamperCheck(context, callback)) return;
 
         executor.execute(() -> {
             try {
@@ -185,8 +218,8 @@ public final class AuthApiController {
                 JSONObject payload = new JSONObject();
                 payload.put("username", username != null ? username.trim() : "");
                 payload.put("email", email != null ? email.trim() : "");
-                payload.put("password", password != null ? password.trim() : "");
-                payload.put("password_again", password != null ? password.trim() : "");
+                payload.put("password", password != null ? password : "");
+                payload.put("password_again", password != null ? password : "");
                 payload.put("telephone", telephone != null ? telephone.trim() : "");
                 if (refCode != null && !refCode.trim().isEmpty()) {
                     payload.put("ref_code", refCode.trim());
@@ -223,15 +256,15 @@ public final class AuthApiController {
      * Strictly resets password online on the backend database.
      */
     public static void resetPassword(Context context, String usernameOrEmail, String newPassword, final ApiCallback callback) {
-        SecurityVault.init(context);
+        if (blockedByTamperCheck(context, callback)) return;
 
         executor.execute(() -> {
             try {
                 String hwid = getHwid(context);
                 JSONObject payload = new JSONObject();
                 payload.put("username", usernameOrEmail != null ? usernameOrEmail.trim() : "");
-                payload.put("newPassword", newPassword != null ? newPassword.trim() : "");
-                payload.put("password", newPassword != null ? newPassword.trim() : "");
+                payload.put("newPassword", newPassword != null ? newPassword : "");
+                payload.put("password", newPassword != null ? newPassword : "");
                 payload.put("hwid", hwid);
 
                 String response = executePost(context, ENDPOINT_RESET_PASS, payload.toString(), AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
@@ -260,7 +293,7 @@ public final class AuthApiController {
      * Strictly verifies license key online, checks HWID binding, and retrieves remaining time.
      */
     public static void verifyLicenseKey(Context context, String key, String brandId, final ApiCallback callback) {
-        SecurityVault.init(context);
+        if (blockedByTamperCheck(context, callback)) return;
 
         executor.execute(() -> {
             try {
@@ -378,6 +411,13 @@ public final class AuthApiController {
                 JSONObject payload = new JSONObject();
                 payload.put("licenseKey", activeKey);
                 payload.put("license_key", activeKey);
+                /* The heartbeat is the server side licence enforcement point:
+                 * the server verifies this token (signature, expiry, HWID
+                 * binding and the token stored for the licence row). Without
+                 * it the server accepted ANY client that knew the licence
+                 * key. Both spellings are sent so that the request works
+                 * against older and newer server builds. */
+                payload.put("session_token", sessionToken);
                 payload.put("sessionToken", sessionToken);
                 payload.put("hwid", hwid);
 
@@ -417,7 +457,7 @@ public final class AuthApiController {
      * directly from the secure server database.
      */
     public static void fetchProfile(Context context, final ApiCallback callback) {
-        SecurityVault.init(context);
+        if (blockedByTamperCheck(context, callback)) return;
         executor.execute(() -> {
             try {
                 String response = executeGet(context, ENDPOINT_PROFILE, AuthConstants.HTTP_CONNECT_TIMEOUT_MS);

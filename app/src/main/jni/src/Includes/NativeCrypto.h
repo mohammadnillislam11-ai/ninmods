@@ -17,6 +17,55 @@ inline char g_security_hwid[128] = {0};
 inline long long g_security_expiry_epoch = 0;
 inline std::mutex g_security_mutex;
 
+/* Tamper flag.
+ *
+ * Set by the Java layer (SecurityVault.init) after the integrity checks have
+ * run. While it is set the native session gate stays closed, so a patched
+ * APK cannot use a valid session to drive the Ring 0 engine. */
+inline std::atomic<bool> g_tamper_detected{false};
+
+/**
+ * SHA-256 fingerprint of the release signing certificate
+ * (nin/release.keystore, alias "ninmods").
+ *
+ * A build that was re-signed with another key - which is exactly what MT
+ * Manager does when an APK is patched - no longer matches this value. The
+ * fingerprint lives in the native library so that it cannot be edited with
+ * a DEX editor alone.
+ *
+ * IMPORTANT: this value has to be updated together with a new release
+ * keystore. See the certificate fingerprint in the report.
+ */
+inline const char* SecurityVault_ExpectedCertDigest() {
+    return "46f9c3598550d9a66915913d38d1229585f661c14c3179900ba49839faac984e";
+}
+
+/**
+ * Records the result of the integrity checks.
+ *
+ * When tampering is detected the active session is dropped as well, so the
+ * engine is locked immediately and not only for the next session.
+ *
+ * @param bool tampered
+ * @return bool true when the build is considered genuine
+ */
+inline bool SecurityVault_SetTamperState(bool tampered) {
+    std::lock_guard<std::mutex> lock(g_security_mutex);
+    g_tamper_detected.store(tampered, std::memory_order_relaxed);
+    if (tampered) {
+        g_session_verified.store(false, std::memory_order_relaxed);
+        memset(g_security_session, 0, sizeof(g_security_session));
+        memset(g_security_hwid, 0, sizeof(g_security_hwid));
+        g_security_expiry_epoch = 0;
+    }
+    return !tampered;
+}
+
+/** True when the integrity checks flagged this build as tampered. */
+inline bool SecurityVault_IsTampered() {
+    return g_tamper_detected.load(std::memory_order_relaxed);
+}
+
 /**
  * Real session gate.
  *
@@ -28,6 +77,9 @@ inline std::mutex g_security_mutex;
  */
 inline bool SecurityVault_IsSessionValid() {
     std::lock_guard<std::mutex> lock(g_security_mutex);
+    if (g_tamper_detected.load(std::memory_order_relaxed)) {
+        return false;
+    }
     if (!g_session_verified.load(std::memory_order_relaxed)) {
         return false;
     }

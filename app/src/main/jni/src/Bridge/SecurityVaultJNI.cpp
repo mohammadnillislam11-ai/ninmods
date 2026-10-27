@@ -12,6 +12,61 @@
 #include "Includes/driver.h"
 #include "Includes/Utils.h"
 
+namespace {
+
+/** True when the character is a hexadecimal digit. */
+inline bool isHexDigit(char c) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+/**
+ * Compares two certificate fingerprints regardless of the ':' separators and
+ * of the letter case.
+ *
+ * The fingerprint of the release certificate is stored exactly once, in
+ * NativeCrypto.h. Keeping a second, colon separated copy here would be a
+ * second source of truth that can silently drift, so both forms are
+ * normalised instead.
+ */
+inline bool DigestEquals(const char *a, const char *b) {
+  if (!a || !b) return false;
+
+  size_t na = 0;
+  size_t nb = 0;
+  for (const char *p = a; *p; ++p) {
+    if (isHexDigit(*p)) ++na;
+  }
+  for (const char *p = b; *p; ++p) {
+    if (isHexDigit(*p)) ++nb;
+  }
+  if (na == 0 || na != nb) return false;
+
+  const char *pa = a;
+  const char *pb = b;
+  size_t consumed = 0;
+
+  while (consumed < na) {
+    /* Advance to the next hexadecimal digit of both strings. */
+    while (*pa != '\0' && !isHexDigit(*pa)) ++pa;
+    while (*pb != '\0' && !isHexDigit(*pb)) ++pb;
+    if (*pa == '\0' || *pb == '\0') return false;
+
+    char ca = *pa;
+    char cb = *pb;
+    if (ca >= 'A' && ca <= 'Z') ca = (char)(ca - 'A' + 'a');
+    if (cb >= 'A' && cb <= 'Z') cb = (char)(cb - 'A' + 'a');
+    if (ca != cb) return false;
+
+    ++pa;
+    ++pb;
+    ++consumed;
+  }
+
+  return true;
+}
+
+} // namespace
+
 // ============================================================================
 // BANKING-GRADE APPLICATION SECURITY & DRIVER INQUIRY JNI EXPORTS
 // ============================================================================
@@ -197,7 +252,58 @@ Java_com_ninmods_main_auth_SecurityVault_nativeVerifyIntegrity(
     fclose(mf);
   }
 
+  // 3. APK signing certificate check.
+  //
+  // The certDigest parameter used to be accepted and then IGNORED, which
+  // meant that a build re-signed with MT Manager was indistinguishable from
+  // the original release: the app happily kept working and the engine kept
+  // running. The fingerprint of the release certificate is compiled into this
+  // native library and compared here.
+  const char *expectedDigest = SecurityVault_ExpectedCertDigest();
+  if (!certDigest) {
+    NIN_LOGE("SECURITY",
+             ">>> [TAMPER_CHECK_FAILED] certificate digest unavailable - "
+             "the APK signature cannot be verified <<<");
+    return JNI_FALSE;
+  }
+
+  const char *actualDigest = env->GetStringUTFChars(certDigest, nullptr);
+  if (!actualDigest) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    NIN_LOGE("SECURITY",
+             ">>> [TAMPER_CHECK_FAILED] certificate digest could not be read <<<");
+    return JNI_FALSE;
+  }
+
+  /* The expected fingerprint lives in exactly one place
+   * (NativeCrypto.h :: SecurityVault_ExpectedCertDigest). The comparison
+   * normalises the separators and the letter case, so the ':' separated form
+   * and the plain hex form are both accepted without keeping a second copy
+   * of the constant here. */
+  const bool digestMatches = DigestEquals(actualDigest, expectedDigest);
+
+  env->ReleaseStringUTFChars(certDigest, actualDigest);
+
+  if (!digestMatches) {
+    NIN_LOGE("SECURITY",
+             ">>> [TAMPER_DETECTED] The APK was not signed with the release "
+             "certificate - this build has been re-signed or modified <<<");
+    return JNI_FALSE;
+  }
+
   return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ninmods_main_auth_SecurityVault_nativeSetTamperState(
+    JNIEnv *env, jclass clazz, jboolean tampered) {
+  const bool genuine = SecurityVault_SetTamperState(tampered == JNI_TRUE);
+  if (!genuine) {
+    NIN_LOGE("SECURITY",
+             ">>> [VAULT_LOCKED] Tamper state recorded - the native engine stays "
+             "locked <<<");
+  }
+  return genuine ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL

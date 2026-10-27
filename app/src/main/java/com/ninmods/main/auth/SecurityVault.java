@@ -56,7 +56,14 @@ public final class SecurityVault {
         try {
             // 1. Verify APK Certificate Digest
             String certDigest = getApkCertificateDigest(context);
-            
+            if (certDigest == null || certDigest.trim().isEmpty()) {
+                /* If the signature cannot be read, the build cannot be
+                 * proven genuine. Fail closed. */
+                sIsTampered = true;
+                sTamperReason = "APK signing certificate could not be read";
+                AppLogger.logE(TAG, sTamperReason, null);
+            }
+
             // 2. Scan /proc/self/maps for injected hook engines (Frida, Substrate, Xposed)
             String hookEngine = detectInjectedHooks();
             if (hookEngine != null) {
@@ -65,7 +72,9 @@ public final class SecurityVault {
                 AppLogger.logE(TAG, sTamperReason, null);
             }
 
-            // 3. Native JNI Integrity Check
+            // 3. Native JNI Integrity Check (TracerPid, mapped libraries and
+            //    the release certificate fingerprint compiled into the
+            //    native library).
             try {
                 boolean nativeCheck = nativeVerifyIntegrity(context, certDigest);
                 if (!nativeCheck) {
@@ -74,12 +83,29 @@ public final class SecurityVault {
                     AppLogger.logE(TAG, sTamperReason, null);
                 }
             } catch (UnsatisfiedLinkError ule) {
-                // Native check fallback
+                /* The native library is the component that actually gates the
+                 * engine. If it cannot be loaded the build cannot be
+                 * verified, and an unverifiable build must not be allowed to
+                 * run - failing open here is what made the checks pointless. */
+                sIsTampered = true;
+                sTamperReason = "Native security library unavailable";
+                AppLogger.logE(TAG, sTamperReason, ule);
+            }
+
+            // 4. Hand the verdict to the native library: while the tamper
+            //    flag is set, SecurityVault_IsSessionValid() returns false
+            //    and the Ring 0 engine stays locked.
+            try {
+                nativeSetTamperState(sIsTampered);
+            } catch (UnsatisfiedLinkError ignored) {
+                // Nothing else can be done here - the native library is gone.
             }
 
             AppLogger.log(TAG, "Security Vault initialized. Status: " + (sIsTampered ? "TAMPERED (" + sTamperReason + ")" : "SECURE_GENUINE"));
         } catch (Exception e) {
-            AppLogger.logE(TAG, "Security initialization error: " + e.getMessage(), e);
+            sIsTampered = true;
+            sTamperReason = "Security initialization error";
+            AppLogger.logE(TAG, sTamperReason, e);
         }
     }
 
@@ -234,4 +260,5 @@ public final class SecurityVault {
     private static native boolean nativeVerifyIntegrity(Context context, String certDigest);
     private static native void nativeSetSession(String token, String hwid, long expirySeconds);
     private static native boolean nativeIsSessionValid();
+    private static native boolean nativeSetTamperState(boolean tampered);
 }
