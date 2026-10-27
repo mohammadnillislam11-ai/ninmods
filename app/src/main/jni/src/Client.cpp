@@ -1500,6 +1500,11 @@ static void SyncWithNinLiteDaemon(int mode, bool isOn, int value) {
   }
 }
 
+/* The selected silent aim target (0 = Legit, 1 = Head, 2 = Chest, 3 = Neck).
+ * The engine only models "head" and "not head", so the raw selection is kept
+ * here to let the menu read back exactly what the user picked. */
+static std::atomic<int> g_silentTargetSelection{1};
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
                                                         jclass clazz,
@@ -1546,12 +1551,17 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
     break;
   case 22:
     pPlayer.silen4a = bState;
+    /* The root Daemon keeps its own copy of the aim flags. Without this the
+     * classic menu switch changed the app side only, while the Daemon (the
+     * component that actually moves the aim) never heard about it. */
+    SyncWithNinLiteDaemon(Ninlite::MODE_SILENT, bState, 0);
     break;
   case 23:
     pPlayer.aimMagnet = bState;
     break;
   case 24:
     pPlayer.ignoreKnocked = bState;
+    SyncWithNinLiteDaemon(Ninlite::MODE_IGNORE_KNOCK, bState, 0);
     break;
   case 25:
     pPlayer.ignoreBots = bState;
@@ -1578,25 +1588,25 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureState(JNIEnv *env,
   // Ids 111..115: 101/102 belong to the "MAX TARGET DISTANCE" and
   // "GAME SPEED" sliders of the main overlay menu. Sharing the numeric ids
   // meant that a single NINLITE checkbox also overwrote an unrelated value.
+  /* 111..115 write exactly ONE flag each. They used to force the master
+   * switch on unconditionally, so switching a feature OFF switched the whole
+   * ESP master ON and the master could never be turned off from this menu.
+   * The master is now handled explicitly by the Java state store, which
+   * persists it and mirrors it into the other menu. */
   case 111:
     pEspPlayer.espCaixa = bState;
-    Actived.activar = true;
     break;
   case 112:
     pEspPlayer.espLinha = bState;
-    Actived.activar = true;
     break;
   case 113:
     pEspPlayer.espHealth = bState;
-    Actived.activar = true;
     break;
   case 114:
     pEspPlayer.espDistance = bState;
-    Actived.activar = true;
     break;
   case 115:
     pEspPlayer.espName = bState;
-    Actived.activar = true;
     break;
   case 301:
     /* "Silent Aim Enable" must not silently switch the separate
@@ -1663,6 +1673,9 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env,
      * so choosing "Legit" silently enabled head-only aiming. */
     {
       int selection = (int)fVal;
+      if (selection < 0) selection = 0;
+      if (selection > 3) selection = 3;
+      g_silentTargetSelection.store(selection);
       pPlayer.silentAimHead = (selection == 1);
       if (selection == 1) {
         SyncWithNinLiteDaemon(Ninlite::MODE_HEAD_RATE, true, 3);
@@ -1675,6 +1688,35 @@ Java_com_ninmods_main_core_NativeBridge_setFeatureFloat(JNIEnv *env,
     break;
   default:
     break;
+  }
+}
+
+/* Reads the live value of a slider / dropdown back out of the engine.
+ * Without this the menus could only WRITE the values, so they had to hard
+ * code the initial slider position and silently overwrote the engine every
+ * time the menu was opened. */
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_ninmods_main_core_NativeBridge_getFeatureFloat(JNIEnv *env,
+                                                          jclass clazz,
+                                                          jint featId) {
+  switch (featId) {
+  case 100:
+  case 303:
+    return (jfloat)pPlayer.AimFov.load();
+  case 101:
+    return (jfloat)pPlayer.AimDistance.load();
+  case 102:
+    return (jfloat)pPlayer.gameSpeed.load();
+  case 201:
+    return (jfloat)(int)pEspPlayer.boxType.load();
+  case 202:
+    return (jfloat)(int)pEspPlayer.lineType.load();
+  case 304:
+    return (jfloat)pPlayer.legitDelayMs.load();
+  case 305:
+    return (jfloat)g_silentTargetSelection.load();
+  default:
+    return -1.0f;
   }
 }
 
@@ -1725,6 +1767,28 @@ Java_com_ninmods_main_core_NativeBridge_getFeatureState(JNIEnv *env,
     return (jboolean)pPlayer.PlayerToMe;
   case 43:
     return (jboolean)pPlayer.undercam;
+
+  /* NINLITE alias ids. 111..115 and the legacy NINLITE ids 301/302 address
+   * the very same engine flags as the classic menu ids, so a menu must be
+   * able to READ the live state of every flag it is allowed to write.
+   * Without these the getter answered JNI_FALSE for all of them, which is why
+   * the menus had to fall back to hard coded check box states. */
+  case 111:
+    return (jboolean)pEspPlayer.espCaixa;
+  case 112:
+    return (jboolean)pEspPlayer.espLinha;
+  case 113:
+    return (jboolean)pEspPlayer.espHealth;
+  case 114:
+    return (jboolean)pEspPlayer.espDistance;
+  case 115:
+    return (jboolean)pEspPlayer.espName;
+  case 301:
+    return (jboolean)pPlayer.silen4a;
+  case 302:
+    return (jboolean)pPlayer.ignoreKnocked;
+  case 999:
+    return (jboolean)Actived.activar;
   default:
     return JNI_FALSE;
   }

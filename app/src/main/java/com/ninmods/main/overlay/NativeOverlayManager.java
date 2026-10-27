@@ -14,6 +14,7 @@ import android.view.WindowManager;
 import com.ninmods.main.auth.AuthApiController;
 import com.ninmods.main.auth.AuthManager;
 import com.ninmods.main.core.AppLogger;
+import com.ninmods.main.core.FeatureSettings;
 import com.ninmods.main.core.NativeBridge;
 import com.ninmods.main.graphics.GLES3JNIView;
 
@@ -175,8 +176,24 @@ public class NativeOverlayManager {
                     return;
                 }
 
+                // 0. The persistent feature store has to exist before a menu
+                // reads a single value.
+                FeatureSettings.init(mContext);
+
                 // 1. Initialize C++ Native Bridge Engine & Driver link
                 NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense, mDensity, activeKey, serverUrl);
+
+                /* The saved configuration is restored into the engine, so the
+                 * menus show what the user configured last time instead of the
+                 * C++ start up defaults. */
+                FeatureSettings.applyAllToEngine();
+
+                /* The global feature switches of the backend are applied, so
+                 * an administrator can really switch a group off. */
+                String gameType = FeatureSettings.gameTypeForTitle(NativeBridge.getDetectedGameTitle());
+                if (!gameType.isEmpty()) {
+                    FeatureSettings.refreshServerGates(mContext, gameType);
+                }
 
                 // 2. Attach the transparent hardware ESP surface (shared).
                 attachEspSurface(mContext, mWindowManager);
@@ -216,6 +233,7 @@ public class NativeOverlayManager {
         mMainHandler.post(() -> {
             try {
                 if (mFloatingMenuView != null) {
+                    mFloatingMenuView.release();
                     if (mFloatingMenuView.getRootFrame() != null && mFloatingMenuView.getRootFrame().isAttachedToWindow()) {
                         mWindowManager.removeView(mFloatingMenuView.getRootFrame());
                     }

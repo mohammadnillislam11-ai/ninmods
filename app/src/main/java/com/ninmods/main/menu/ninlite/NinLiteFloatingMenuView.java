@@ -28,9 +28,14 @@ import android.widget.TextView;
 
 import com.ninmods.main.R;
 import com.ninmods.main.core.AppLogger;
+import com.ninmods.main.core.FeatureCatalog;
+import com.ninmods.main.core.FeatureSettings;
 import com.ninmods.main.core.NativeBridge;
 
 import org.json.JSONObject;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * NinLiteFloatingMenuView:
@@ -78,10 +83,23 @@ public class NinLiteFloatingMenuView {
     // Persistent state across menu reopenings during this session
     private static boolean sSettingsDismissed = false;
 
+    /* Live refresh registry: when the OTHER menu changes a feature, this
+     * menu must show the new value instead of a stale one. Both menus write
+     * into the same FeatureSettings store, which notifies them. */
+    private final Map<FeatureCatalog, Runnable> mRefreshers = new HashMap<>();
+
+    private final FeatureSettings.Listener mFeatureListener =
+            (feature, switchValue, sliderValue) ->
+                    mMainHandler.post(() -> refreshFeature(feature));
+
     private int mSelectedTabIndex = 0;
     private boolean mIsAttached = false;
     private boolean mIsEngineStarting = false;
     private boolean mIsEngineStarted = false;
+    /* The saved configuration is restored once the root shell is really up. */
+    private boolean mEngineStateRestored = false;
+    /* The game the backend feature switches were read for. */
+    private String mLastGateGameTitle = "";
 
     // References for dynamic UI updates (All driven by C++ Real Engine)
     private TextView mEmulatorValView;
@@ -106,6 +124,26 @@ public class NinLiteFloatingMenuView {
         this.mWindowManager = windowManager;
         this.mDensity = context.getResources().getDisplayMetrics().density;
         initViews();
+        FeatureSettings.addListener(mFeatureListener);
+    }
+
+    /**
+     * Detaches the view from the shared feature store. Called when the
+     * overlay is stopped so a dismissed menu is not refreshed any more.
+     */
+    public void release() {
+        FeatureSettings.removeListener(mFeatureListener);
+    }
+
+    /** Re-reads one feature from the store and updates its control. */
+    private void refreshFeature(FeatureCatalog feature) {
+        Runnable refresher = mRefreshers.get(feature);
+        if (refresher == null) return;
+        try {
+            refresher.run();
+        } catch (Throwable t) {
+            AppLogger.logE(TAG, "Could not refresh the control of " + feature.key(), t);
+        }
     }
 
     public FrameLayout getRootFrame() {
@@ -591,6 +629,25 @@ public class NinLiteFloatingMenuView {
                         }
                     }
 
+                    /* The engine switches the ESP master on while it boots,
+                     * so the saved configuration is restored once the root
+                     * shell is really up. */
+                    if (shellActive && !mEngineStateRestored) {
+                        mEngineStateRestored = true;
+                        FeatureSettings.applyAllToEngine();
+                    }
+
+                    /* The global feature switches of the backend belong to
+                     * the running game, so they are read again when the game
+                     * changes. */
+                    if (!gameTitle.equals(mLastGateGameTitle)) {
+                        mLastGateGameTitle = gameTitle;
+                        String gateGameType = FeatureSettings.gameTypeForTitle(gameTitle);
+                        if (!gateGameType.isEmpty()) {
+                            FeatureSettings.refreshServerGates(mContext, gateGameType);
+                        }
+                    }
+
                     if (readyToDismiss) {
                         mIsEngineStarted = true;
                         mIsEngineStarting = false;
@@ -653,13 +710,16 @@ public class NinLiteFloatingMenuView {
         // Section Title: "Silent Aim"
         layout.addView(createSectionHeaderTitle("Silent Aim"));
 
-        // Circle/Radio Checkboxes (Screenshot 1)
-        layout.addView(createCircleCheckboxRow("Silent Aim Enable", 301, true));
-        layout.addView(createCircleCheckboxRow("Ignore Knocked", 302, false));
+        // Circle/Radio Checkboxes (Screenshot 1).
+        // The initial state is read from the engine through FeatureSettings.
+        // It used to be a hard coded literal, which is why the menu showed
+        // options as ENABLED while the engine had them switched off.
+        layout.addView(createCircleCheckboxRow("Silent Aim Enable", FeatureCatalog.AIM_SILENT));
+        layout.addView(createCircleCheckboxRow("Ignore Knocked", FeatureCatalog.AIM_IGNORE_KNOCKED));
 
-        // Sliders with Cyan Value indicator: "Silent Fov: 120", "Legit Delay: 3"
-        layout.addView(createAccentSliderRow("Silent Fov", 303, 10, 360, 120));
-        layout.addView(createAccentSliderRow("Legit Delay", 304, 0, 10, 3));
+        // Sliders with Cyan Value indicator: "Silent Fov", "Legit Delay"
+        layout.addView(createAccentSliderRow("Silent Fov", FeatureCatalog.AIM_FOV));
+        layout.addView(createAccentSliderRow("Legit Delay", FeatureCatalog.AIM_LEGIT_DELAY));
 
         // Dropdown Header: "Silent Target"
         TextView targetHeader = new TextView(mContext);
@@ -687,12 +747,27 @@ public class NinLiteFloatingMenuView {
             }
         };
         spinner.setAdapter(adapter);
+        /* The spinner is positioned on the LIVE value, never on the first
+         * entry of the list. */
+        spinner.setSelection(FeatureSettings.getIntValue(FeatureCatalog.AIM_SILENT_TARGET), false);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                NativeBridge.setFeatureFloat(305, position);
+                if (position < 0) return;
+                /* A Spinner fires this callback once while it is built. Only
+                 * a REAL change is forwarded, otherwise opening the menu
+                 * silently overwrote the engine with "Legit". */
+                if (position == FeatureSettings.getIntValue(FeatureCatalog.AIM_SILENT_TARGET)) return;
+                FeatureSettings.setIntValue(FeatureCatalog.AIM_SILENT_TARGET, position);
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        mRefreshers.put(FeatureCatalog.AIM_SILENT_TARGET, () -> {
+            int selection = FeatureSettings.getIntValue(FeatureCatalog.AIM_SILENT_TARGET);
+            if (spinner.getSelectedItemPosition() != selection) {
+                spinner.setSelection(selection, false);
+            }
         });
 
         layout.addView(spinner);
@@ -712,18 +787,18 @@ public class NinLiteFloatingMenuView {
         layout.setOrientation(LinearLayout.VERTICAL);
 
         layout.addView(createSectionHeaderTitle("ESP Visuals"));
-        /* Feature ids 111..115 are used on purpose: 101/102 are already the
-         * "MAX TARGET DISTANCE" and "GAME SPEED" sliders of the main overlay
-         * menu. Sharing the numeric ids meant that ticking "ESP Box" also
-         * overwrote the aim range with 1 metre. */
-        layout.addView(createCircleCheckboxRow("ESP Box", 111, true));
-        layout.addView(createCircleCheckboxRow("ESP Line", 112, false));
-        layout.addView(createCircleCheckboxRow("ESP Health Bar", 113, true));
-        layout.addView(createCircleCheckboxRow("ESP Distance", 114, true));
-        layout.addView(createCircleCheckboxRow("ESP Name", 115, false));
+        /* The classic overlay menu drives the very same engine flags under
+         * different numeric ids (2/4/5/7/6 instead of 111..115). Both menus
+         * now use the shared FeatureCatalog, so one flag can no longer be
+         * changed through two different ids. */
+        layout.addView(createCircleCheckboxRow("ESP Box", FeatureCatalog.ESP_BOX));
+        layout.addView(createCircleCheckboxRow("ESP Line", FeatureCatalog.ESP_LINE));
+        layout.addView(createCircleCheckboxRow("ESP Health Bar", FeatureCatalog.ESP_HEALTH));
+        layout.addView(createCircleCheckboxRow("ESP Distance", FeatureCatalog.ESP_DISTANCE));
+        layout.addView(createCircleCheckboxRow("ESP Name", FeatureCatalog.ESP_NAME));
 
-        layout.addView(createAccentSliderRow("Box Style (0-3)", 201, 0, 3, 0));
-        layout.addView(createAccentSliderRow("Line Snap Mode", 202, 0, 2, 0));
+        layout.addView(createAccentSliderRow("Box Style (0-3)", FeatureCatalog.ESP_BOX_STYLE));
+        layout.addView(createAccentSliderRow("Line Snap Mode", FeatureCatalog.ESP_LINE_SNAP));
 
         sv.addView(layout);
         return sv;
@@ -798,7 +873,7 @@ public class NinLiteFloatingMenuView {
     }
 
     // Exact Screenshot 1 Circular Checkbox (Circle outline with white fill when checked)
-    private View createCircleCheckboxRow(String label, final int featureId, boolean initialChecked) {
+    private View createCircleCheckboxRow(String label, final FeatureCatalog feature) {
         LinearLayout row = new LinearLayout(mContext);
         row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -806,7 +881,11 @@ public class NinLiteFloatingMenuView {
         row.setClickable(true);
         row.setFocusable(true);
 
-        final boolean[] state = {initialChecked};
+        /* The initial state is the LIVE engine state. It used to be a literal
+         * ("true" / "false") written into the layout, which is exactly why
+         * the menu showed features as enabled that the engine never turned
+         * on. */
+        final boolean[] state = { FeatureSettings.isEnabled(feature) };
 
         // Circle indicator matching screenshot (White thick circle border)
         final FrameLayout circleBox = new FrameLayout(mContext);
@@ -843,17 +922,33 @@ public class NinLiteFloatingMenuView {
         row.addView(tv);
 
         row.setOnClickListener(v -> {
-            state[0] = !state[0];
+            FeatureSettings.setEnabled(feature, !state[0]);
+            /* The store can refuse the change (the server may have switched
+             * the whole group off), so the shown state is read back from it
+             * instead of assuming the toggle worked. */
+            state[0] = FeatureSettings.isEnabled(feature);
             circleBg.setColor(state[0] ? Color.WHITE : Color.TRANSPARENT);
             innerDot.setVisibility(state[0] ? View.VISIBLE : View.GONE);
-            NativeBridge.setFeatureEnabled(featureId, state[0] ? 1 : 0);
+            AppLogger.log(TAG, "Feature toggled: " + feature.key() + " -> " + state[0]);
+        });
+
+        mRefreshers.put(feature, () -> {
+            boolean live = FeatureSettings.isEnabled(feature);
+            state[0] = live;
+            circleBg.setColor(live ? Color.WHITE : Color.TRANSPARENT);
+            innerDot.setVisibility(live ? View.VISIBLE : View.GONE);
         });
 
         return row;
     }
 
     // Exact Screenshot 1 Slider Row ("Silent Fov: 120" with cyan value)
-    private View createAccentSliderRow(String label, final int featureId, int min, int max, int defaultVal) {
+    private View createAccentSliderRow(String label, final FeatureCatalog feature) {
+        final int min = feature.min();
+        final int max = feature.max();
+        /* The live value of the engine, never a hard coded default. */
+        final int liveValue = FeatureSettings.getIntValue(feature);
+
         LinearLayout container = new LinearLayout(mContext);
         container.setOrientation(LinearLayout.VERTICAL);
         container.setPadding(0, dp(4), 0, dp(6));
@@ -869,7 +964,7 @@ public class NinLiteFloatingMenuView {
         labelTv.setTypeface(Typeface.DEFAULT_BOLD);
 
         final TextView valTv = new TextView(mContext);
-        valTv.setText(String.valueOf(defaultVal));
+        valTv.setText(String.valueOf(liveValue));
         valTv.setTextColor(COLOR_CYAN_LIGHT);
         valTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         valTv.setTypeface(Typeface.DEFAULT_BOLD);
@@ -881,7 +976,7 @@ public class NinLiteFloatingMenuView {
         // Thin Sleek SeekBar with white thumb & cyan progress
         SeekBar sb = new SeekBar(mContext);
         sb.setMax(max - min);
-        sb.setProgress(defaultVal - min);
+        sb.setProgress(liveValue - min);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             sb.setProgressTintList(android.content.res.ColorStateList.valueOf(COLOR_CYAN_LIGHT));
             sb.setThumbTintList(android.content.res.ColorStateList.valueOf(Color.WHITE));
@@ -892,13 +987,26 @@ public class NinLiteFloatingMenuView {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int actual = min + progress;
                 valTv.setText(String.valueOf(actual));
-                NativeBridge.setFeatureFloat(featureId, actual);
+                /* setProgress() during the construction fires this callback
+                 * with fromUser == false. Only a real drag is forwarded, so
+                 * opening the menu can no longer overwrite the engine. */
+                if (!fromUser) return;
+                FeatureSettings.setIntValue(feature, actual);
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
         container.addView(sb);
+
+        mRefreshers.put(feature, () -> {
+            int value = FeatureSettings.getIntValue(feature);
+            valTv.setText(String.valueOf(value));
+            if (sb.getProgress() != value - min) {
+                sb.setProgress(value - min);
+            }
+        });
+
         return container;
     }
 

@@ -27,7 +27,12 @@ import android.widget.TextView;
 
 import com.ninmods.main.R;
 import com.ninmods.main.core.AppLogger;
+import com.ninmods.main.core.FeatureCatalog;
+import com.ninmods.main.core.FeatureSettings;
 import com.ninmods.main.core.NativeBridge;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Authentic Floating Window & Mod Menu Architecture (Android-ModMenu-SemiJni-main + OLD).
@@ -62,6 +67,15 @@ public class FloatingMenuView {
 
     private boolean mIsAttached = false;
 
+    /* Live refresh registry: when the NINLITE menu changes a feature this
+     * menu must show the new value instead of a stale one. Both menus write
+     * into the same FeatureSettings store, which notifies them. */
+    private final Map<FeatureCatalog, Runnable> mRefreshers = new HashMap<>();
+
+    private final FeatureSettings.Listener mFeatureListener =
+            (feature, switchValue, sliderValue) ->
+                    mMainHandler.post(() -> refreshFeature(feature));
+
     private final Runnable mLiveTelemetryRunnable = new Runnable() {
         @Override
         public void run() {
@@ -84,6 +98,26 @@ public class FloatingMenuView {
         this.mWindowManager = windowManager;
         this.mDensity = context.getResources().getDisplayMetrics().density;
         initViews();
+        FeatureSettings.addListener(mFeatureListener);
+    }
+
+    /**
+     * Detaches the view from the shared feature store. Called when the
+     * overlay is stopped so a dismissed menu is not refreshed any more.
+     */
+    public void release() {
+        FeatureSettings.removeListener(mFeatureListener);
+    }
+
+    /** Re-reads one feature from the store and updates its control. */
+    private void refreshFeature(FeatureCatalog feature) {
+        Runnable refresher = mRefreshers.get(feature);
+        if (refresher == null) return;
+        try {
+            refresher.run();
+        } catch (Throwable t) {
+            AppLogger.logE(TAG, "Could not refresh the control of " + feature.key(), t);
+        }
     }
 
     public FrameLayout getRootFrame() {
@@ -492,15 +526,15 @@ public class FloatingMenuView {
         LinearLayout section = new LinearLayout(mContext);
         section.setOrientation(LinearLayout.VERTICAL);
 
-        section.addView(createSwitch("ESP MASTER SWITCH", 1));
-        section.addView(createSwitch("ESP BOX (2D)", 2));
-        section.addView(createSwitch("ESP SKELETON (BONES)", 3));
-        section.addView(createSwitch("ESP LINE (TRACER)", 4));
-        section.addView(createSwitch("ESP HEALTH BAR", 5));
-        section.addView(createSwitch("ESP PLAYER NAME", 6));
-        section.addView(createSwitch("ESP DISTANCE (METERS)", 7));
-        section.addView(createSwitch("360 THREAT RADAR", 9));
-        section.addView(createSwitch("LIVE THREAT COUNTER HUD", 8));
+        section.addView(createSwitch("ESP MASTER SWITCH", FeatureCatalog.ESP_MASTER));
+        section.addView(createSwitch("ESP BOX (2D)", FeatureCatalog.ESP_BOX));
+        section.addView(createSwitch("ESP SKELETON (BONES)", FeatureCatalog.ESP_SKELETON));
+        section.addView(createSwitch("ESP LINE (TRACER)", FeatureCatalog.ESP_LINE));
+        section.addView(createSwitch("ESP HEALTH BAR", FeatureCatalog.ESP_HEALTH));
+        section.addView(createSwitch("ESP PLAYER NAME", FeatureCatalog.ESP_NAME));
+        section.addView(createSwitch("ESP DISTANCE (METERS)", FeatureCatalog.ESP_DISTANCE));
+        section.addView(createSwitch("360 THREAT RADAR", FeatureCatalog.ESP_RADAR360));
+        section.addView(createSwitch("LIVE THREAT COUNTER HUD", FeatureCatalog.ESP_COUNT));
 
         return section;
     }
@@ -509,16 +543,19 @@ public class FloatingMenuView {
         LinearLayout section = new LinearLayout(mContext);
         section.setOrientation(LinearLayout.VERTICAL);
 
-        section.addView(createSwitch("AIMBOT AUTO LOCK", 20));
-        section.addView(createSwitch("AIMBOT STICKY TARGET", 21));
-        section.addView(createSwitch("SILENT AIM (MAGIC BULLET)", 22));
-        section.addView(createSwitch("AIM MAGNET V2", 23));
-        section.addView(createSwitch("IGNORE KNOCKED PLAYERS", 24));
-        section.addView(createSwitch("IGNORE BOTS / AI", 25));
-        section.addView(createSwitch("HEADSHOT PRIORITY", 26));
+        section.addView(createSwitch("AIMBOT AUTO LOCK", FeatureCatalog.AIM_AUTOLOCK));
+        section.addView(createSwitch("AIMBOT STICKY TARGET", FeatureCatalog.AIM_STICKY));
+        section.addView(createSwitch("SILENT AIM (MAGIC BULLET)", FeatureCatalog.AIM_SILENT));
+        section.addView(createSwitch("AIM MAGNET V2", FeatureCatalog.AIM_MAGNET));
+        section.addView(createSwitch("IGNORE KNOCKED PLAYERS", FeatureCatalog.AIM_IGNORE_KNOCKED));
+        section.addView(createSwitch("IGNORE BOTS / AI", FeatureCatalog.AIM_IGNORE_BOTS));
+        /* "HEADSHOT PRIORITY" is the boolean face of the silent aim target
+         * selector. Both controls now drive ONE canonical value, so the
+         * switch and the NINLITE dropdown can no longer fight each other. */
+        section.addView(createSwitch("HEADSHOT PRIORITY", FeatureCatalog.AIM_SILENT_TARGET));
 
-        section.addView(createSeekBar("AIM FOV ANGLE", 100, 10, 180, 60, "deg"));
-        section.addView(createSeekBar("MAX TARGET DISTANCE", 101, 10, 350, 150, "M"));
+        section.addView(createSeekBar("AIM FOV ANGLE", FeatureCatalog.AIM_FOV, "deg"));
+        section.addView(createSeekBar("MAX TARGET DISTANCE", FeatureCatalog.AIM_MAX_DISTANCE, "M"));
 
         return section;
     }
@@ -527,11 +564,11 @@ public class FloatingMenuView {
         LinearLayout section = new LinearLayout(mContext);
         section.setOrientation(LinearLayout.VERTICAL);
 
-        section.addView(createSwitch("NO RECOIL", 40));
-        section.addView(createSwitch("SPEED HACK V2", 41));
-        section.addView(createSwitch("PLAYER TO ME (TELEPORT)", 42));
-        section.addView(createSwitch("UNDER CAMERA", 43));
-        section.addView(createSeekBar("GAME SPEED MULTIPLIER", 102, 1, 5, 1, "x"));
+        section.addView(createSwitch("NO RECOIL", FeatureCatalog.COMBAT_NO_RECOIL));
+        section.addView(createSwitch("SPEED HACK V2", FeatureCatalog.COMBAT_SPEED_HACK));
+        section.addView(createSwitch("PLAYER TO ME (TELEPORT)", FeatureCatalog.COMBAT_PLAYER_TO_ME));
+        section.addView(createSwitch("UNDER CAMERA", FeatureCatalog.COMBAT_UNDERCAM));
+        section.addView(createSeekBar("GAME SPEED MULTIPLIER", FeatureCatalog.COMBAT_GAME_SPEED, "x"));
 
         return section;
     }
@@ -580,7 +617,7 @@ public class FloatingMenuView {
     // SWITCH & SEEKBAR CREATION (100% XML Color Driven)
     // =========================================================================
 
-    private View createSwitch(final String featName, final int featId) {
+    private View createSwitch(final String featName, final FeatureCatalog feature) {
         Switch switchView = new Switch(mContext);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -622,18 +659,46 @@ public class FloatingMenuView {
             switchView.setTrackTintList(trackStates);
         }
 
-        boolean initialState = NativeBridge.getFeatureState(featId);
+        /* "HEADSHOT PRIORITY" is the boolean face of the silent aim target
+         * selector, every other switch is a plain flag. Both are read from
+         * the shared store, which returns the LIVE engine state. */
+        final boolean sliderBacked = feature.isSlider();
+        final boolean[] refreshing = {false};
+        boolean initialState = sliderBacked
+                ? (FeatureSettings.getIntValue(feature) == 1)
+                : FeatureSettings.isEnabled(feature);
         switchView.setChecked(initialState);
 
         switchView.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            NativeBridge.setFeatureState(featId, isChecked);
-            AppLogger.log(TAG, "Feature toggled: " + featName + " (ID: " + featId + ") -> " + isChecked);
+            if (refreshing[0]) return;
+            if (sliderBacked) {
+                FeatureSettings.setIntValue(feature, isChecked ? 1 : 0);
+            } else {
+                FeatureSettings.setEnabled(feature, isChecked);
+            }
+            AppLogger.log(TAG, "Feature toggled: " + featName + " (" + feature.key() + ") -> " + isChecked);
+        });
+
+        mRefreshers.put(feature, () -> {
+            boolean live = sliderBacked
+                    ? (FeatureSettings.getIntValue(feature) == 1)
+                    : FeatureSettings.isEnabled(feature);
+            if (switchView.isChecked() == live) return;
+            /* The refresh must not be written back into the engine. */
+            refreshing[0] = true;
+            switchView.setChecked(live);
+            refreshing[0] = false;
         });
 
         return switchView;
     }
 
-    private View createSeekBar(final String featName, final int featId, final int min, final int max, int defaultVal, final String unit) {
+    private View createSeekBar(final String featName, final FeatureCatalog feature, final String unit) {
+        final int min = feature.min();
+        final int max = feature.max();
+        /* The live value of the engine, never a hard coded default. */
+        final int liveValue = FeatureSettings.getIntValue(feature);
+
         LinearLayout row = new LinearLayout(mContext);
         row.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
@@ -644,7 +709,7 @@ public class FloatingMenuView {
         row.setLayoutParams(rowLp);
 
         final TextView label = new TextView(mContext);
-        label.setText(featName + ": " + defaultVal + " " + unit);
+        label.setText(featName + ": " + liveValue + " " + unit);
         label.setTextColor(getColorRes(R.color.menu_seekbar_label));
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         label.setTypeface(Typeface.DEFAULT_BOLD);
@@ -657,7 +722,7 @@ public class FloatingMenuView {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
         seekBar.setMax(max - min);
-        seekBar.setProgress(defaultVal - min);
+        seekBar.setProgress(liveValue - min);
 
         ColorStateList pinkProgress = ColorStateList.valueOf(getColorRes(R.color.menu_seekbar_progress));
         ColorStateList pinkThumb = ColorStateList.valueOf(getColorRes(R.color.menu_seekbar_thumb));
@@ -672,7 +737,7 @@ public class FloatingMenuView {
                 int actualVal = min + progress;
                 label.setText(featName + ": " + actualVal + " " + unit);
                 if (fromUser) {
-                    NativeBridge.setFeatureFloat(featId, (float) actualVal);
+                    FeatureSettings.setIntValue(feature, actualVal);
                 }
             }
 
@@ -681,6 +746,15 @@ public class FloatingMenuView {
         });
 
         row.addView(seekBar);
+
+        mRefreshers.put(feature, () -> {
+            int value = FeatureSettings.getIntValue(feature);
+            label.setText(featName + ": " + value + " " + unit);
+            if (seekBar.getProgress() != value - min) {
+                seekBar.setProgress(value - min);
+            }
+        });
+
         return row;
     }
 

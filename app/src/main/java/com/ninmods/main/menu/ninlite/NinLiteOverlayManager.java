@@ -8,6 +8,7 @@ import android.view.WindowManager;
 import com.ninmods.main.auth.AuthApiController;
 import com.ninmods.main.auth.AuthManager;
 import com.ninmods.main.core.AppLogger;
+import com.ninmods.main.core.FeatureSettings;
 import com.ninmods.main.core.NativeBridge;
 
 /**
@@ -68,6 +69,10 @@ public class NinLiteOverlayManager {
                 // Inform NativeBridge
                 NativeBridge.launchBrandOverlay("ninlite", hwid, hasActiveLicense, density, activeKey, serverUrl);
 
+                /* The persistent feature store has to exist before the menu
+                 * reads a single value. */
+                FeatureSettings.init(mContext);
+
                 /* Attach the shared transparent hardware ESP surface. There
                  * must only be ONE GL context: the main overlay manager owns
                  * it, so this call is a no-op when it is already running. */
@@ -91,6 +96,7 @@ public class NinLiteOverlayManager {
         mMainHandler.post(() -> {
             try {
                 if (mFloatingMenuView != null) {
+                    mFloatingMenuView.release();
                     if (mFloatingMenuView.getRootFrame() != null && mFloatingMenuView.getRootFrame().isAttachedToWindow()) {
                         mWindowManager.removeView(mFloatingMenuView.getRootFrame());
                     }

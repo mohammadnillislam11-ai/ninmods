@@ -46,6 +46,7 @@ public final class AuthApiController {
     public static final String ENDPOINT_VERIFY_KEY = "/api/v2/license/verify";
     public static final String ENDPOINT_HEARTBEAT = "/api/v2/app/heartbeat";
     public static final String ENDPOINT_PROFILE = "/api/v2/profile";
+    public static final String ENDPOINT_GAME_OFFSETS = "/api/v2/app/game-offsets";
 
     // Small pool so one slow request (bounded by 15s connect/read timeouts) does not queue
     // every other auth call behind it.
@@ -54,6 +55,19 @@ public final class AuthApiController {
 
     public interface ApiCallback {
         void onSuccess(String message);
+        void onError(String errorMessage);
+    }
+
+    /**
+     * Result of the global feature configuration of one game type.
+     *
+     * The backend keeps a global kill switch per game type
+     * ({@code game_configs.esp_enabled} / {@code aimbot_enabled}). The admin
+     * panel writes them, but the Android client never read them, so switching
+     * a feature group off on the server had NO effect on the app.
+     */
+    public interface GameConfigCallback {
+        void onSuccess(boolean espEnabled, boolean aimbotEnabled, String noticeMessage);
         void onError(String errorMessage);
     }
 
@@ -514,6 +528,48 @@ public final class AuthApiController {
                 Log.d(TAG, "Profile fetch warning: " + e.getMessage());
                 if (callback != null) {
                     mainHandler.post(() -> callback.onError(e.getMessage()));
+                }
+            }
+        });
+    }
+
+    /**
+     * GET /api/v2/app/game-offsets
+     *
+     * Reads the global feature kill switches of the backend for one game
+     * type. The response also carries the live offsets, which the native
+     * engine owns, so only the switches are consumed here.
+     */
+    public static void fetchGameConfig(Context context, String gameType, final GameConfigCallback callback) {
+        if (context == null || gameType == null || gameType.trim().isEmpty()) {
+            if (callback != null) {
+                mainHandler.post(() -> callback.onError("No game type given"));
+            }
+            return;
+        }
+        executor.execute(() -> {
+            try {
+                String endpoint = ENDPOINT_GAME_OFFSETS + "?game_type=" + gameType.trim();
+                String response = executeGet(context, endpoint, AuthConstants.HTTP_CONNECT_TIMEOUT_MS);
+                if (response != null && !response.trim().isEmpty()) {
+                    JSONObject resJson = new JSONObject(response);
+                    if (resJson.optBoolean("success", false)) {
+                        /* Fail OPEN: a missing flag must never disable a
+                         * feature that the server did not switch off. */
+                        final boolean espEnabled = resJson.optBoolean("esp_enabled", true);
+                        final boolean aimbotEnabled = resJson.optBoolean("aimbot_enabled", true);
+                        final String notice = resJson.optString("notice_message", "");
+                        mainHandler.post(() -> callback.onSuccess(espEnabled, aimbotEnabled, notice));
+                        return;
+                    }
+                }
+                if (callback != null) {
+                    mainHandler.post(() -> callback.onError("Game configuration not available"));
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "Game configuration fetch warning: " + e.getMessage());
+                if (callback != null) {
+                    mainHandler.post(() -> callback.onError("Could not reach the configuration server"));
                 }
             }
         });

@@ -128,6 +128,16 @@ public final class NativeBridge {
         setFeatureState(featId, value != 0);
     }
     public static native boolean getFeatureState(int featId);
+    /**
+     * Reads the live value of a slider / dropdown out of the C++ engine.
+     *
+     * The menus need this to show the real configuration instead of a hard
+     * coded one: without a reader every menu had to invent its initial
+     * slider position and silently overwrote the engine when it was opened.
+     *
+     * @return the live value, or -1 when the id is not a slider / dropdown.
+     */
+    public static native float getFeatureFloat(int featId);
     public static native boolean isEmulatorDetected();
     public static native String getConnectionMode();
     public static native boolean isShellDaemonRunning();
