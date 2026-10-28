@@ -37,8 +37,12 @@ inline std::atomic<int> g_activeChannel{CHANNEL_RT};
  *
  * @param channel one of CHANNEL_RT or CHANNEL_QX
  */
-inline void SetActiveChannel(int channel) {
+inline bool SetActiveChannel(int channel) {
+    if (channel != CHANNEL_RT && channel != CHANNEL_QX) {
+        return false;
+    }
     g_activeChannel.store(channel, std::memory_order_relaxed);
+    return true;
 }
 
 /**

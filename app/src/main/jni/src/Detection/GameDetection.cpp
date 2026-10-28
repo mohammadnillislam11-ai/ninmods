@@ -68,8 +68,16 @@ static bool CheckProcCmdline(pid_t pid, const char *pkgName) {
         close(fd);
         if (n > 0) {
             comm[n] = '\0';
-            // Package prefix match (e.g. "com.dts.freefir" or "dts.freefire")
-            if (strstr(pkgName, comm) != nullptr || strstr(comm, "freefire") != nullptr) {
+            /* comm is a process name, not a package name. Only accept an
+             * explicit package token; a bare "freefire" substring produces
+             * false positives for unrelated processes. */
+            std::string commName(comm);
+            while (!commName.empty() && (commName.back() == '\n' || commName.back() == '\r')) {
+                commName.pop_back();
+            }
+            if (!commName.empty() &&
+                (commName == pkgName ||
+                 (strstr(pkgName, commName.c_str()) != nullptr && commName.size() >= 8))) {
                 return true;
             }
         }

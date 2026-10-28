@@ -44,6 +44,7 @@
 #include "ninlite_daemon/Namegun.h"
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
+#include "Detection/GameDetection.h"
 #include "Includes/obfuscate.h"
 #include "Unity/Color.hpp"
 #include "Unity/ESP.h"
@@ -1375,7 +1376,9 @@ Java_com_ninmods_main_core_NativeBridge_isShellDaemonRunning(JNIEnv *env, jclass
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
-  return env->NewStringUTF(OBFUSCATE("com.dts.freefireth"));
+  (void) clazz;
+  const std::string packageName = NinDetection::GetPackageName();
+  return env->NewStringUTF(packageName.c_str());
 }
 
 extern "C" JavaVM *g_JavaVM = nullptr;
