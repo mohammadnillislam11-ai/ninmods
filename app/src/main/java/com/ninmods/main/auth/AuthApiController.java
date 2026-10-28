@@ -90,16 +90,54 @@ public final class AuthApiController {
         if (context != null) {
             SecurityVault.init(context);
         }
+        if (SecurityVault.isTampered() || SecurityVault.isNativeUnavailable()) {
+            if (callback != null) {
+                String reason = SecurityVault.getTamperReason();
+                mainHandler.post(() -> callback.onError(
+                        reason == null || reason.isEmpty()
+                                ? "Security verification failed."
+                                : "Security verification failed: " + reason));
+            }
+            return true;
+        }
         return false;
     }
 
     public static String getServerBaseUrl(Context context) {
-        return Prefs.with(context).readString(PREF_SERVER_BASE_URL, DEFAULT_SERVER_URL);
+        String configured = context == null
+                ? ""
+                : Prefs.with(context).readString(PREF_SERVER_BASE_URL, DEFAULT_SERVER_URL);
+        return normalizeServerUrl(configured);
     }
 
     public static void setServerBaseUrl(Context context, String url) {
-        if (context != null && url != null) {
-            Prefs.with(context).writeString(PREF_SERVER_BASE_URL, url.trim());
+        if (context == null) return;
+        String normalized = normalizeServerUrl(url);
+        if (!normalized.isEmpty()) {
+            Prefs.with(context).writeString(PREF_SERVER_BASE_URL, normalized);
+        }
+    }
+
+    /**
+     * Accepts only HTTPS on the configured production host. A user-editable
+     * base URL must never become a bearer-token exfiltration endpoint.
+     *
+     * @param value candidate base URL
+     * @return normalized safe URL
+     */
+    private static String normalizeServerUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return DEFAULT_SERVER_URL;
+        try {
+            java.net.URI uri = new java.net.URI(value.trim());
+            if (!"https".equalsIgnoreCase(uri.getScheme()) ||
+                    uri.getUserInfo() != null || uri.getHost() == null ||
+                    !"ninmods.smmtor.com".equalsIgnoreCase(uri.getHost()) ||
+                    uri.getQuery() != null || uri.getFragment() != null) {
+                return DEFAULT_SERVER_URL;
+            }
+            return DEFAULT_SERVER_URL;
+        } catch (Exception ignored) {
+            return DEFAULT_SERVER_URL;
         }
     }
 

@@ -74,22 +74,46 @@ public final class SecurityVault {
             }
 
             // 3. Native JNI Integrity Check
+            boolean genuine = false;
             try {
-                boolean nativeCheck = nativeVerifyIntegrity(context, certDigest);
-                AppLogger.log(TAG, "Native integrity check result: " + nativeCheck);
+                genuine = nativeVerifyIntegrity(context, certDigest);
+                AppLogger.log(TAG, "Native integrity check result: " + genuine);
             } catch (UnsatisfiedLinkError ule) {
                 sNativeUnavailable = true;
+                sTamperReason = "Native security library unavailable";
                 AppLogger.logE(TAG, "Native security library is unavailable on this device", ule);
             }
 
-            // 4. Default tamper state to clean for legitimate root users
-            sIsTampered = false;
-            try {
-                nativeSetTamperState(false);
-            } catch (UnsatisfiedLinkError ignored) {
+            /* Never clear a failed integrity result. The previous code reset
+             * both flags to false after the check, making the native verifier
+             * unable to lock a re-signed or patched APK. */
+            sIsTampered = !genuine || sNativeUnavailable;
+            if (sIsTampered) {
+                if (sTamperReason.isEmpty()) {
+                    sTamperReason = certDigest == null || certDigest.trim().isEmpty()
+                            ? "APK signing certificate is unavailable"
+                            : "APK signing certificate does not match the release certificate";
+                }
+                try {
+                    nativeSetTamperState(true);
+                } catch (UnsatisfiedLinkError ignored) {
+                    sNativeUnavailable = true;
+                }
+                AppLogger.logE(TAG, "Security Vault locked: " + sTamperReason, null);
+            } else {
+                sTamperReason = "";
+                try {
+                    nativeSetTamperState(false);
+                } catch (UnsatisfiedLinkError ule) {
+                    sNativeUnavailable = true;
+                    sIsTampered = true;
+                    sTamperReason = "Native security library unavailable";
+                }
             }
 
-            AppLogger.log(TAG, "Security Vault initialized. Status: SECURE_GENUINE");
+            AppLogger.log(TAG, sIsTampered
+                    ? "Security Vault initialized. Status: LOCKED"
+                    : "Security Vault initialized. Status: SECURE_GENUINE");
         } catch (Exception e) {
             AppLogger.logE(TAG, "Security initialization error: " + e.getMessage(), e);
         }
