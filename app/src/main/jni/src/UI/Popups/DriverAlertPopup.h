@@ -7,7 +7,8 @@
 
 /**
  * C++ Dear ImGui Native Process Memory Alert Modal Popup.
- * Handles the state where the memory target is not attached (process_vm_readv).
+ * Handles the state where the Ring-0 driver does not answer, so the memory
+ * of the game process cannot be read.
  * Provides two clean paths:
  *   1. "OPEN LOADER" for Root users wanting to activate the kernel driver.
  *   2. "VIEW MENU ONLY (PREVIEW)" for Non-Root users who just want to explore the menu UI.
@@ -99,7 +100,7 @@ public:
             ImGui::SetCursorPosY(headerH + 10.0f);
             ImGui::TextColored(ImVec4(1.0f, 0.40f, 0.20f, 1.0f), "MEMORY TARGET NOT ATTACHED");
             ImGui::Spacing();
-            ImGui::TextWrapped("The game process memory was not detected (process_vm_readv).");
+            ImGui::TextWrapped("The kernel driver did not answer an IOCTL, the memory of the game process cannot be read.");
             ImGui::Spacing();
             ImGui::TextDisabled("- Root users: Launch Driver Loader to insert kernel module or start daemon.\n- Non-Root users: You can safely explore the menu UI.");
             ImGui::Spacing();

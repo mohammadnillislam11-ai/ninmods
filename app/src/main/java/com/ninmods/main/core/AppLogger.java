@@ -2,6 +2,7 @@ package com.ninmods.main.core;
 
 import android.content.Context;
 import android.os.Build;
+import android.os.Environment;
 import android.util.Log;
 
 import java.io.File;
@@ -12,38 +13,32 @@ import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * Standard Diagnostics & Telemetry Logger for NINMODS.
- * 
- * Strict Private Storage Policy:
- * - Logs are written to the app's private files directory (files/logs/ninmods.log).
- * - Not in public Download, so other apps and users cannot read device, HWID, or session data.
- * - All runtime errors, kernel driver status, memory inquiries, and system events
- *   are captured here for inspection from within the app.
+ * Diagnostic and telemetry logger for NINMODS.
+ * Writes diagnostic events to public Download/ninmods.log per Rule 16,
+ * with fallback to app-private files if external storage is inaccessible.
  */
 public final class AppLogger {
     private static final String TAG = "NINMODS_LOG";
     private static final Object LOCK = new Object();
 
-    /*
-     * SimpleDateFormat is NOT thread safe. A single shared instance was
-     * formatted from the UI thread, from the background thread that requests
-     * root and from the log writer thread at the same time, which can make
-     * format() throw. Because AppLogger.log() is called from onCreate()
-     * BEFORE the first view is set, such an exception left the user on the
-     * bare (black) window background. One formatter per thread removes the
-     * race completely.
-     */
     private static final ThreadLocal<SimpleDateFormat> SDF =
             ThreadLocal.withInitial(() -> new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US));
 
     private static final int MAX_MEMORY_LOG_ENTRIES = 300;
     private static final LinkedList<String> sMemoryLogBuffer = new LinkedList<>();
+    private static final ExecutorService sFileExecutor = Executors.newSingleThreadExecutor();
 
     private static volatile Context sContext = null;
     private static volatile boolean sInitialized = false;
 
+    /**
+     * Initializes the logger with the application context.
+     * @param context Application context
+     */
     public static void init(Context context) {
         if (context != null) {
             sContext = context.getApplicationContext();
@@ -69,10 +64,19 @@ public final class AppLogger {
     }
 
     /**
-     * Resolves the log file inside the app's PRIVATE files directory.
-     * Not under public Download, so other apps and users cannot read device/session data.
+     * Resolves the log file location in the public Download directory per Rule 16,
+     * falling back to app-private storage if Download is unwritable.
+     * @return File handle for logging
      */
     private static File getDedicatedLogFile() {
+        try {
+            File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            if (downloadDir != null && (downloadDir.exists() || downloadDir.mkdirs())) {
+                File pubLog = new File(downloadDir, "ninmods.log");
+                return pubLog;
+            }
+        } catch (Throwable ignored) {}
+
         File base = (sContext != null) ? sContext.getFilesDir() : null;
         if (base == null) {
             return null;
@@ -84,9 +88,6 @@ public final class AppLogger {
         return new File(logDir, "ninmods.log");
     }
 
-    /**
-     * Ensures the private log directory and file exist, with owner-only permissions.
-     */
     private static void ensureLogFolderAndFile() {
         try {
             File logFile = getDedicatedLogFile();
@@ -98,33 +99,26 @@ public final class AppLogger {
             if (!logFile.exists()) {
                 logFile.createNewFile();
             }
-            logFile.setReadable(true, true);
-            logFile.setWritable(true, true);
+            logFile.setReadable(true, false);
+            logFile.setWritable(true, false);
         } catch (Throwable t) {
             Log.w(TAG, "Log folder creation deferred: " + t.getMessage());
         }
     }
 
-    /**
-     * Writes comprehensive initial environment and hardware details to the log file.
-     */
     private static void logSystemHeader() {
-        log("SYSTEM", "==================================================");
-        log("SYSTEM", "=== NINMODS GENUINE SYSTEM DIAGNOSTIC LOG STARTED ===");
-        log("SYSTEM", "==================================================");
+        log("SYSTEM", "NINMODS Diagnostic Log Initialized");
         log("SYSTEM", "Timestamp: " + formatTimestamp());
         log("SYSTEM", "Device: " + Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.PRODUCT + ")");
         log("SYSTEM", "Hardware: " + Build.HARDWARE + " | Board: " + Build.BOARD);
         log("SYSTEM", "Primary ABI: " + (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "arm64-v8a"));
         log("SYSTEM", "Android OS: Android " + Build.VERSION.RELEASE + " (API Level " + Build.VERSION.SDK_INT + ")");
-        log("SYSTEM", "Log Directory: app private storage (files/logs/ninmods.log)");
+        File logFile = getDedicatedLogFile();
+        log("SYSTEM", "Log Target: " + (logFile != null ? logFile.getAbsolutePath() : "In-Memory Only"));
         log("SYSTEM", "SELinux State: " + getSelinuxStatus());
         log("SYSTEM", "SuperUser Binary: " + (new File("/system/bin/su").exists() || new File("/system/xbin/su").exists() ? "DETECTED" : "STANDARD"));
         log("SYSTEM", "Kernel Driver Node: /dev/BYNb (Ring 0 IOCTL 0x801/0x802/0x803)");
-        log("SYSTEM", "==================================================");
     }
-
-    private static final java.util.concurrent.ExecutorService sFileExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     private static String getSelinuxStatus() {
         try {
@@ -154,24 +148,33 @@ public final class AppLogger {
                     fw.write(formattedLine + "\n");
                     fw.flush();
                     fw.close();
-                    logFile.setReadable(true, true);
-                    logFile.setWritable(true, true);
+                    logFile.setReadable(true, false);
+                    logFile.setWritable(true, false);
                 } catch (Throwable ignored) {}
             }
         });
     }
 
+    /**
+     * Records an informational log entry.
+     * @param subTag Subsystem tag identifier
+     * @param message Informational log text
+     */
     public static void log(String subTag, String message) {
         try {
             Log.i(TAG, "[" + subTag + "] " + message);
             String line = "[" + formatTimestamp() + "] [" + subTag + "] " + message;
             recordInMemory(line);
             writeToDownloadFile(line);
-        } catch (Throwable ignored) {
-            // Logging must never take the app down.
-        }
+        } catch (Throwable ignored) {}
     }
 
+    /**
+     * Records an error log entry.
+     * @param subTag Subsystem tag identifier
+     * @param message Error description
+     * @param t Optional throwable or null
+     */
     public static void logE(String subTag, String message, Throwable t) {
         try {
             Log.e(TAG, "[" + subTag + "] " + message, t);
@@ -179,12 +182,9 @@ public final class AppLogger {
             String line = "[" + formatTimestamp() + "] [ERROR][" + subTag + "] " + fullMsg;
             recordInMemory(line);
             writeToDownloadFile(line);
-        } catch (Throwable ignored) {
-            // Logging must never take the app down.
-        }
+        } catch (Throwable ignored) {}
     }
 
-    /** Formats the current timestamp without ever throwing. */
     private static String formatTimestamp() {
         try {
             return SDF.get().format(new Date());
@@ -203,13 +203,16 @@ public final class AppLogger {
     }
 
     /**
-     * Returns recent log lines from memory buffer.
+     * Returns recent log entries from memory buffer.
+     * @param maxLines Maximum count of log lines to retrieve
+     * @return List of recent formatted log strings
      */
     public static List<String> getRecentLogs(int maxLines) {
         synchronized (LOCK) {
             List<String> result = new ArrayList<>();
             if (sMemoryLogBuffer.isEmpty()) {
-                result.add("No live memory logs recorded yet. Telemetry streaming to app private storage (files/logs/ninmods.log).");
+                File logFile = getDedicatedLogFile();
+                result.add("No live memory logs recorded yet. Telemetry target: " + (logFile != null ? logFile.getAbsolutePath() : "in-memory"));
                 return result;
             }
             int start = Math.max(0, sMemoryLogBuffer.size() - maxLines);

@@ -22,6 +22,7 @@
 
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
+#include "Includes/EngineChannel.h"
 #include "Includes/TransformTypes.h"
 #include "Includes/gameoffsets.h"
 #include "Includes/NinliteProtocol.h"
@@ -416,81 +417,39 @@ static bool IsValidViewMatrix(const D3DMatrix& m) {
     return true;
 }
 
-// ========== Module Base Address (ROBUST MULTI-ELF DETECTOR) ==========
+/**
+ * @brief Resolves the base address of a module through the kernel driver.
+ *
+ * RT channel only: the lookup is performed by the kernel driver with
+ * IOCTL_RT_BASE. There is no /proc/&lt;pid&gt;/maps fallback - Rule 17 forbids
+ * every driverless path inside the in-app engine. The answer of the driver is
+ * verified with a driver read of the ELF header, so a wrong base is reported
+ * instead of being used silently.
+ *
+ * @param pid        pid of the target process
+ * @param moduleName name of the module, for example "libil2cpp.so"
+ * @return the base address of the module, or 0 when the driver could not resolve it
+ */
 inline uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
-    // 1. Official Linux /proc/<pid>/maps module base (MemoryIO::ModuleBase)
-    uintptr_t kernelBase = MemoryIO::ModuleBase(pid, moduleName);
-    if (kernelBase > 0) {
-        NIN_LOGI("DAEMON", "GetModuleBase: %s Base = 0x%lx (official /proc/maps)", moduleName, (unsigned long)kernelBase);
-        return kernelBase;
-    }
-
-    char mapsPath[64];
-    snprintf(mapsPath, sizeof(mapsPath), "/proc/%d/maps", pid);
-    FILE* fp = fopen(mapsPath, "r");
-    if (!fp) {
-        NIN_LOGE("DAEMON", "GetModuleBase: Cannot open %s", mapsPath);
+    if (pid <= 0 || moduleName == nullptr) {
         return 0;
     }
 
-    char line[512];
-    std::vector<uintptr_t> elfBases;
-    std::vector<uintptr_t> allBases;
-
-    while (fgets(line, sizeof(line), fp)) {
-        if (strstr(line, moduleName)) {
-            uintptr_t start = 0, offset = 0;
-            char perms[5] = {0};
-            if (sscanf(line, "%lx-%*lx %4s %lx", &start, perms, &offset) >= 1) {
-                if (offset == 0 && perms[0] == 'r') {
-                    allBases.push_back(start);
-                    if (is_elf_header(start)) {
-                        elfBases.push_back(start);
-                        NIN_LOGI("DAEMON", "Found ELF mapping for %s: 0x%lx (perms: %s)", moduleName, (unsigned long)start, perms);
-                    }
-                }
-            }
-        }
-    }
-    fclose(fp);
-
-    if (elfBases.empty()) {
-        if (!allBases.empty()) {
-            elfBases = allBases;
-            NIN_LOGI("DAEMON", "Using fallback mapped bases for %s (count: %zu)", moduleName, elfBases.size());
-        } else {
-            NIN_LOGE("DAEMON", "No ELF headers found for %s", moduleName);
-            return 0;
-        }
+    uintptr_t base = MemoryIO::ModuleBase(pid, moduleName);
+    if (base == 0) {
+        NIN_LOGE("RT", "GetModuleBase: driver could not resolve %s (last errno: %d)",
+                 moduleName, MemoryIO::GetLastErrno());
+        return 0;
     }
 
-    const uintptr_t testOffsets[] = {
-        Offsets::Normal::GameFacade, // 0xA872380 (Normal Primary from 5_6213160554375160447.h)
-        Offsets::Max::GameFacade,    // 0xAD68E18 (MAX Primary from ff max 5_6246536088102380429.h)
-        Offsets::GameFacade,         // 0xA872380
-        Offsets::GameFacadeMax,      // 0xAD68E18
-        Offsets::GameFacadeAlt1      // 0xAD68E18
-    };
-
-    // Test each candidate ELF base against our GameFacade offsets to find the live loaded library
-    for (uintptr_t b : elfBases) {
-        for (uintptr_t off : testOffsets) {
-            uintptr_t candidate = Read<uintptr_t>(b + off);
-            if (IsValidUserPointer64(candidate)) {
-                NIN_LOGI("DAEMON", "VERIFIED libil2cpp base: 0x%lx (tested with offset 0x%lx -> ptr 0x%lx)",
-                         (unsigned long)b, (unsigned long)off, (unsigned long)candidate);
-                return b;
-            }
-        }
+    if (is_elf_header(base)) {
+        NIN_LOGI("RT", "GetModuleBase: %s base = 0x%lx (Ring-0 IOCTL 0x803, ELF verified)",
+                 moduleName, (unsigned long)base);
+    } else {
+        NIN_LOGE("RT", "GetModuleBase: %s base = 0x%lx carries no ELF header (driver reported it)",
+                 moduleName, (unsigned long)base);
     }
-
-    // Fallback: If not yet initialized, prefer elf2 if present
-    if (elfBases.size() >= 2) {
-        NIN_LOGI("DAEMON", "Defaulting to elf2 base: 0x%lx (out of %d ELF mappings)", (unsigned long)elfBases[1], (int)elfBases.size());
-        return elfBases[1];
-    }
-
-    return elfBases[0];
+    return base;
 }
 
 // ========== Original Code ==========
@@ -1657,10 +1616,10 @@ inline void SceneWorker() {
         auto startedAt = std::chrono::steady_clock::now();
         bool updated = false;
 
-        if (target_pid.load() > 0) {
-            CreateDataList(scratch);
-            updated = true;
-        } else {
+        if (NinChannel::IsQxActive()) {
+            /* QX channel: the scene comes from the root daemon over IPC.
+             * The in-app engine must not touch the game memory in this mode,
+             * the two channels never read the same data. */
             Response daemonResponse = RequestDaemonESP(
                 g_screenWidth.load(std::memory_order_relaxed),
                 g_screenHeight.load(std::memory_order_relaxed));
@@ -1668,6 +1627,10 @@ inline void SceneWorker() {
                 scratch = daemonResponse;
                 updated = true;
             }
+        } else if (target_pid.load() > 0) {
+            /* RT channel: the scene comes from the Ring-0 kernel driver. */
+            CreateDataList(scratch);
+            updated = true;
         }
 
         if (updated) {
@@ -1800,8 +1763,11 @@ inline Response GetCachedResponseSnapshot() {
 }
 
 inline bool isConnected() {
-    if (target_pid.load() > 0) {
-        return true;
+    /* The connection state belongs to the selected channel: the RT channel is
+     * only connected when the driver answered an IOCTL, the QX channel only
+     * when the root daemon is reachable. */
+    if (NinChannel::IsQxActive()) {
+        return NinEngine::DaemonLink::Instance().IsConnected();
     }
-    return NinEngine::DaemonLink::Instance().IsConnected();
+    return MemoryIO::IsDriverReady();
 }

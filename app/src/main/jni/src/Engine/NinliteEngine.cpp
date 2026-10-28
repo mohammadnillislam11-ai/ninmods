@@ -1,38 +1,99 @@
 #include <sys/socket.h>
 #include <sys/un.h>
+
 #include "NinliteEngine.h"
 #include "Includes/Logger.h"
 #include "Includes/JavaShell.h"
+#include "Includes/EngineChannel.h"
 #include "GameEngine.h"
-#include <dirent.h>
-#include <unistd.h>
+
 #include <atomic>
-#include <thread>
 #include <chrono>
-#include <string>
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
+#include <string>
+#include <thread>
+#include <unistd.h>
 
 namespace NinliteEngine {
 
-static bool g_ninlite_setup_done_flag = false;
+/** True once the daemon answered a request and the setup finished. */
+static std::atomic<bool> g_ninlite_setup_done_flag{false};
+/** True while the root script is running. */
 static std::atomic<bool> g_ninlite_starting{false};
+/** True while the root daemon is really reachable. */
 static std::atomic<bool> g_ninlite_engine_started{false};
+/** True when the daemon reported the game process. */
+static std::atomic<bool> g_ninlite_game_attached{false};
+/** Last reason why the daemon could not be started. */
+static std::string g_ninlite_last_error;
 
 /**
- * Sends a control request to the root Daemon.
+ * @brief Escapes a text so it can be placed inside a JSON document.
  *
- * The Daemon expects a length prefixed BINARY frame.
- * The protocol is shared with the Daemon through
- * Includes/NinliteProtocol.h.
+ * @param value text that may contain quotes or control characters
+ * @return the escaped text
+ */
+static std::string JsonEscape(const std::string &value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 8);
+    for (char c : value) {
+        switch (c) {
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            if (static_cast<unsigned char>(c) < 0x20) {
+                char buffer[8];
+                snprintf(buffer, sizeof(buffer), "\\u%04x",
+                         static_cast<unsigned char>(c));
+                escaped += buffer;
+            } else {
+                escaped += c;
+            }
+            break;
+        }
+    }
+    return escaped;
+}
+
+/**
+ * @brief Sends a control request to the root daemon.
+ *
+ * The daemon expects a length prefixed binary frame. The protocol is shared
+ * with the daemon through Includes/NinliteProtocol.h.
+ *
+ * @param featId  command of the protocol
+ * @param enabled payload of the command
+ * @param value   payload of the command
  */
 void SyncFeature(int featId, bool enabled, int value) {
     DaemonSyncRequest(featId, enabled, value);
 }
 
+/**
+ * @brief Detects an emulator environment.
+ *
+ * @return true when the device looks like an emulator
+ */
 bool CheckEmulatorDetected() {
     static int s_emuState = -1;
-    if (s_emuState != -1) return s_emuState == 1;
+    if (s_emuState != -1) {
+        return s_emuState == 1;
+    }
 
     if (access("/dev/qemu_pipe", F_OK) == 0 ||
         access("/dev/vboxguest", F_OK) == 0 ||
@@ -42,7 +103,7 @@ bool CheckEmulatorDetected() {
         s_emuState = 1;
         return true;
     }
-    FILE* f = fopen("/system/build.prop", "r");
+    FILE *f = fopen("/system/build.prop", "r");
     if (f) {
         char line[256];
         while (fgets(line, sizeof(line), f)) {
@@ -62,50 +123,58 @@ bool CheckEmulatorDetected() {
     return false;
 }
 
-const char* GetConnectionModeStr() {
-    pid_t pid = target_pid.load(std::memory_order_relaxed);
-    if (pid <= 0) pid = NinDetection::GetPid();
-    if (pid > 0) {
-        return "Official Linux (process_vm_readv)";
-    }
+/**
+ * @brief Returns the connection mode of the QX channel.
+ *
+ * The text describes the channel that is really active: the root daemon over
+ * IPC. The in-app engine never reads the game memory in this mode.
+ *
+ * @return the connection mode for the UI and the logs
+ */
+const char *GetConnectionModeStr() {
     if (isNinLiteDaemonAvailable()) {
-        return "Root Daemon (Standby)";
+        return "QX Root Daemon (IPC)";
     }
-    return "Official Linux /proc (Standby)";
+    if (g_ninlite_starting.load(std::memory_order_relaxed)) {
+        return "QX Root Daemon (starting)";
+    }
+    return "QX Root Daemon (not running)";
 }
 
+/**
+ * @brief Reports whether the root daemon is alive.
+ *
+ * @return true when the daemon socket is connected
+ */
 bool CheckShellDaemonRunning() {
-    /* Non destructive liveness probe (persistent, shared connection). */
     return isNinLiteDaemonAvailable();
 }
 
-void StartEngine(const std::string& nativeLibDir) {
+/**
+ * @brief Starts the root daemon of the QX channel.
+ *
+ * The root script runs exactly once: when the daemon is already running the
+ * existing root session is reused, so no second superuser prompt appears.
+ * The function reports the real result - the engine counts as started only
+ * when the daemon really answers, and no feature is switched on by itself
+ * (Rule 1 and Rule 2).
+ *
+ * @param nativeLibDir directory that carries the daemon executable
+ */
+void StartEngine(const std::string &nativeLibDir) {
     if (g_ninlite_starting.exchange(true)) {
-        return; // Already in progress
+        return;
     }
 
     std::thread([nativeLibDir]() {
-        /* --------------------------------------------------------------
-         * 1. Root shell injection - EXACTLY ONCE.
-         *
-         * Every `su -c` invocation raises a fresh superuser prompt on the
-         * device. When the daemon is already running (a previous Start, a
-         * previous app launch), requesting root again would pop the prompt
-         * again for nothing.
-         *
-         * The official flow is:
-         *   - daemon not running -> ONE `su -c` with the injection script,
-         *   - daemon running     -> no root request at all, just re-sync the
-         *     engine state over the existing connection.
-         * -------------------------------------------------------------- */
         if (isNinLiteDaemonAvailable()) {
-            NIN_LOGI("NINLITE", "daemon already running - reusing the existing root session (no new superuser prompt)");
+            NIN_LOGI("QX", "daemon already running - reusing the existing root session");
         } else {
             std::string script;
             script += "killall -9 ninlite_daemon >/dev/null 2>&1\n";
             script += "setenforce 0 >/dev/null 2>&1\n";
 
-            const char* selinuxRules[] = {
+            const char *selinuxRules[] = {
                 "allow su untrusted_app process ptrace",
                 "allow su untrusted_app_32 process ptrace",
                 "allow su untrusted_app_30 process ptrace",
@@ -118,13 +187,13 @@ void StartEngine(const std::string& nativeLibDir) {
                 "allow su su file { execute execute_no_trans open read write }"
             };
             script += "if command -v magiskpolicy >/dev/null 2>&1; then\n";
-            for (const char* rule : selinuxRules) {
+            for (const char *rule : selinuxRules) {
                 script += "  magiskpolicy --live ";
                 script += rule;
                 script += " >/dev/null 2>&1\n";
             }
             script += "elif command -v supolicy >/dev/null 2>&1; then\n";
-            for (const char* rule : selinuxRules) {
+            for (const char *rule : selinuxRules) {
                 script += "  supolicy --live ";
                 script += rule;
                 script += " >/dev/null 2>&1\n";
@@ -134,7 +203,7 @@ void StartEngine(const std::string& nativeLibDir) {
             const std::string daemonLibPath = nativeLibDir + "/libninlite_daemon.so";
             const std::string daemonAltPath = nativeLibDir + "/ninlite_daemon";
             const std::string finalExecPath = "/data/local/tmp/ninlite_daemon";
-            /* Rule 15: the Daemon log also belongs in the Download folder. */
+            /* Rule 16: the daemon log belongs in the Download folder. */
             const std::string daemonLog = "/storage/emulated/0/Download/ninmods/ninlite_daemon.log";
 
             script += "mkdir -p /storage/emulated/0/Download/ninmods >/dev/null 2>&1\n";
@@ -145,49 +214,85 @@ void StartEngine(const std::string& nativeLibDir) {
 
             int rc = RunRootScriptViaJava(script);
             if (rc != 0) {
-                NIN_LOGE("NINLITE", "su -c returned %d - daemon launch failed", rc);
+                NIN_LOGE("QX", "root script failed with exit code %d", rc);
+                g_ninlite_last_error = "Root request failed (exit code " +
+                                       std::to_string(rc) + ")";
             }
 
-            /* 2. Poll up to ~3 seconds for the Daemon socket (non destructive). */
             for (int i = 0; i < 30; ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 if (isNinLiteDaemonAvailable()) {
                     break;
                 }
             }
-        } /* end: injection done */
+        }
 
-        /* 3. Sync engine state over the shared binary protocol. */
-        SyncFeature(Ninlite::MODE_MASTER, true, 0);
-        Actived.activar = true;
-        g_ninlite_engine_started = true;
-        g_ninlite_starting = false;
+        /* The daemon is only "started" when it really answers. */
+        bool reachable = isNinLiteDaemonAvailable();
+        g_ninlite_engine_started.store(reachable, std::memory_order_relaxed);
+        if (reachable) {
+            g_ninlite_last_error.clear();
+            /* MODE_INIT attaches the daemon to the game. The master switch is
+             * NOT sent here: every feature stays off until the user switches
+             * it on in the menu (Rule 2). */
+            SyncFeature(Ninlite::MODE_INIT, true, 0);
+            NIN_LOGI("QX", "root daemon is up and attached");
+        } else {
+            NIN_LOGE("QX", "root daemon did not answer - the engine stays stopped");
+        }
+        g_ninlite_starting.store(false, std::memory_order_relaxed);
     }).detach();
 }
 
+/**
+ * @brief Stops the QX channel.
+ *
+ * The command frame turns the features of the daemon off and stops it. The
+ * master switch of the RT channel is not touched here, the two channels stay
+ * independent (Rule 3).
+ */
 void StopEngine() {
     SyncFeature(Ninlite::MODE_MASTER, false, 0);
-    Actived.activar = false;
     SyncFeature(Ninlite::MODE_STOP, false, 0);
-    g_ninlite_engine_started = false;
+    g_ninlite_engine_started.store(false, std::memory_order_relaxed);
+    g_ninlite_game_attached.store(false, std::memory_order_relaxed);
+    g_ninlite_setup_done_flag.store(false, std::memory_order_relaxed);
 }
 
+/**
+ * @brief Reports whether the QX setup is complete.
+ *
+ * The setup is complete when the daemon is running and the game process was
+ * detected.
+ *
+ * @return true when the daemon runs and the game was found
+ */
 bool IsSetupDone() {
-    return g_ninlite_setup_done_flag;
+    return g_ninlite_setup_done_flag.load(std::memory_order_relaxed) &&
+           g_ninlite_engine_started.load(std::memory_order_relaxed);
 }
 
+/**
+ * @brief Builds the state document of the QX channel for the UI.
+ *
+ * Every value of the document describes an observed state: the daemon
+ * connection, the detected game and the result of the last start attempt.
+ *
+ * @return the state document as JSON
+ */
 std::string GetStateJson() {
-    bool isStarting = g_ninlite_starting.load();
-    bool isEngineStarted = g_ninlite_engine_started.load();
+    bool isStarting = g_ninlite_starting.load(std::memory_order_relaxed);
+    bool daemonRunning = isNinLiteDaemonAvailable();
+    bool isEngineStarted = g_ninlite_engine_started.load(std::memory_order_relaxed) && daemonRunning;
 
     NinDetection::GameProcess detected = NinDetection::Detect();
     pid_t pid = detected.pid;
-    if (pid > 0) target_pid.store(pid, std::memory_order_relaxed);
     bool gameDetected = (detected.isDetected && pid > 0);
+    g_ninlite_game_attached.store(gameDetected, std::memory_order_relaxed);
 
-    const char *gameName = "Waiting for Game...";
+    std::string gameName = "Waiting for Game...";
     if (gameDetected) {
-        gameName = detected.gameTitle.c_str();
+        gameName = detected.gameTitle;
     }
 
     bool isEmu = CheckEmulatorDetected();
@@ -197,45 +302,48 @@ std::string GetStateJson() {
     std::string buttonText;
     bool canStart = false;
 
-    if (isEngineStarted) {
-        if (gameDetected) {
-            statusText = std::string("Connected: ") + gameName + " (PID " + std::to_string(pid) + ")";
-            buttonText = "Active ✓";
-        } else {
-            statusText = "Engine Active (Waiting for Game...)";
-            buttonText = "Active ✓";
-        }
-        canStart = false;
-        g_ninlite_setup_done_flag = true;
-    } else if (isStarting) {
-        statusText = "Injecting Root Shell & Engine...";
+    if (isStarting) {
+        statusText = "Starting the root daemon...";
         buttonText = "Starting...";
-        canStart = false;
+    } else if (isEngineStarted && gameDetected) {
+        statusText = "Daemon connected: " + gameName + " (PID " +
+                     std::to_string(static_cast<long long>(pid)) + ")";
+        buttonText = "Running";
+    } else if (isEngineStarted) {
+        statusText = "Daemon running (waiting for the game...)";
+        buttonText = "Running";
+    } else if (!g_ninlite_last_error.empty()) {
+        statusText = g_ninlite_last_error;
+        buttonText = "Start";
+        canStart = true;
     } else if (gameDetected) {
-        statusText = std::string("Game Detected: ") + gameName + " (Ready to Start)";
+        statusText = "Game detected: " + gameName + " (ready to start)";
         buttonText = "Start";
         canStart = true;
     } else {
-        statusText = "Standby (Tap Start to Initialize Engine)";
+        statusText = "Standby (tap Start to launch the root daemon)";
         buttonText = "Start";
         canStart = true;
     }
 
+    g_ninlite_setup_done_flag.store(isEngineStarted && gameDetected,
+                                    std::memory_order_relaxed);
+
     char buf[2048];
     snprintf(buf, sizeof(buf),
-             "{\"isStarting\":%s,\"isEngineStarted\":%s,\"canStart\":%s,\"gameDetected\":%s,\"gamePid\":%d,\"gameTitle\":\"%s\","
-             "\"isEmulator\":%s,\"connectionMode\":\"%s\",\"statusText\":\"%s\",\"buttonText\":\"%s\","
-             "\"readyToDismiss\":false}",
+             "{\"isStarting\":%s,\"isEngineStarted\":%s,\"canStart\":%s,\"gameDetected\":%s,"
+             "\"gamePid\":%d,\"gameTitle\":\"%s\",\"isEmulator\":%s,\"connectionMode\":\"%s\","
+             "\"statusText\":\"%s\",\"buttonText\":\"%s\",\"readyToDismiss\":false}",
              isStarting ? "true" : "false",
              isEngineStarted ? "true" : "false",
              canStart ? "true" : "false",
              gameDetected ? "true" : "false",
-             (int)pid,
-             gameName,
+             static_cast<int>(pid),
+             JsonEscape(gameName).c_str(),
              isEmu ? "true" : "false",
-             connMode,
-             statusText.c_str(),
-             buttonText.c_str());
+             JsonEscape(connMode).c_str(),
+             JsonEscape(statusText).c_str(),
+             JsonEscape(buttonText).c_str());
 
     return std::string(buf);
 }

@@ -41,7 +41,12 @@ public class LoginActivity extends BaseActivity {
 
     private static final String PREF_REMEMBER_ME = "pref_auth_remember_me";
     private static final String PREF_SAVED_USERNAME = "pref_auth_saved_username";
-    private static final String PREF_SAVED_PASSWORD = "pref_auth_saved_password";
+    /**
+     * The password is never written to the preferences any more. The key is
+     * only kept to delete the plaintext copy of an older build from the
+     * device.
+     */
+    private static final String LEGACY_PREF_SAVED_PASSWORD = "pref_auth_saved_password";
 
     private EditText etUsername;
     private EditText etPassword;
@@ -175,9 +180,7 @@ public class LoginActivity extends BaseActivity {
         cbRemember.setChecked(savedRemember);
         if (savedRemember) {
             String savedUser = Prefs.with(this).readString(PREF_SAVED_USERNAME, "");
-            String savedPass = Prefs.with(this).readString(PREF_SAVED_PASSWORD, "");
             if (!savedUser.isEmpty()) etUsername.setText(savedUser);
-            if (!savedPass.isEmpty()) etPassword.setText(savedPass);
         }
         rememberRow.addView(cbRemember);
 
@@ -309,12 +312,13 @@ public class LoginActivity extends BaseActivity {
                 if (cbRemember != null && cbRemember.isChecked()) {
                     Prefs.with(LoginActivity.this).writeBoolean(PREF_REMEMBER_ME, true);
                     Prefs.with(LoginActivity.this).writeString(PREF_SAVED_USERNAME, username);
-                    Prefs.with(LoginActivity.this).writeString(PREF_SAVED_PASSWORD, password);
                 } else {
                     Prefs.with(LoginActivity.this).writeBoolean(PREF_REMEMBER_ME, false);
                     Prefs.with(LoginActivity.this).writeString(PREF_SAVED_USERNAME, "");
-                    Prefs.with(LoginActivity.this).writeString(PREF_SAVED_PASSWORD, "");
                 }
+                /* The plaintext password of an older build is deleted from the
+                 * preferences, it must never stay on the device. */
+                Prefs.with(LoginActivity.this).remove(LEGACY_PREF_SAVED_PASSWORD);
 
                 if (!username.contains("@") || Prefs.with(LoginActivity.this).readString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_USERNAME, "").isEmpty()) {
                     Prefs.with(LoginActivity.this).writeString(com.ninmods.main.core.ProfileActivity.PREF_ACTIVE_USERNAME, username);

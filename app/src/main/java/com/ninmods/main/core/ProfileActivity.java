@@ -487,7 +487,15 @@ public class ProfileActivity extends BaseActivity {
         tvExpiryDateValue = new TextView(this);
         card.addView(createRow("Valid Until", tvExpiryDateValue, hasActive ? AuthManager.getExpiryDate(this) : "Not Subscribed", AppColors.WHITE));
 
-        card.addView(createStaticRow("Driver Channel", "Ring 0 Real-Time IOCTL", 0xFF00E676));
+        String liveMemoryMode = "Not connected";
+        int liveMemoryColor = AppColors.MAGENTA_TEXT_DIM;
+        try {
+            liveMemoryMode = NativeBridge.getMemoryAccessMode();
+            liveMemoryColor = 0xFF00E676;
+        } catch (Throwable ignored) {
+            liveMemoryMode = "Not connected";
+        }
+        card.addView(createStaticRow("Driver Channel", liveMemoryMode, liveMemoryColor));
         card.addView(createStaticRow("License Seat Policy", "Multi-Device Linked", AppColors.MAGENTA_TEXT_DIM));
 
         return card;
@@ -552,8 +560,23 @@ public class ProfileActivity extends BaseActivity {
         bg.setStroke(dp(1), AppColors.MAGENTA_CARD_BORDER);
         card.setBackground(bg);
 
-        card.addView(createStaticRow("Anti-Tamper Core", "Active (AES-256 + SHA-256)", 0xFF00E676));
-        card.addView(createStaticRow("Memory Protection", "Hardware Enforced (Kernel)", 0xFF00E676));
+        /*
+         * Rule 1 (Zero Fake Code): the card only shows values that were really
+         * measured. The old card printed "Anti-Tamper Core - Active" and
+         * "Memory Protection - Hardware Enforced" as static strings, no matter
+         * what the engine was doing. The driver state is now read from the
+         * native layer, which only reports the RT channel as online after an
+         * IOCTL was answered successfully.
+         */
+        boolean driverOnline = false;
+        try {
+            driverOnline = NativeBridge.isKernelDriverConnected();
+        } catch (Throwable ignored) {
+            driverOnline = false;
+        }
+        card.addView(createStaticRow("Memory Channel",
+                driverOnline ? "Ring-0 Driver (IOCTL verified)" : "Driver not connected",
+                driverOnline ? 0xFF00E676 : 0xFFFF5252));
         card.addView(createStaticRow("Native Library", "libninmods.so (ARM64-v8a)", AppColors.WHITE));
         card.addView(createStaticRow("Client Version", getString(R.string.app_name) + " v" + getString(R.string.app_version), AppColors.MAGENTA_PRIMARY));
 

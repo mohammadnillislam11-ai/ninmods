@@ -597,11 +597,20 @@ void DrawESP(ESP esp) {
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_core_NativeBridge_drawEspNative(JNIEnv *env, jclass type,
-                                                     jobject espView,
-                                                     jobject canvas, jint width,
-                                                     jint height) {
+                                                      jobject espView,
+                                                      jobject canvas, jint width,
+                                                      jint height) {
   if (!SecurityVault_IsSessionValid()) {
     return; // Zero ESP drawing if no genuine verified server session
+  }
+  /* The real screen size arrives with every frame. It was never stored, so
+   * the engine always worked with the 1920x1080 fallback and the layout was
+   * wrong on every other device. */
+  if (width > 0 && height > 0) {
+    g_ScreenWidth = static_cast<int>(width);
+    g_ScreenHeight = static_cast<int>(height);
+    NativeOverlayController::SetScreenSize(static_cast<int>(width),
+                                           static_cast<int>(height));
   }
   if (env->PushLocalFrame(256) < 0) {
     return;
@@ -622,13 +631,24 @@ Java_com_ninmods_main_core_NativeBridge_launchBrandOverlay(
     JNIEnv *env, jclass clazz, jstring jBrandId, jstring jHwid,
     jboolean isLicenseActive, jfloat density, jstring jPrefillKey,
     jstring jServerUrl) {
-  const char *bId =
-      jBrandId ? env->GetStringUTFChars(jBrandId, nullptr) : "nin";
-  const char *hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : "";
-  const char *prefill =
-      jPrefillKey ? env->GetStringUTFChars(jPrefillKey, nullptr) : "";
-  const char *sUrl =
-      jServerUrl ? env->GetStringUTFChars(jServerUrl, nullptr) : "";
+  const char *rawBrand = jBrandId ? env->GetStringUTFChars(jBrandId, nullptr) : nullptr;
+  const char *rawHwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : nullptr;
+  const char *rawPrefill =
+      jPrefillKey ? env->GetStringUTFChars(jPrefillKey, nullptr) : nullptr;
+  const char *rawUrl = jServerUrl ? env->GetStringUTFChars(jServerUrl, nullptr) : nullptr;
+
+  /* GetStringUTFChars can fail and return null. Building a std::string from a
+   * null pointer is undefined behaviour, so every value falls back to an empty
+   * string instead. The raw pointers stay separate, because only a pointer
+   * that really came from GetStringUTFChars may be released again. */
+  const char *bId = rawBrand ? rawBrand : "";
+  const char *hwid = rawHwid ? rawHwid : "";
+  const char *prefill = rawPrefill ? rawPrefill : "";
+  const char *sUrl = rawUrl ? rawUrl : "";
+  if (rawBrand == nullptr || rawHwid == nullptr || rawPrefill == nullptr ||
+      rawUrl == nullptr) {
+    if (env->ExceptionCheck()) env->ExceptionClear();
+  }
 
   NativeOverlayController::Initialize(g_ScreenWidth, g_ScreenHeight,
                                       (float)density, bId, hwid,
@@ -683,19 +703,29 @@ Java_com_ninmods_main_core_NativeBridge_launchBrandOverlay(
     }
   });
 
-  if (jBrandId)
-    env->ReleaseStringUTFChars(jBrandId, bId);
-  if (jHwid)
-    env->ReleaseStringUTFChars(jHwid, hwid);
-  if (jPrefillKey)
-    env->ReleaseStringUTFChars(jPrefillKey, prefill);
-  if (jServerUrl)
-    env->ReleaseStringUTFChars(jServerUrl, sUrl);
+  if (rawBrand)
+    env->ReleaseStringUTFChars(jBrandId, rawBrand);
+  if (rawHwid)
+    env->ReleaseStringUTFChars(jHwid, rawHwid);
+  if (rawPrefill)
+    env->ReleaseStringUTFChars(jPrefillKey, rawPrefill);
+  if (rawUrl)
+    env->ReleaseStringUTFChars(jServerUrl, rawUrl);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_ninmods_main_core_NativeBridge_setActiveChannel(JNIEnv *env,
+                                                          jclass clazz, jint channel) {
+  (void) env;
+  (void) clazz;
+  /* Rule 3: the user selects the channel, the engine never switches it. */
+  NinChannel::SetActiveChannel(static_cast<int>(channel));
+  NIN_LOGI("RT", "active memory channel: %s", NinChannel::DescribeActiveChannel());
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isModalPopupActive(JNIEnv *env,
-                                                           jclass clazz) {
+                                                            jclass clazz) {
   return (jboolean)NativeOverlayController::IsModalPopupActive();
 }
 
@@ -1194,21 +1224,29 @@ bool NinFeatureGetState(int featId) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isKernelDriverConnected(JNIEnv *env,
                                                                 jclass clazz) {
+  (void) env;
   (void) clazz;
-  return (MemoryIO::g_pid.load() > 0 || FindGamePid() > 0) ? JNI_TRUE : JNI_FALSE;
+  /* The answer must describe the driver, not the game: the driver is only
+   * "connected" when an IOCTL was answered successfully. */
+  return MemoryIO::IsDriverReady() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env,
                                                             jclass clazz) {
   (void) clazz;
-  char buf[512];
+  char buf[768];
   pid_t targetPid = target_pid.load(std::memory_order_relaxed);
   if (targetPid <= 0) targetPid = FindGamePid();
-  bool memoryConnected = (targetPid > 0);
-  const char *node = memoryConnected ? "process_vm_readv (no device node)" : "DISCONNECTED";
-  const char *mode = memoryConnected ? "Official Linux (process_vm_readv)" : "OFFLINE";
-  int fd = -1;
+
+  /* Every line of this report describes an observed state: the driver node
+   * that is open, whether an IOCTL was verified, the errno of the last
+   * failure and the state of the QX daemon. */
+  bool driverReady = MemoryIO::IsDriverReady();
+  int fd = MemoryIO::g_driver_fd.load(std::memory_order_acquire);
+  const char *node = MemoryIO::GetDriverNode();
+  int lastErrno = MemoryIO::GetLastErrno();
+  bool daemonConnected = NinliteEngine::CheckShellDaemonRunning();
 
   Response cached = GetCachedResponseSnapshot();
   int entities = (targetPid > 0) ? cached.PlayerCount : 0;
@@ -1220,16 +1258,22 @@ Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env,
            "MEMORY SOURCE: %s\n"
            "DEVICE NODE   : %s (fd: %d)\n"
            "CHANNEL MODE  : %s\n"
+           "QX DAEMON     : %s\n"
            "TARGET PID    : %s\n"
-           "MEMORY API   : %s\n"
+           "MEMORY API    : %s\n"
+           "LAST IOCTL ERR: %s\n"
            "ENTITIES READ : %d TARGETS\n"
            "ENEMIES VIS   : %d VISIBLE\n"
            "HARDWARE ESP  : %s\n"
            "AIM ENGINE    : %s",
-           memoryConnected ? "ONLINE (process_vm_readv)" : "OFFLINE",
-           node, fd, mode,
+           driverReady ? "ONLINE (Ring-0 IOCTL)" : "OFFLINE (no verified IOCTL)",
+           node, fd,
+           driverReady ? "RT Ring-0 Driver (IOCTL 0x801/0x802/0x803)"
+                       : "RT Ring-0 Driver (NOT VERIFIED)",
+           daemonConnected ? "connected" : "not running",
            (targetPid > 0) ? std::to_string(targetPid).c_str() : "NONE (NO TARGET)",
-           memoryConnected ? "process_vm_readv" : "NONE",
+           driverReady ? "IOCTL_RT_READ / IOCTL_RT_WRITE" : "NONE",
+           lastErrno > 0 ? strerror(lastErrno) : "NONE",
            entities, visible, espActive ? "ACTIVE" : "STANDBY",
            aimActive ? "ENABLED" : "OFF");
   return env->NewStringUTF(buf);
@@ -1367,22 +1411,15 @@ jclass g_NativeBridgeClassRef = nullptr;
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getMemoryAccessMode(JNIEnv *env, jclass clazz) {
   (void) clazz;
-  const char *mode = "Not connected";
-  {
-    pid_t pid = target_pid.load(std::memory_order_relaxed);
-    if (pid <= 0) pid = FindGamePid();
-    if (pid > 0) {
-      mode = "Official Linux Syscall (process_vm_readv)";
-    } else {
-      std::string connection = NinliteEngine::GetConnectionModeStr();
-      if (connection.find("Kernel") != std::string::npos) {
-        mode = "Root Daemon (Kernel Driver)";
-      } else if (connection.find("Daemon") != std::string::npos) {
-        mode = "Root Daemon (process_vm_readv)";
-      }
-    }
+  /* The mode must describe the channel that is really active: the verified
+   * Ring-0 driver of the app or the QX daemon of the root process. */
+  if (MemoryIO::IsDriverReady()) {
+    return env->NewStringUTF("Ring-0 Kernel Driver (IOCTL)");
   }
-  return env->NewStringUTF(mode);
+  if (NinliteEngine::CheckShellDaemonRunning()) {
+    return env->NewStringUTF("Root Daemon (IPC, process_vm_readv)");
+  }
+  return env->NewStringUTF("Not connected");
 }
 
 extern "C" JNIEXPORT void JNICALL

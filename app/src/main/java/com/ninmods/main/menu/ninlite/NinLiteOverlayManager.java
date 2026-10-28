@@ -31,6 +31,12 @@ public class NinLiteOverlayManager {
         mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
     }
 
+    /**
+     * Returns the shared instance of the manager.
+     *
+     * @param context context used to build the instance
+     * @return the shared instance
+     */
     public static synchronized NinLiteOverlayManager getInstance(Context context) {
         if (sInstance == null) {
             sInstance = new NinLiteOverlayManager(context);
@@ -38,20 +44,40 @@ public class NinLiteOverlayManager {
         return sInstance;
     }
 
+    /**
+     * Starts the NINLITE floating menu.
+     *
+     * @param context context of the caller
+     */
     public static void start(Context context) {
         getInstance(context).startInternal();
     }
 
+    /**
+     * Stops the NINLITE floating menu.
+     */
     public static void stop() {
         if (sInstance != null) {
             sInstance.stopInternal();
         }
     }
 
+    /**
+     * Reports whether the NINLITE floating menu is running.
+     *
+     * @return true when the menu is attached
+     */
     public static boolean isRunning() {
         return sInstance != null && sInstance.mIsAttached;
     }
 
+    /**
+     * Starts the NINLITE overlay of the QX channel.
+     *
+     * The QX channel is the root daemon over IPC, so the channel is selected
+     * explicitly before the native overlay is created. The in-app engine then
+     * never reads the game memory itself in this mode.
+     */
     private void startInternal() {
         mMainHandler.post(() -> {
             try {
@@ -66,7 +92,9 @@ public class NinLiteOverlayManager {
                 String serverUrl = AuthApiController.getServerBaseUrl(mContext);
                 float density = mContext.getResources().getDisplayMetrics().density;
 
-                // Inform NativeBridge
+                // Select the QX channel (root daemon over IPC) and inform the
+                // native bridge.
+                NativeBridge.setActiveChannel(NativeBridge.CHANNEL_QX);
                 NativeBridge.launchBrandOverlay("ninlite", hwid, hasActiveLicense, density, activeKey, serverUrl);
 
                 /* The persistent feature store has to exist before the menu
@@ -87,6 +115,9 @@ public class NinLiteOverlayManager {
         });
     }
 
+    /**
+     * Stops the NINLITE overlay and releases the shared ESP surface.
+     */
     private void stopInternal() {
         mMainHandler.post(() -> {
             try {

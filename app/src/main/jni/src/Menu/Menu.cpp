@@ -4,19 +4,21 @@
 #include "Includes/Utils.h"
 #include "Includes/MemoryIO.h"
 #include "Includes/obfuscate.h"
+#include "Engine/DaemonLink.h"
 
 #include <string>
 #include <vector>
 
-/*
- * The reference mod menu ships a base64 encoded PNG as the collapsed icon
- * and optionally a WebView data URI for an animated GIF.
+/**
+ * @brief Native icon of the collapsed menu.
  *
- * NINMODS is a white label app, so the icon must come from the app
- * resources (every white label build carries its own launcher icon) and the
- * native side must not embed a foreign asset. Both methods therefore report
- * "no native asset" - exactly the disabled path of the reference
- * implementation - and the Java layer falls back to the app icon.
+ * NINMODS is a white label app, so the icon must come from the app resources
+ * of every build. The native side therefore reports "no native asset" and the
+ * Java layer falls back to the launcher icon of the build.
+ *
+ * @param env   JNI environment
+ * @param thiz  calling instance
+ * @return always nullptr, the Java layer renders the app icon
  */
 jstring Icon(JNIEnv *env, jobject thiz) {
     (void) env;
@@ -24,32 +26,38 @@ jstring Icon(JNIEnv *env, jobject thiz) {
     return nullptr;
 }
 
+/**
+ * @brief Native WebView animation of the collapsed menu.
+ *
+ * A white label build carries its own animation in the app resources, so the
+ * native side reports "no native asset" as well.
+ *
+ * @param env   JNI environment
+ * @param thiz  calling instance
+ * @return always nullptr, the Java layer renders the app asset
+ */
 jstring IconWebViewData(JNIEnv *env, jobject thiz) {
     (void) env;
     (void) thiz;
     return nullptr;
 }
 
-/*
- * Live status of the engine. It is written into the marquee subtitle of the
- * menu, which is the same place where the reference menu puts its native
- * status text.
+/**
+ * @brief Builds the live engine status of the menu marquee.
  *
- * Strictly follows Rule 16 & user directives:
- * ninmods = 100% Genuine Kernel Driver (/dev/BYNb Ring-0 IOCTL)
- * ninlite = Internal engine (process_vm_readv)
+ * The text only contains facts that were observed:
+ *   - the RT channel reports the driver node, the descriptor and whether an
+ *     IOCTL was verified (Includes/MemoryIO.h),
+ *   - the QX channel reports whether the root daemon is connected,
+ *   - the target pid is the pid the engine is really attached to.
+ *
+ * @return the status line of the engine
  */
 static std::string BuildEngineStatus() {
     std::string status = "Engine: ";
-
-    int dfd = MemoryIO::GetDriverFd();
-    if (dfd >= 0) {
-        status += "Kernel Driver (/dev/BYNb Ring-0)";
-    } else if (MemoryIO::g_pid.load() > 0 || target_pid.load(std::memory_order_relaxed) > 0) {
-        status += "ninlite Internal (process_vm_readv)";
-    } else {
-        status += "Standby (Waiting for Driver/Game)";
-    }
+    status += MemoryIO::DescribeChannel();
+    status += " | QX Daemon: ";
+    status += NinEngine::DaemonLink::Instance().IsConnected() ? "connected" : "not running";
 
     pid_t pid = target_pid.load(std::memory_order_relaxed);
     if (pid <= 0) {
@@ -68,14 +76,18 @@ static std::string BuildEngineStatus() {
     return status;
 }
 
-/*
- * Init is called by the Java layer as the last step of the menu
- * construction. The reference implementation uses it to publish the native
- * branding, a welcome dialog and a toast.
+/**
+ * @brief Initializes the native menu.
  *
- * NINMODS keeps the same flow but with real, dynamic information: the
- * marquee subtitle carries the live engine status and the user is warned
- * when no target process is attached.
+ * The call is the last step of the menu construction. The marquee subtitle
+ * carries the live engine status and the user is warned when no target
+ * process is attached.
+ *
+ * @param env      JNI environment
+ * @param thiz     calling instance
+ * @param ctx      application context used for the toast
+ * @param title    title of the menu, unused by the native layer
+ * @param subtitle subtitle that receives the engine status
  */
 void Init(JNIEnv *env, jobject thiz, jobject ctx, jobject title, jobject subtitle) {
     (void) thiz;
@@ -90,17 +102,22 @@ void Init(JNIEnv *env, jobject thiz, jobject ctx, jobject title, jobject subtitl
     }
     if (pid <= 0) {
         Toast(env, ctx,
-              "No target game detected. Start Free Fire, then toggle features.",
+              "No target game detected. Start the game, then toggle the features.",
               TOAST_LENGTH_LONG);
     }
 }
 
-/*
- * The settings page of the menu. The indices are the reserved ones of the
- * reference system:
+/**
+ * @brief Builds the settings page of the menu.
+ *
+ * The indices are the reserved ones of the menu system:
  *   -1  save feature preferences
  *   -3  auto size vertically
  *   -6  close the settings page
+ *
+ * @param env           JNI environment
+ * @param activityObject calling instance
+ * @return the settings rows of the menu
  */
 jobjectArray SettingsList(JNIEnv *env, jobject activityObject) {
     (void) activityObject;
@@ -126,9 +143,16 @@ jobjectArray SettingsList(JNIEnv *env, jobject activityObject) {
     return ret;
 }
 
-/*
- * The mod page of the menu. The whole structure comes from the native
- * feature table, the Java layer only renders the rows it receives.
+/**
+ * @brief Builds the feature page of the menu.
+ *
+ * The whole structure comes from the native feature table, the Java layer
+ * only renders the rows it receives. The live engine status is appended as
+ * the last read only row.
+ *
+ * @param env     JNI environment
+ * @param context application context
+ * @return the feature rows of the menu
  */
 jobjectArray GetFeatureList(JNIEnv *env, jobject context) {
     (void) context;
@@ -150,13 +174,15 @@ jobjectArray GetFeatureList(JNIEnv *env, jobject context) {
     return ret;
 }
 
-/*
- * True as soon as the game library of the target process is mapped, i.e.
- * the engine is able to resolve its offsets and to touch the game.
+/**
+ * @brief Reports whether the game library of the target process is mapped.
  *
  * The menu uses this gate to hold back the stored preferences until the
- * game is really there - the same gate the reference menu uses with its
- * libil2cpp.so check.
+ * game is really there.
+ *
+ * @param env   JNI environment
+ * @param thiz  calling instance
+ * @return JNI_TRUE when the engine resolved the game library
  */
 jboolean IsGameLibLoaded(JNIEnv *env, jobject thiz) {
     (void) env;

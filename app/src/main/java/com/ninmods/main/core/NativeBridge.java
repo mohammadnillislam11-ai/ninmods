@@ -36,6 +36,28 @@ public final class NativeBridge {
     private NativeBridge() {}
 
     /**
+     * Channel identifier of the Ring-0 kernel driver used by the in-app engine.
+     */
+    public static final int CHANNEL_RT = 0;
+
+    /**
+     * Channel identifier of the root daemon that streams the scene over IPC.
+     */
+    public static final int CHANNEL_QX = 1;
+
+    /**
+     * Selects the memory channel the engine has to use.
+     *
+     * The two channels are completely independent: the RT channel reads the
+     * game memory through the kernel driver, the QX channel receives the
+     * scene from the root daemon. The engine never switches the channel on
+     * its own, so a failing channel can not activate the other one.
+     *
+     * @param channel CHANNEL_RT or CHANNEL_QX
+     */
+    public static native void setActiveChannel(int channel);
+
+    /**
      * Initializes and launches the native Dear ImGui multi-brand overlay.
      */
     public static native void launchBrandOverlay(String brandId, String hwid, boolean isLicenseActive, float density, String prefillKey, String serverUrl);

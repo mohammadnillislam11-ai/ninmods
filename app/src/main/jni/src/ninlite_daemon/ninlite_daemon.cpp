@@ -1,18 +1,22 @@
 /**
- * NINLITE ROOT DAEMON  (100% Kernel Driver Engine)
+ * NINLITE ROOT DAEMON  (QX CHANNEL - IPC MODE)
  * =================================================
- * This is the out-of-process engine that runs with root privileges. It owns
- * the memory access to the game process and streams the reconstructed scene
- * (entities, screen positions, health, weapon, knock state) to the Main App
- * over a length prefixed UNIX domain socket.
+ * This is the out-of-process engine of the QX channel. It runs with root
+ * privileges, owns the memory access to the game process and streams the
+ * reconstructed scene (entities, screen positions, health, weapon, knock
+ * state) to the Main App over a length prefixed UNIX domain socket.
  *
- * ARCHITECTURE RULES HONOURED HERE (see GEMINI.md):
- *  - Rule 16: 100% kernel driver only. Memory is accessed exclusively through
- *    the Ring-0 character device IOCTLs (0x801 read / 0x802 write / 0x803 base).
- *    The previous /proc/<pid>/mem implementation was a driverless fallback
- *    and was removed.
- *  - Rule 8: all offsets live in the single central file gameoffsets.h.
- *  - Rule 1/2: every reported value comes from a genuine device state.
+ * ARCHITECTURE RULES HONOURED HERE (see AGENTS.md):
+ *  - Rule 3 (Strict Driver Isolation): the QX channel is completely separate
+ *    from the RT channel. This Daemon never opens a character device and
+ *    never issues an IOCTL - the Ring-0 driver belongs to the in-app engine
+ *    only. The user selects the channel, neither one falls back into the
+ *    other one. The access primitives of this channel are the official Linux
+ *    syscalls (process_vm_readv / process_vm_writev) with the POSIX
+ *    /proc/<pid>/mem path and /proc/<pid>/maps for the module base.
+ *  - Rule 9: all offsets live in the single central file gameoffsets.h.
+ *  - Rule 1: every reported value comes from a genuine access result, a
+ *    refused access is reported and never faked.
  *
  * RELIABILITY FIXES (all of these were real crashes / dead-ends before):
  *  - The wire protocol is defined once in Includes/NinliteProtocol.h and is
@@ -1045,6 +1049,10 @@ static bool BringServerUpWithRetry(int maxAttempts, int delayMs) {
 
 int main(int argc, char* argv[]) {
     (void)argc; (void)argv;
+
+    /* A client that disconnects in the middle of a write must not kill the
+     * root daemon with SIGPIPE. */
+    signal(SIGPIPE, SIG_IGN);
 
     LOGI("=== NINLITE ROOT DAEMON (official Linux process_vm_readv) STARTING ===");
     Namegun::Init();

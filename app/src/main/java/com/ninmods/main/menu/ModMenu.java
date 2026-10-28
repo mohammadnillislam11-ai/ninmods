@@ -413,6 +413,14 @@ public class ModMenu {
 
     private void populateAllFeatures() {
         for (LinearLayout container : mTabContainers.values()) {
+            /* The observers of the old rows have to be released before the
+             * rows are thrown away, otherwise the central list grows with
+             * every rebuild and the discarded views keep being updated. */
+            for (int i = 0; i < container.getChildCount(); i++) {
+                try {
+                    MenuController.getInstance().unregisterViewListeners(container.getChildAt(i));
+                } catch (Throwable ignored) {}
+            }
             container.removeAllViews();
         }
 

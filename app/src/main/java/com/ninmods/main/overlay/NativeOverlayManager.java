@@ -59,6 +59,12 @@ public class NativeOverlayManager {
         }
     }
 
+    /**
+     * Returns the shared instance of the manager.
+     *
+     * @param context context used to build the instance
+     * @return the shared instance
+     */
     public static synchronized NativeOverlayManager getInstance(Context context) {
         if (sInstance == null) {
             sInstance = new NativeOverlayManager(context);
@@ -66,24 +72,48 @@ public class NativeOverlayManager {
         return sInstance;
     }
 
+    /**
+     * Returns the application context of the running overlay.
+     *
+     * @return the context, or null when no overlay is running
+     */
     public static Context getContext() {
         return sInstance != null ? sInstance.mContext : null;
     }
 
+    /**
+     * Starts the native floating overlay.
+     *
+     * @param context context of the caller
+     * @param brandId identifier of the white label build
+     */
     public static void start(Context context, String brandId) {
         getInstance(context).startInternal(brandId);
     }
 
+    /**
+     * Stops the native floating overlay.
+     */
     public static void stop() {
         if (sInstance != null) {
             sInstance.stopInternal();
         }
     }
 
+    /**
+     * Reports whether the native floating overlay is running.
+     *
+     * @return true when the overlay is attached
+     */
     public static boolean isRunning() {
         return sInstance != null && sInstance.mIsAttached;
     }
 
+    /**
+     * Returns the identifier of the running white label build.
+     *
+     * @return the brand identifier
+     */
     public static String getActiveBrandId() {
         return sInstance != null ? sInstance.mActiveBrandId : "nin";
     }
@@ -96,6 +126,12 @@ public class NativeOverlayManager {
      * Before this surface existed the field was declared but never
      * assigned, so the render thread never started and NOT A SINGLE ESP
      * FRAME was ever drawn.
+     */
+    /**
+     * Attaches the shared transparent hardware ESP surface.
+     *
+     * @param context context of the caller
+     * @param wm      window manager that owns the surface
      */
     public static synchronized void attachEspSurface(Context context, WindowManager wm) {
         if (sEspOverlayView != null) {
@@ -143,6 +179,11 @@ public class NativeOverlayManager {
         }
     }
 
+    /**
+     * Detaches the shared hardware ESP surface.
+     *
+     * @param wm window manager that owns the surface
+     */
     public static synchronized void detachEspSurface(WindowManager wm) {
         if (sEspOverlayView == null) {
             return;
@@ -158,10 +199,24 @@ public class NativeOverlayManager {
         sEspParams = null;
     }
 
+    /**
+     * Reports whether the shared hardware ESP surface is attached.
+     *
+     * @return true when the surface is attached
+     */
     public static boolean isEspSurfaceAttached() {
         return sEspOverlayView != null;
     }
 
+    /**
+     * Starts the native overlay of the RT channel.
+     *
+     * The RT channel is the Ring-0 kernel driver of the in-app engine, so
+     * the channel is selected explicitly before the native overlay is
+     * created. The engine never switches the channel on its own.
+     *
+     * @param brandId identifier of the white label build
+     */
     @SuppressLint("ClickableViewAccessibility")
     private void startInternal(String brandId) {
         mActiveBrandId = (brandId != null && !brandId.isEmpty()) ? brandId : "nin";
@@ -172,7 +227,7 @@ public class NativeOverlayManager {
                 String activeKey = AuthManager.getActiveLicenseKey(mContext);
                 String serverUrl = AuthApiController.getServerBaseUrl(mContext);
 
-if (mIsAttached && MenuOverlayService.isRunning()) {
+                if (mIsAttached && MenuOverlayService.isRunning()) {
                     AppLogger.log(TAG, "Floating overlay already running. Active brand: " + mActiveBrandId);
                     return;
                 }
@@ -181,7 +236,9 @@ if (mIsAttached && MenuOverlayService.isRunning()) {
                 // reads a single value.
                 FeatureSettings.init(mContext);
 
-                // 1. Initialize C++ Native Bridge Engine & Driver link
+                // 1. Select the RT channel (Ring-0 kernel driver) and
+                // initialize the C++ native bridge.
+                NativeBridge.setActiveChannel(NativeBridge.CHANNEL_RT);
                 NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense, mDensity, activeKey, serverUrl);
 
                 /*
@@ -222,7 +279,13 @@ if (mIsAttached && MenuOverlayService.isRunning()) {
                  * running. That is the architecture of the reference mod menu.
                  */
                 Intent menuService = new Intent(mContext, MenuOverlayService.class);
-                mContext.startService(menuService);
+                /* The menu has to stay alive while the game (a different app)
+                 * is in the foreground, so it runs as a foreground service. */
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    mContext.startForegroundService(menuService);
+                } else {
+                    mContext.startService(menuService);
+                }
                 AppLogger.log(TAG, "Floating mod menu service started (native feature DSL)");
 
                 mIsAttached = true;
@@ -232,14 +295,23 @@ if (mIsAttached && MenuOverlayService.isRunning()) {
         });
     }
 
+    /**
+     * Expands the floating menu.
+     */
     public void openMenu() {
         mMainHandler.post(() -> MenuOverlayService.expandMenu());
     }
 
+    /**
+     * Collapses the floating menu to the logo.
+     */
     public void collapseToLogo() {
         mMainHandler.post(() -> MenuOverlayService.collapseToLogo());
     }
 
+    /**
+     * Stops the native overlay and releases the shared ESP surface.
+     */
     private void stopInternal() {
         mMainHandler.post(() -> {
             try {

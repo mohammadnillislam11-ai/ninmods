@@ -142,6 +142,14 @@ public class NinLiteFloatingMenuView {
      */
     public void release() {
         FeatureSettings.removeListener(mFeatureListener);
+        /* Release the observers that the central controller registered for the
+         * bound rows of this menu, otherwise they keep a reference to the
+         * discarded views. */
+        try {
+            if (mController != null && mRootFrame != null) {
+                mController.unregisterViewListeners(mRootFrame);
+            }
+        } catch (Throwable ignored) {}
         if (mWindowManager != null && mRootFrame != null && mIsAttached) {
             try {
                 if (mRootFrame.isAttachedToWindow()) {

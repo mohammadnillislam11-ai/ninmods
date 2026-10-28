@@ -96,6 +96,12 @@ public final class MenuController {
     }
 
     private final List<OnFeatureChangeListener> mListeners = new CopyOnWriteArrayList<>();
+    /**
+     * Observers that were registered for a bound view. They are stored per
+     * view, so a menu that rebuilds its rows can release exactly its own
+     * observers instead of leaking them into the central list.
+     */
+    private final java.util.Map<View, OnFeatureChangeListener> mViewListeners = new java.util.concurrent.ConcurrentHashMap<>();
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private Context mContext;
 
@@ -665,7 +671,7 @@ public final class MenuController {
         });
 
         // Register listener for external updates from other menus
-        addListener((fId, state, value) -> {
+        registerViewListener(sw, (fId, state, value) -> {
             if (fId == featNum && sw.isChecked() != state) {
                 sw.setChecked(state);
             }
@@ -715,7 +721,7 @@ public final class MenuController {
         });
 
         // Register listener for external updates from other menus
-        addListener((fId, state, value) -> {
+        registerViewListener(seekBar, (fId, state, value) -> {
             if (fId == featNum) {
                 int actual = (int) value;
                 if (actual >= min && actual <= max && (min + seekBar.getProgress()) != actual) {
@@ -756,7 +762,7 @@ public final class MenuController {
         });
 
         // Register listener for external updates from other menus
-        addListener((fId, state, value) -> {
+        registerViewListener(spinner, (fId, state, value) -> {
             if (fId == featNum) {
                 int pos = (int) value;
                 if (pos >= 0 && pos < options.length && spinner.getSelectedItemPosition() != pos) {
@@ -814,7 +820,7 @@ public final class MenuController {
         });
 
         // Register listener for external updates from other menus
-        addListener((fId, checked, val) -> {
+        registerViewListener(row, (fId, checked, val) -> {
             if (fId == featNum && state[0] != checked) {
                 state[0] = checked;
                 updateUi.run();
@@ -1046,6 +1052,46 @@ public final class MenuController {
     public void removeListener(OnFeatureChangeListener listener) {
         if (listener != null) {
             mListeners.remove(listener);
+        }
+    }
+
+    /**
+     * Registers an observer that belongs to a bound view.
+     *
+     * The observer is remembered for the view, so it can be released when the
+     * menu rebuilds its rows. Without this the central list grew with every
+     * rebuild and the discarded views kept receiving updates.
+     *
+     * @param view     view the observer belongs to
+     * @param listener observer callback
+     */
+    private void registerViewListener(View view, OnFeatureChangeListener listener) {
+        if (view == null || listener == null) return;
+        OnFeatureChangeListener previous = mViewListeners.put(view, listener);
+        if (previous != null) {
+            mListeners.remove(previous);
+        }
+        if (!mListeners.contains(listener)) {
+            mListeners.add(listener);
+        }
+    }
+
+    /**
+     * Releases the observers of a view and of all of its children.
+     *
+     * @param view view whose observers have to be released
+     */
+    public void unregisterViewListeners(View view) {
+        if (view == null) return;
+        OnFeatureChangeListener listener = mViewListeners.remove(view);
+        if (listener != null) {
+            mListeners.remove(listener);
+        }
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                unregisterViewListeners(group.getChildAt(i));
+            }
         }
     }
 

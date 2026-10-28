@@ -2,21 +2,13 @@
 #define NINLITE_SOCKET_SERVER_H
 
 /**
- * NINLITE DAEMON SOCKET SERVER
- * ----------------------------
- * Robust UNIX domain socket server used by the root Daemon to stream entity
- * data to the Main App.
+ * @file NinLiteSocketServer.h
+ * @brief UNIX domain socket server used by the root daemon to stream entity data.
  *
- * Reliability contract (all of these were real production failures before):
- *  1. A client disconnecting MUST NOT destroy the listening socket. The old
- *     implementation called Close() from the read/write helpers, which closed
- *     the listener too, so after the very first probe connection the Daemon
- *     could never accept another client again.
- *  2. The framing length MUST be validated against the caller's buffer
- *     capacity before a single payload byte is copied, otherwise a malformed
- *     frame overflows a fixed size stack buffer.
- *  3. Accept() failure must be recoverable: the server has to be able to
- *     re-arm itself without restarting the process.
+ * Reliability contract:
+ *  1. A client disconnecting must not destroy the listening socket.
+ *  2. The framing length must be validated against caller buffer capacity.
+ *  3. Accept failure must be recoverable without restarting the daemon process.
  */
 
 #if __has_include(<unistd.h>)
@@ -61,17 +53,21 @@
 #include "../Includes/android_ide_stubs/sys/un.h"
 #endif
 
-#include <stdlib.h>
-#include <string>
-#include <vector>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <string>
+#include <vector>
 
 #include "Includes/NinliteProtocol.h"
 
 #define NINLITE_BACKLOG 8
 
+/**
+ * @class NinLiteSocketServer
+ * @brief Manages the listening abstract domain socket for IPC communication.
+ */
 class NinLiteSocketServer {
 public:
     int listenfd;
@@ -93,6 +89,10 @@ public:
     NinLiteSocketServer(const NinLiteSocketServer&) = delete;
     NinLiteSocketServer& operator=(const NinLiteSocketServer&) = delete;
 
+    /**
+     * @brief Creates the socket file descriptor.
+     * @return true on success, false otherwise.
+     */
     bool Create() {
         if (listenfd < 0) {
             listenfd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -101,26 +101,19 @@ public:
         return isCreated;
     }
 
+    /**
+     * @brief Binds the socket to the abstract domain name.
+     * @return true on success, false otherwise.
+     */
     bool Bind() {
         if (listenfd < 0) return false;
 
-        /* The address is built by the shared helper (Includes/NinliteProtocol.h)
-         * so that the name bytes AND the address length are byte-for-byte
-         * identical to the ones the App uses in connect().
-         *
-         * The previous implementation copied the name with strncpy() into a
-         * buffer that already started with a NUL, which truncated the copy at
-         * the first NUL - and it then bound with sizeof(sockaddr_un) while the
-         * App connected with a 26 byte address. In the abstract namespace the
-         * name length comes from the address length, so the two sides ended up
-         * on two different sockets and the Daemon link never came up. */
         socklen_t addrLen = Ninlite::BuildAbstractAddress(&addr_server);
         if (addrLen == 0) {
             CloseClient();
             return false;
         }
 
-        /* Keep the human readable name in sync for logging. */
         memset(socket_name, 0, sizeof(socket_name));
         size_t nameLen = strlen(NINLITE_SOCKET_NAME);
         if (nameLen > sizeof(socket_name) - 2) nameLen = sizeof(socket_name) - 2;
@@ -133,6 +126,10 @@ public:
         return true;
     }
 
+    /**
+     * @brief Listens for incoming client connections.
+     * @return true on success, false otherwise.
+     */
     bool Listen() {
         if (listenfd < 0) return false;
         if (listen(listenfd, NINLITE_BACKLOG) < 0) {
@@ -142,8 +139,10 @@ public:
         return true;
     }
 
-    /** Accepts one client. On failure the listener is preserved so the server
-     *  can keep serving later connections. */
+    /**
+     * @brief Accepts a client connection without closing the listener on failure.
+     * @return true on success, false otherwise.
+     */
     bool Accept() {
         if (listenfd < 0) return false;
         int fd = accept4(listenfd, nullptr, nullptr, SOCK_CLOEXEC);
@@ -151,13 +150,14 @@ public:
             CloseClient();
             return false;
         }
-        CloseClient();                          /* single client at a time */
+        CloseClient();
         acceptfd = fd;
         return true;
     }
 
-    /** Closes ONLY the current client connection. The listening socket stays
-     *  alive - this is the critical difference from the previous Close(). */
+    /**
+     * @brief Closes only the current client connection.
+     */
     void CloseClient() {
         if (acceptfd >= 0) {
             close(acceptfd);
@@ -165,7 +165,9 @@ public:
         }
     }
 
-    /** Full teardown (process exit path only). */
+    /**
+     * @brief Closes the listening socket and any active client connection.
+     */
     void Close() {
         CloseClient();
         if (listenfd >= 0) {
@@ -175,56 +177,28 @@ public:
         isCreated = false;
     }
 
+    /**
+     * @brief Reports whether the listener is active.
+     * @return true if listening fd is valid.
+     */
     bool IsListening() const { return listenfd >= 0; }
 
-    int sendData(void* inData, size_t size) {
-        char* buffer = (char*)inData;
-        int numSent = 0;
-        while (size) {
-            do {
-                numSent = (int)write(acceptfd, buffer, size);
-            } while (numSent == -1 && errno == EINTR);
-
-            if (numSent <= 0) {
-                CloseClient();
-                break;
-            }
-            size -= (size_t)numSent;
-            buffer += numSent;
-        }
-        return numSent;
-    }
-
+    /**
+     * @brief Sends a length-prefixed protocol frame to the connected client.
+     * @param inData Pointer to frame payload.
+     * @param size Payload length in bytes.
+     * @return true on success, false otherwise.
+     */
     bool send(void* inData, size_t size) {
         if (acceptfd < 0) return false;
         return Ninlite::SendFrame(acceptfd, inData, size);
     }
 
-    int recvData(void* outData, size_t size) {
-        char* buffer = (char*)outData;
-        int numRecv = 0;
-        while (size) {
-            do {
-                numRecv = (int)read(acceptfd, buffer, size);
-            } while (numRecv == -1 && errno == EINTR);
-
-            if (numRecv <= 0) {
-                CloseClient();
-                break;
-            }
-            size -= (size_t)numRecv;
-            buffer += numRecv;
-        }
-        return numRecv;
-    }
-
     /**
-     * Reads one length prefixed frame into `outData`.
-     *
-     * `capacity` MUST be the real size of the destination buffer. A frame that
-     * announces more bytes than the buffer can hold is rejected before any
-     * payload byte is written. Returns the number of payload bytes read, or 0
-     * on error / violation.
+     * @brief Receives a length-prefixed frame into the destination buffer.
+     * @param outData Buffer to receive payload.
+     * @param capacity Maximum capacity of destination buffer.
+     * @return Number of payload bytes received, or 0 on error.
      */
     size_t receive(void* outData, size_t capacity) {
         if (acceptfd < 0 || outData == nullptr || capacity == 0) return 0;

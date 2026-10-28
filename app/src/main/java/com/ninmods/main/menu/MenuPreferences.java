@@ -67,24 +67,32 @@ public class MenuPreferences {
     }
 
     public static boolean loadPrefBool(String featureName, int featureNum, boolean bDef) {
-        boolean bool = with(context).readBoolean(featureNum, bDef);
+        boolean stored = with(context).readBoolean(featureNum, bDef);
         if (featureNum == -1) {
-            loadPref = bool;
+            loadPref = stored;
+            return stored;
         }
         if (featureNum == -3) {
-            isExpanded = bool;
+            isExpanded = stored;
+            return stored;
         }
-        if (loadPref || featureNum < 0) {
-            bDef = bool;
+        /*
+         * A getter must not write into the engine. The stored value is only
+         * pushed into the engine when the user switched "Save feature
+         * preferences" on, otherwise simply opening the menu would overwrite
+         * the live configuration with the stored defaults.
+         */
+        if (loadPref && featureNum > 0) {
+            try {
+                Changes(context, featureNum, featureName, 0, 0, stored, null);
+            } catch (Throwable ignored) {}
+            return stored;
         }
-        try {
-            Changes(context, featureNum, featureName, 0, 0, bDef, null);
-        } catch (Throwable ignored) {}
         return bDef;
     }
 
     public static int loadPrefInt(String featureName, int featureNum) {
-        if (loadPref) {
+        if (loadPref && featureNum > 0) {
             int value = with(context).readInt(featureNum);
             try {
                 Changes(context, featureNum, featureName, value, 0, false, null);
@@ -95,7 +103,7 @@ public class MenuPreferences {
     }
 
     public static long loadPrefLong(String featureName, int featureNum) {
-        if (loadPref) {
+        if (loadPref && featureNum > 0) {
             long Lvalue = with(context).readLong(String.valueOf(featureNum));
             try {
                 Changes(context, featureNum, featureName, 0, Lvalue, false, null);
@@ -106,7 +114,7 @@ public class MenuPreferences {
     }
 
     public static String loadPrefString(String featureName, int featureNum) {
-        if (loadPref || featureNum <= 0) {
+        if (loadPref && featureNum > 0) {
             String text = with(context).readString(featureNum);
             try {
                 Changes(context, featureNum, featureName, 0, 0, false, text);
