@@ -2,6 +2,12 @@ package com.ninmods.main.menu;
 
 import android.content.Context;
 import android.util.Log;
+import android.widget.Toast;
+
+import com.ninmods.main.auth.AuthManager;
+import com.ninmods.main.core.Prefs;
+import com.ninmods.main.menu.nin.NinMenuProject;
+import com.ninmods.main.menu.ninlite.NinLiteMenuProject;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,17 +15,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.ninmods.main.core.Prefs;
-import com.ninmods.main.menu.bull.BullMenuProject;
-import com.ninmods.main.menu.cross.CrossMenuProject;
-import com.ninmods.main.menu.delta.DeltaMenuProject;
-import com.ninmods.main.menu.nin.NinMenuProject;
-import com.ninmods.main.menu.ninlite.NinLiteMenuProject;
-
 /**
  * Central Dynamic Routing Engine for Tactical Menus.
- * Coordinates multi-brand menu projects, enforcing strict folder isolation
- * and zero automatic cross-channel interference.
+ * Exclusively registers and routes between NINMODS (Kernel Driver Mode)
+ * and NINLITE (Internal Daemon Mode). All obsolete brands removed.
  */
 public class MenuRouter {
 
@@ -29,18 +28,18 @@ public class MenuRouter {
     private static final Map<String, IMenuProject> REGISTRY = new LinkedHashMap<>();
 
     static {
-        // 1. Primary NINMODS Tactical Menu (Kernel Mode)
+        // 1. Primary NINMODS Tactical Menu (Kernel Mode / /dev/BYNb Ring-0)
         register(new NinMenuProject());
-        // 2. NINLITE Cyberpunk Menu (Pure Root Daemon Mode - Sidebar UI)
+
+        // 2. NINLITE Cyberpunk Menu (Internal Root Daemon / process_vm_readv)
         register(new NinLiteMenuProject());
-        // 3. Bull Tactical Brand Menu
-        register(new BullMenuProject());
-        // 4. Cross Tactical Brand Menu
-        register(new CrossMenuProject());
-        // 5. Delta Tactical Brand Menu
-        register(new DeltaMenuProject());
     }
 
+    /**
+     * Registers a menu project into the central registry.
+     *
+     * @param menu Menu project implementation.
+     */
     private static synchronized void register(IMenuProject menu) {
         if (menu != null) {
             REGISTRY.put(menu.getId(), menu);
@@ -48,14 +47,19 @@ public class MenuRouter {
     }
 
     /**
-     * Get the immutable list of all registered tactical menus (up to 4 in a single series/row).
+     * Retrieves the immutable list of registered menu projects (strictly NINMODS and NINLITE).
+     *
+     * @return List of active menu projects.
      */
     public static List<IMenuProject> getRegisteredMenus() {
         return Collections.unmodifiableList(new ArrayList<>(REGISTRY.values()));
     }
 
     /**
-     * Look up a specific menu project by its unique ID.
+     * Looks up a specific menu project by its unique identifier.
+     *
+     * @param menuId Unique project ID ("nin" or "ninlite").
+     * @return Matching IMenuProject instance, defaulting to NINMODS.
      */
     public static IMenuProject getMenuById(String menuId) {
         if (menuId == null) {
@@ -66,7 +70,10 @@ public class MenuRouter {
     }
 
     /**
-     * Get the currently active/selected menu project.
+     * Retrieves the currently active menu project from user preferences.
+     *
+     * @param context Android context.
+     * @return Active IMenuProject instance.
      */
     public static IMenuProject getActiveMenu(Context context) {
         String activeId = Prefs.with(context).readString(PREF_ACTIVE_MENU_ID, NinMenuProject.ID);
@@ -74,7 +81,10 @@ public class MenuRouter {
     }
 
     /**
-     * Set the active/selected menu ID.
+     * Sets the active menu project ID.
+     *
+     * @param context Android context.
+     * @param menuId Unique menu identifier.
      */
     public static void setActiveMenu(Context context, String menuId) {
         if (menuId != null && REGISTRY.containsKey(menuId)) {
@@ -83,81 +93,57 @@ public class MenuRouter {
     }
 
     /**
-     * Launch a specific menu project by ID.
-     * Enforces strict channel isolation: ensures all running overlays are stopped first.
+     * Launches a specific menu project by ID.
+     * Enforces strict channel isolation: ensures other running overlays are stopped first.
+     *
+     * @param context Android context.
+     * @param menuId Menu identifier to launch.
      */
     public static synchronized void launchMenu(Context context, String menuId) {
         if (context == null) return;
 
         // Verify active online license session before launching floating overlay
-        String activeKey = com.ninmods.main.auth.AuthManager.getActiveLicenseKey(context);
+        String activeKey = AuthManager.getActiveLicenseKey(context);
         if (activeKey == null || activeKey.trim().isEmpty()) {
             Log.e(TAG, "Cannot launch floating menu: Active online license key is required!");
-            android.widget.Toast.makeText(context, "Active license key required! Please verify key online in Dashboard.", android.widget.Toast.LENGTH_LONG).show();
+            Toast.makeText(context, "Active license key required! Please verify key online in Dashboard.", Toast.LENGTH_LONG).show();
             return;
         }
 
-        String sessionToken = com.ninmods.main.auth.AuthManager.getSessionToken(context);
-        String hwid = com.ninmods.main.auth.AuthApiController.getHwid(context);
-        long remSec = com.ninmods.main.auth.AuthManager.getRemainingSeconds(context);
-        if (sessionToken == null || sessionToken.trim().isEmpty()) {
-            Log.e(TAG, "Cannot launch floating menu: no server-issued session token.");
-            android.widget.Toast.makeText(context, "Session expired. Please verify your license key again.", android.widget.Toast.LENGTH_LONG).show();
-            return;
+        String targetId = (menuId != null && REGISTRY.containsKey(menuId)) ? menuId : NinMenuProject.ID;
+        setActiveMenu(context, targetId);
+
+        // Stop all other running overlays before launching to preserve channel isolation
+        for (IMenuProject project : REGISTRY.values()) {
+            if (!project.getId().equals(targetId) && project.isRunning()) {
+                Log.d(TAG, "Stopping conflicting running overlay: " + project.getId());
+                project.stop(context);
+            }
         }
-        com.ninmods.main.auth.SecurityVault.setNativeSession(sessionToken, hwid, remSec);
 
-        // 1. Strict Channel Isolation: Stop any currently running menu overlay first
-        stopAllMenus(context);
-
-        // 2. Resolve requested project
-        IMenuProject targetMenu = getMenuById(menuId);
-        if (targetMenu != null) {
-            setActiveMenu(context, targetMenu.getId());
-            Log.d(TAG, "Routing to tactical menu: " + targetMenu.getId());
-            targetMenu.launch(context);
-        } else {
-            Log.e(TAG, "Unknown menu id: " + menuId);
+        // Launch target menu
+        IMenuProject target = getMenuById(targetId);
+        if (target != null) {
+            Log.d(TAG, "Launching tactical menu project: " + target.getId());
+            target.launch(context);
         }
     }
 
     /**
-     * Launch whichever menu is currently active.
+     * Stops all currently running floating overlays.
+     *
+     * @param context Android context.
      */
-    public static void launchActiveMenu(Context context) {
+    public static synchronized void stopAll(Context context) {
         if (context == null) return;
-        IMenuProject active = getActiveMenu(context);
-        launchMenu(context, active != null ? active.getId() : NinMenuProject.ID);
-    }
-
-    /**
-     * Stop all tactical menu overlays across all projects.
-     */
-    public static synchronized void stopAllMenus(Context context) {
-        com.ninmods.main.overlay.NativeOverlayManager.stop();
-        for (IMenuProject menu : REGISTRY.values()) {
+        for (IMenuProject project : REGISTRY.values()) {
             try {
-                if (menu.isRunning()) {
-                    menu.stop(context);
+                if (project.isRunning()) {
+                    project.stop(context);
                 }
-            } catch (Exception e) {
-                Log.e(TAG, "Error stopping menu: " + menu.getId(), e);
+            } catch (Throwable t) {
+                Log.e(TAG, "Error stopping menu: " + project.getId(), t);
             }
         }
-    }
-
-    /**
-     * Check if any menu project is currently running on screen.
-     */
-    public static boolean isAnyMenuRunning() {
-        if (com.ninmods.main.overlay.NativeOverlayManager.isRunning()) {
-            return true;
-        }
-        for (IMenuProject menu : REGISTRY.values()) {
-            if (menu.isRunning()) {
-                return true;
-            }
-        }
-        return false;
     }
 }

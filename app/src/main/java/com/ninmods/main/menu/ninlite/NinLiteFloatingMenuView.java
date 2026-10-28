@@ -205,15 +205,19 @@ public class NinLiteFloatingMenuView {
 
     private RelativeLayout createCollapsedLogoView() {
         RelativeLayout collapsed = new RelativeLayout(mContext);
-        int logoSize = dp(52);
+        int logoSize = dp(54);
         collapsed.setLayoutParams(new RelativeLayout.LayoutParams(logoSize, logoSize));
-        collapsed.setBackgroundColor(Color.TRANSPARENT);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0xF0080C14);
+        bg.setStroke(dp(2.2f), COLOR_CYAN);
+        collapsed.setBackground(bg);
 
         mStartImage = new ImageView(mContext);
-        mStartImage.setLayoutParams(new RelativeLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        RelativeLayout.LayoutParams ivLp = new RelativeLayout.LayoutParams(dp(36), dp(36));
+        ivLp.addRule(RelativeLayout.CENTER_IN_PARENT);
+        mStartImage.setLayoutParams(ivLp);
         mStartImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
         mStartImage.setImageResource(R.drawable.ic_menu_ninlite);
         collapsed.addView(mStartImage);
@@ -967,19 +971,21 @@ public class NinLiteFloatingMenuView {
         return container;
     }
 
+    /**
+     * Expands the NINLITE menu from floating icon to full HUD card with smooth slide animation.
+     */
     public void expandMenu() {
-        if (mCollapsedView != null) mCollapsedView.setVisibility(View.GONE);
-        if (mExpandedView != null) {
-            mExpandedView.setVisibility(View.VISIBLE);
-            mExpandedView.setAlpha(1.0f);
+        if (mCollapsedView != null && mExpandedView != null) {
+            mController.animateExpand(mCollapsedView, mExpandedView, mParams, mWindowManager, null);
         }
     }
 
+    /**
+     * Collapses the NINLITE menu back to floating icon with smooth spring animation.
+     */
     public void collapseToLogo() {
-        if (mExpandedView != null) mExpandedView.setVisibility(View.GONE);
-        if (mCollapsedView != null) {
-            mCollapsedView.setVisibility(View.VISIBLE);
-            mCollapsedView.setAlpha(1.0f);
+        if (mCollapsedView != null && mExpandedView != null) {
+            mController.animateCollapse(mCollapsedView, mExpandedView, mParams, mWindowManager, null);
         }
     }
 }

@@ -112,8 +112,10 @@ public class ModMenu {
 
     public ModMenu(Context context) {
         this.mContext = context;
+        this.mWindowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         this.mController = MenuController.getInstance();
         this.mController.init(context);
+        this.vmParams = mController.createWindowLayoutParams(mPosX, mPosY);
 
         initViews();
     }
@@ -782,22 +784,30 @@ public class ModMenu {
         }
     }
 
-    // --- Window Drag & Lifecycle Handlers ---
-
+    /**
+     * Creates the drag and tap motion listener backed by MenuController.
+     *
+     * @param isBubble True if attaching to the floating bubble icon, false for the header.
+     * @return Universal touch listener with screen clamping and slide animation.
+     */
     private View.OnTouchListener createDragListener(final boolean isBubble) {
         return mController.createDragTouchListener(
                 rootFrame, vmParams, mWindowManager, mCollapsedView, mExpandedView,
                 this::expandMenu, this::collapseToLogo);
     }
 
-    // --- Public Service Interface ---
-
+    /**
+     * Configures WindowManager parameters and attaches the root overlay to the WindowService.
+     */
     @SuppressLint("WrongConstant")
     public void SetWindowManagerWindowService() {
-        vmParams = mController.createWindowLayoutParams(mPosX, mPosY);
-
-        mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
-        if (mWindowManager != null) {
+        if (vmParams == null) {
+            vmParams = mController.createWindowLayoutParams(mPosX, mPosY);
+        }
+        if (mWindowManager == null) {
+            mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
+        }
+        if (mWindowManager != null && rootFrame != null && !mIsAttached) {
             try {
                 mWindowManager.addView(rootFrame, vmParams);
                 mIsAttached = true;
@@ -807,6 +817,9 @@ public class ModMenu {
         }
     }
 
+    /**
+     * Attaches the menu overlay in an Activity context.
+     */
     public void SetWindowManagerActivity() {
         if (mContext instanceof Activity) {
             vmParams = new WindowManager.LayoutParams(
@@ -821,7 +834,7 @@ public class ModMenu {
             vmParams.y = mPosY;
 
             mWindowManager = ((Activity) mContext).getWindowManager();
-            if (mWindowManager != null) {
+            if (mWindowManager != null && rootFrame != null && !mIsAttached) {
                 try {
                     mWindowManager.addView(rootFrame, vmParams);
                     mIsAttached = true;
@@ -832,24 +845,32 @@ public class ModMenu {
         }
     }
 
+    /**
+     * Toggles visibility of the root frame container.
+     *
+     * @param visibility View visibility integer (VISIBLE, GONE, INVISIBLE).
+     */
     public void setVisibility(int visibility) {
         if (rootFrame != null) {
             rootFrame.setVisibility(visibility);
         }
     }
 
+    /**
+     * Expands the menu from floating bubble to full tactical card with smooth slide animation.
+     */
     public void expandMenu() {
         if (mCollapsedView != null && mExpandedView != null) {
-            mCollapsedView.setVisibility(View.GONE);
-            mExpandedView.setVisibility(View.VISIBLE);
-            updateLiveTelemetry();
+            mController.animateExpand(mCollapsedView, mExpandedView, vmParams, mWindowManager, this::updateLiveTelemetry);
         }
     }
 
+    /**
+     * Collapses the menu back to floating bubble with smooth spring animation.
+     */
     public void collapseToLogo() {
         if (mCollapsedView != null && mExpandedView != null) {
-            mExpandedView.setVisibility(View.GONE);
-            mCollapsedView.setVisibility(View.VISIBLE);
+            mController.animateCollapse(mCollapsedView, mExpandedView, vmParams, mWindowManager, null);
         }
     }
 

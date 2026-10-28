@@ -17,6 +17,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
@@ -45,7 +47,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Architecture:
  *  1. Unified Activation & Action Rules:
  *     - All switch toggles, seekbar slides, and spinner selections follow the exact
- *       same standardized lifecycle across every brand UI (NIN, NINLITE, Bull, Cross, Delta).
+ *       same standardized lifecycle across both brand UIs (NINMODS and NINLITE).
  *  2. Dynamic Options via JNI:
  *     - Feature options are NOT statically combined or hardcoded here.
  *     - Features are bound dynamically from JNI (GetFeatureList) or provided per brand/UI,
@@ -167,8 +169,107 @@ public final class MenuController {
     }
 
     /**
-     * Universal Official Drag & Movement Listener with Screen Boundary Clamping.
-     * Prevents the floating menu or icon from ever being lost off-screen.
+     * Animates the expansion of the floating menu from collapsed icon to expanded card.
+     * Uses smooth scale, alpha, and translation animations for an ultra-fluid experience.
+     *
+     * @param collapsedView The floating bubble icon view to shrink and hide.
+     * @param expandedView The full menu card view to slide and expand.
+     * @param params WindowManager layout parameters.
+     * @param wm WindowManager service reference.
+     * @param onExpand Optional callback triggered upon animation completion.
+     */
+    public void animateExpand(final View collapsedView, final View expandedView,
+                              final WindowManager.LayoutParams params, final WindowManager wm,
+                              final Runnable onExpand) {
+        if (expandedView == null) return;
+
+        expandedView.setVisibility(View.VISIBLE);
+        expandedView.setAlpha(0f);
+        expandedView.setScaleX(0.75f);
+        expandedView.setScaleY(0.75f);
+        expandedView.setTranslationX(-dp(20));
+
+        if (collapsedView != null) {
+            collapsedView.animate()
+                    .alpha(0f)
+                    .scaleX(0.5f)
+                    .scaleY(0.5f)
+                    .setDuration(160)
+                    .withEndAction(() -> collapsedView.setVisibility(View.GONE))
+                    .start();
+        }
+
+        expandedView.animate()
+                .alpha(1.0f)
+                .scaleX(1.0f)
+                .scaleY(1.0f)
+                .translationX(0f)
+                .setDuration(220)
+                .setInterpolator(new DecelerateInterpolator())
+                .withEndAction(() -> {
+                    if (onExpand != null) {
+                        onExpand.run();
+                    }
+                })
+                .start();
+    }
+
+    /**
+     * Animates the collapse of the floating menu back to the compact bubble icon.
+     * Uses smooth reverse slide, scale, and spring overshoot for fluid feedback.
+     *
+     * @param collapsedView The floating bubble icon view to restore.
+     * @param expandedView The full menu card view to shrink and hide.
+     * @param params WindowManager layout parameters.
+     * @param wm WindowManager service reference.
+     * @param onCollapse Optional callback triggered upon animation completion.
+     */
+    public void animateCollapse(final View collapsedView, final View expandedView,
+                                final WindowManager.LayoutParams params, final WindowManager wm,
+                                final Runnable onCollapse) {
+        if (expandedView != null) {
+            expandedView.animate()
+                    .alpha(0f)
+                    .scaleX(0.75f)
+                    .scaleY(0.75f)
+                    .translationX(-dp(20))
+                    .setDuration(160)
+                    .withEndAction(() -> expandedView.setVisibility(View.GONE))
+                    .start();
+        }
+
+        if (collapsedView != null) {
+            collapsedView.setVisibility(View.VISIBLE);
+            collapsedView.setAlpha(0f);
+            collapsedView.setScaleX(0.5f);
+            collapsedView.setScaleY(0.5f);
+            collapsedView.animate()
+                    .alpha(1.0f)
+                    .scaleX(1.0f)
+                    .scaleY(1.0f)
+                    .setDuration(220)
+                    .setInterpolator(new OvershootInterpolator(1.2f))
+                    .withEndAction(() -> {
+                        if (onCollapse != null) {
+                            onCollapse.run();
+                        }
+                    })
+                    .start();
+        }
+    }
+
+    /**
+     * Universal Official Drag & Movement Listener with Screen Boundary Clamping and Smooth Sliding.
+     * Prevents the floating menu or icon from ever being lost off-screen and provides fluid animations.
+     *
+     * @param rootFrame The root overlay view container.
+     * @param params Layout parameters for the floating window.
+     * @param wm WindowManager instance used to update overlay coordinates.
+     * @param collapsedView Collapsed floating bubble view.
+     * @param expandedView Expanded full menu card view.
+     * @param onExpand Action executed when expanding.
+     * @param onCollapse Action executed when collapsing.
+     * @return Motion touch listener configured with smooth slide and boundary snapping.
      */
     public View.OnTouchListener createDragTouchListener(
             final View rootFrame,
@@ -186,14 +287,25 @@ public final class MenuController {
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                if (params == null || wm == null) return false;
+                WindowManager.LayoutParams activeParams = params;
+                WindowManager activeWm = wm;
+
+                if (activeParams == null && rootFrame != null && rootFrame.getLayoutParams() instanceof WindowManager.LayoutParams) {
+                    activeParams = (WindowManager.LayoutParams) rootFrame.getLayoutParams();
+                }
+                if (activeWm == null && rootFrame != null) {
+                    activeWm = (WindowManager) rootFrame.getContext().getSystemService(Context.WINDOW_SERVICE);
+                }
+                if (activeParams == null || activeWm == null) {
+                    return false;
+                }
 
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
                         touchStartX = event.getRawX();
                         touchStartY = event.getRawY();
-                        initialX = params.x;
-                        initialY = params.y;
+                        initialX = activeParams.x;
+                        initialY = activeParams.y;
                         isMoving = false;
                         return true;
 
@@ -206,7 +318,6 @@ public final class MenuController {
                             isMoving = true;
                             if (rootFrame != null) rootFrame.setAlpha(0.70f);
 
-                            // Clamp within screen boundaries
                             DisplayMetrics dm = v.getContext().getResources().getDisplayMetrics();
                             int viewW = v.getWidth() > 0 ? v.getWidth() : dp(50);
                             int viewH = v.getHeight() > 0 ? v.getHeight() : dp(50);
@@ -214,11 +325,11 @@ public final class MenuController {
                             int newX = initialX + (int) dx;
                             int newY = initialY + (int) dy;
 
-                            params.x = Math.max(0, Math.min(newX, dm.widthPixels - viewW));
-                            params.y = Math.max(0, Math.min(newY, dm.heightPixels - viewH));
+                            activeParams.x = Math.max(0, Math.min(newX, dm.widthPixels - viewW));
+                            activeParams.y = Math.max(0, Math.min(newY, dm.heightPixels - viewH));
 
                             try {
-                                wm.updateViewLayout(rootFrame, params);
+                                activeWm.updateViewLayout(rootFrame, activeParams);
                             } catch (Throwable ignored) {}
                         }
                         return true;
@@ -226,18 +337,10 @@ public final class MenuController {
                     case MotionEvent.ACTION_UP:
                         if (rootFrame != null) rootFrame.setAlpha(1.0f);
                         if (!isMoving) {
-                            // Tap event
                             if (collapsedView != null && collapsedView.getVisibility() == View.VISIBLE) {
-                                if (onExpand != null) {
-                                    onExpand.run();
-                                } else {
-                                    collapsedView.setVisibility(View.GONE);
-                                    if (expandedView != null) expandedView.setVisibility(View.VISIBLE);
-                                }
+                                animateExpand(collapsedView, expandedView, activeParams, activeWm, onExpand);
                             } else if (expandedView != null && expandedView.getVisibility() == View.VISIBLE) {
-                                if (onCollapse != null) {
-                                    onCollapse.run();
-                                }
+                                animateCollapse(collapsedView, expandedView, activeParams, activeWm, onCollapse);
                             }
                         }
                         return true;
