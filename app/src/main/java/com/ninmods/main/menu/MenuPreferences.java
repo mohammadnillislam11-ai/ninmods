@@ -114,26 +114,40 @@ public class MenuPreferences {
         return "";
     }
 
-    private MenuPreferences(Context context) {
-        sharedPreferences = context.getApplicationContext().getSharedPreferences(
-                context.getPackageName() + "_preferences",
-                Context.MODE_PRIVATE
-        );
+    private static Context resolveContext(Context input) {
+        if (input != null) return input;
+        if (context != null) return context;
+        return com.ninmods.main.overlay.NativeOverlayManager.getContext();
     }
 
-    private MenuPreferences(Context context, String preferencesName) {
-        sharedPreferences = context.getApplicationContext().getSharedPreferences(
-                preferencesName,
-                Context.MODE_PRIVATE
-        );
+    private MenuPreferences(Context ctx) {
+        Context safeCtx = resolveContext(ctx);
+        if (safeCtx != null) {
+            Context appCtx = safeCtx.getApplicationContext() != null ? safeCtx.getApplicationContext() : safeCtx;
+            sharedPreferences = appCtx.getSharedPreferences(
+                    appCtx.getPackageName() + "_preferences",
+                    Context.MODE_PRIVATE
+            );
+        }
+    }
+
+    private MenuPreferences(Context ctx, String preferencesName) {
+        Context safeCtx = resolveContext(ctx);
+        if (safeCtx != null) {
+            Context appCtx = safeCtx.getApplicationContext() != null ? safeCtx.getApplicationContext() : safeCtx;
+            sharedPreferences = appCtx.getSharedPreferences(
+                    preferencesName,
+                    Context.MODE_PRIVATE
+            );
+        }
     }
 
     /**
      * @param context
      * @return Returns a 'MenuPreferences' instance
      */
-    public static MenuPreferences with(Context context) {
-        if (prefsInstance == null) {
+    public static synchronized MenuPreferences with(Context context) {
+        if (prefsInstance == null || sharedPreferences == null) {
             prefsInstance = new MenuPreferences(context);
         }
         return prefsInstance;

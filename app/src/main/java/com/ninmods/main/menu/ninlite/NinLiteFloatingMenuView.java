@@ -31,6 +31,7 @@ import com.ninmods.main.core.AppLogger;
 import com.ninmods.main.core.FeatureCatalog;
 import com.ninmods.main.core.FeatureSettings;
 import com.ninmods.main.core.NativeBridge;
+import com.ninmods.main.menu.MenuController;
 
 import org.json.JSONObject;
 
@@ -53,6 +54,9 @@ import java.util.Map;
  *     Radio/Circle Checkboxes (Silent Aim Enable, Ignore Knocked)
  *     Sliders (Silent Fov, Legit Delay) with cyan accent values
  *     Dropdown (Silent Target: Legit / Head / Neck)
+ *
+ * All interaction behavior, drag physics, and slider rules are powered
+ * by the central MenuController.
  */
 public class NinLiteFloatingMenuView {
 
@@ -62,6 +66,7 @@ public class NinLiteFloatingMenuView {
     private final WindowManager mWindowManager;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private final float mDensity;
+    private final MenuController mController = MenuController.getInstance();
 
     private WindowManager.LayoutParams mParams;
     private FrameLayout mRootFrame;
@@ -126,6 +131,7 @@ public class NinLiteFloatingMenuView {
         this.mContext = context;
         this.mWindowManager = windowManager;
         this.mDensity = context.getResources().getDisplayMetrics().density;
+        this.mController.init(context);
         initViews();
         FeatureSettings.addListener(mFeatureListener);
     }
@@ -176,23 +182,7 @@ public class NinLiteFloatingMenuView {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        int layoutFlag = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
-
-        int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                | WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS;
-
-        mParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                layoutFlag,
-                flags,
-                PixelFormat.TRANSLUCENT
-        );
-        mParams.gravity = Gravity.TOP | Gravity.START;
-        mParams.x = dp(20);
-        mParams.y = dp(140);
+        mParams = mController.createWindowLayoutParams(dp(20), dp(140));
 
         mCollapsedView = createCollapsedLogoView();
         mExpandedView = createExpandedMenuView();
@@ -200,7 +190,10 @@ public class NinLiteFloatingMenuView {
         mRootFrame.addView(mCollapsedView);
         mRootFrame.addView(mExpandedView);
 
-        View.OnTouchListener logoTouch = createLogoTouchListener();
+        View.OnTouchListener logoTouch = mController.createDragTouchListener(
+                mRootFrame, mParams, mWindowManager, mCollapsedView, mExpandedView,
+                this::expandMenu, this::collapseToLogo);
+
         mCollapsedView.setOnTouchListener(logoTouch);
         if (mStartImage != null) {
             mStartImage.setOnTouchListener(logoTouch);
@@ -302,7 +295,9 @@ public class NinLiteFloatingMenuView {
         closeBtn.setOnClickListener(v -> collapseToLogo());
         header.addView(closeBtn);
 
-        header.setOnTouchListener(createHeaderDragListener());
+        header.setOnTouchListener(mController.createDragTouchListener(
+                mRootFrame, mParams, mWindowManager, mCollapsedView, mExpandedView,
+                this::expandMenu, this::collapseToLogo));
         return header;
     }
 
@@ -760,28 +755,10 @@ public class NinLiteFloatingMenuView {
             }
         };
         spinner.setAdapter(adapter);
-        /* The spinner is positioned on the LIVE value, never on the first
-         * entry of the list. */
-        spinner.setSelection(FeatureSettings.getIntValue(FeatureCatalog.AIM_SILENT_TARGET), false);
-        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position < 0) return;
-                /* A Spinner fires this callback once while it is built. Only
-                 * a REAL change is forwarded, otherwise opening the menu
-                 * silently overwrote the engine with "Legit". */
-                if (position == FeatureSettings.getIntValue(FeatureCatalog.AIM_SILENT_TARGET)) return;
-                FeatureSettings.setIntValue(FeatureCatalog.AIM_SILENT_TARGET, position);
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) {}
-        });
 
-        mRefreshers.put(FeatureCatalog.AIM_SILENT_TARGET, () -> {
-            int selection = FeatureSettings.getIntValue(FeatureCatalog.AIM_SILENT_TARGET);
-            if (spinner.getSelectedItemPosition() != selection) {
-                spinner.setSelection(selection, false);
-            }
-        });
+        // Unified dropdown binding via MenuController
+        mController.bindDropdown(spinner, FeatureCatalog.AIM_SILENT_TARGET.nativeId(),
+                FeatureCatalog.AIM_SILENT_TARGET.key(), targets, 0);
 
         layout.addView(spinner);
         sv.addView(layout);
@@ -918,12 +895,6 @@ public class NinLiteFloatingMenuView {
         row.setClickable(true);
         row.setFocusable(true);
 
-        /* The initial state is the LIVE engine state. It used to be a literal
-         * ("true" / "false") written into the layout, which is exactly why
-         * the menu showed features as enabled that the engine never turned
-         * on. */
-        final boolean[] state = { FeatureSettings.isEnabled(feature) };
-
         // Circle indicator matching screenshot (White thick circle border)
         final FrameLayout circleBox = new FrameLayout(mContext);
         int circleSize = dp(22);
@@ -931,22 +902,11 @@ public class NinLiteFloatingMenuView {
         circleLp.rightMargin = dp(10);
         circleBox.setLayoutParams(circleLp);
 
-        final GradientDrawable circleBg = new GradientDrawable();
-        circleBg.setShape(GradientDrawable.OVAL);
-        circleBg.setColor(state[0] ? Color.WHITE : Color.TRANSPARENT);
-        circleBg.setStroke(dp(2.2f), Color.WHITE);
-        circleBox.setBackground(circleBg);
-
         // Center check dot
         final View innerDot = new View(mContext);
         FrameLayout.LayoutParams dotLp = new FrameLayout.LayoutParams(dp(10), dp(10));
         dotLp.gravity = Gravity.CENTER;
         innerDot.setLayoutParams(dotLp);
-        GradientDrawable dotBg = new GradientDrawable();
-        dotBg.setShape(GradientDrawable.OVAL);
-        dotBg.setColor(COLOR_CARD_BG);
-        innerDot.setBackground(dotBg);
-        innerDot.setVisibility(state[0] ? View.VISIBLE : View.GONE);
         circleBox.addView(innerDot);
 
         TextView tv = new TextView(mContext);
@@ -958,23 +918,9 @@ public class NinLiteFloatingMenuView {
         row.addView(circleBox);
         row.addView(tv);
 
-        row.setOnClickListener(v -> {
-            FeatureSettings.setEnabled(feature, !state[0]);
-            /* The store can refuse the change (the server may have switched
-             * the whole group off), so the shown state is read back from it
-             * instead of assuming the toggle worked. */
-            state[0] = FeatureSettings.isEnabled(feature);
-            circleBg.setColor(state[0] ? Color.WHITE : Color.TRANSPARENT);
-            innerDot.setVisibility(state[0] ? View.VISIBLE : View.GONE);
-            AppLogger.log(TAG, "Feature toggled: " + feature.key() + " -> " + state[0]);
-        });
-
-        mRefreshers.put(feature, () -> {
-            boolean live = FeatureSettings.isEnabled(feature);
-            state[0] = live;
-            circleBg.setColor(live ? Color.WHITE : Color.TRANSPARENT);
-            innerDot.setVisibility(live ? View.VISIBLE : View.GONE);
-        });
+        // Unified circle checkbox binding via MenuController
+        mController.bindCircleCheckbox(row, circleBox, innerDot, feature.nativeId(), feature.key(),
+                feature.defaultValue() > 0.5f, Color.WHITE, Color.WHITE, COLOR_CARD_BG);
 
         return row;
     }
@@ -983,8 +929,6 @@ public class NinLiteFloatingMenuView {
     private View createAccentSliderRow(String label, final FeatureCatalog feature) {
         final int min = feature.min();
         final int max = feature.max();
-        /* The live value of the engine, never a hard coded default. */
-        final int liveValue = FeatureSettings.getIntValue(feature);
 
         LinearLayout container = new LinearLayout(mContext);
         container.setOrientation(LinearLayout.VERTICAL);
@@ -1001,7 +945,6 @@ public class NinLiteFloatingMenuView {
         labelTv.setTypeface(Typeface.DEFAULT_BOLD);
 
         final TextView valTv = new TextView(mContext);
-        valTv.setText(String.valueOf(liveValue));
         valTv.setTextColor(COLOR_CYAN_LIGHT);
         valTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         valTv.setTypeface(Typeface.DEFAULT_BOLD);
@@ -1012,38 +955,15 @@ public class NinLiteFloatingMenuView {
 
         // Thin Sleek SeekBar with white thumb & cyan progress
         SeekBar sb = new SeekBar(mContext);
-        sb.setMax(max - min);
-        sb.setProgress(liveValue - min);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             sb.setProgressTintList(android.content.res.ColorStateList.valueOf(COLOR_CYAN_LIGHT));
             sb.setThumbTintList(android.content.res.ColorStateList.valueOf(Color.WHITE));
         }
 
-        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int actual = min + progress;
-                valTv.setText(String.valueOf(actual));
-                /* setProgress() during the construction fires this callback
-                 * with fromUser == false. Only a real drag is forwarded, so
-                 * opening the menu can no longer overwrite the engine. */
-                if (!fromUser) return;
-                FeatureSettings.setIntValue(feature, actual);
-            }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
+        // Unified accent slider binding via central MenuController
+        mController.bindAccentSlider(sb, valTv, feature.nativeId(), feature.key(), min, max, "");
 
         container.addView(sb);
-
-        mRefreshers.put(feature, () -> {
-            int value = FeatureSettings.getIntValue(feature);
-            valTv.setText(String.valueOf(value));
-            if (sb.getProgress() != value - min) {
-                sb.setProgress(value - min);
-            }
-        });
-
         return container;
     }
 
@@ -1061,73 +981,5 @@ public class NinLiteFloatingMenuView {
             mCollapsedView.setVisibility(View.VISIBLE);
             mCollapsedView.setAlpha(1.0f);
         }
-    }
-
-    private View.OnTouchListener createLogoTouchListener() {
-        return new View.OnTouchListener() {
-            private float initialTouchX, initialTouchY;
-            private int initialX, initialY;
-
-            @Override
-            public boolean onTouch(View view, MotionEvent motionEvent) {
-                switch (motionEvent.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        initialX = mParams.x;
-                        initialY = mParams.y;
-                        initialTouchX = motionEvent.getRawX();
-                        initialTouchY = motionEvent.getRawY();
-                        return true;
-
-                    case MotionEvent.ACTION_UP:
-                        int rawX = (int) (motionEvent.getRawX() - initialTouchX);
-                        int rawY = (int) (motionEvent.getRawY() - initialTouchY);
-                        if (Math.abs(rawX) < 10 && Math.abs(rawY) < 10) {
-                            expandMenu();
-                        }
-                        return true;
-
-                    case MotionEvent.ACTION_MOVE:
-                        mParams.x = initialX + ((int) (motionEvent.getRawX() - initialTouchX));
-                        mParams.y = initialY + ((int) (motionEvent.getRawY() - initialTouchY));
-                        try {
-                            mWindowManager.updateViewLayout(mRootFrame, mParams);
-                        } catch (Throwable ignored) {}
-                        return true;
-
-                    default:
-                        return false;
-                }
-            }
-        };
-    }
-
-    private View.OnTouchListener createHeaderDragListener() {
-        return new View.OnTouchListener() {
-            private float initialTouchX, initialTouchY;
-            private int initialX, initialY;
-
-            @Override
-            public boolean onTouch(View view, MotionEvent motionEvent) {
-                switch (motionEvent.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        initialX = mParams.x;
-                        initialY = mParams.y;
-                        initialTouchX = motionEvent.getRawX();
-                        initialTouchY = motionEvent.getRawY();
-                        return true;
-
-                    case MotionEvent.ACTION_MOVE:
-                        mParams.x = initialX + ((int) (motionEvent.getRawX() - initialTouchX));
-                        mParams.y = initialY + ((int) (motionEvent.getRawY() - initialTouchY));
-                        try {
-                            mWindowManager.updateViewLayout(mRootFrame, mParams);
-                        } catch (Throwable ignored) {}
-                        return true;
-
-                    default:
-                        return false;
-                }
-            }
-        };
     }
 }

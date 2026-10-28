@@ -1,14 +1,23 @@
-package com.ninmods.main.menu;
-
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.util.DisplayMetrics;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.FrameLayout;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.Switch;
@@ -39,7 +48,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *     - Feature options are NOT statically combined or hardcoded here.
  *     - Features are bound dynamically from JNI (GetFeatureList) or provided per brand/UI,
  *       and routed straight to the C++ engine via JNI Changes() and NativeBridge.
- *  3. Multi-UI Synchronization:
+ *  3. Window & Drag Management:
+ *     - Provides standard official WindowManager parameters and screen-bounded dragging.
+ *  4. Multi-UI Synchronization:
  *     - Observers and listeners ensure that when any menu changes a setting,
  *       all other open menus and the engine synchronize instantaneously.
  */
@@ -100,6 +111,128 @@ public final class MenuController {
         this.mContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
         MenuPreferences.context = this.mContext;
         FeatureSettings.init(this.mContext);
+    }
+
+    public Context getContext() {
+        return mContext;
+    }
+
+    public int dp(float dip) {
+        if (mContext == null) return (int) dip;
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, dip, mContext.getResources().getDisplayMetrics());
+    }
+
+    // =========================================================================
+    // Official WindowManager & Draggable Overlay Management
+    // =========================================================================
+
+    /**
+     * Creates standard official WindowManager parameters (zero magic numbers, official flags).
+     */
+    public WindowManager.LayoutParams createWindowLayoutParams(int posX, int posY) {
+        return createWindowLayoutParams(posX, posY, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    }
+
+    public WindowManager.LayoutParams createWindowLayoutParams(int posX, int posY, int width, int height) {
+        int overlayType = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                width,
+                height,
+                overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS,
+                PixelFormat.TRANSLUCENT);
+
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.x = posX;
+        params.y = posY;
+        return params;
+    }
+
+    /**
+     * Universal Official Drag & Movement Listener with Screen Boundary Clamping.
+     * Prevents the floating menu or icon from ever being lost off-screen.
+     */
+    public View.OnTouchListener createDragTouchListener(
+            final View rootFrame,
+            final WindowManager.LayoutParams params,
+            final WindowManager wm,
+            final View collapsedView,
+            final View expandedView,
+            final Runnable onExpand,
+            final Runnable onCollapse) {
+
+        return new View.OnTouchListener() {
+            private float touchStartX, touchStartY;
+            private int initialX, initialY;
+            private boolean isMoving = false;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (params == null || wm == null) return false;
+
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        touchStartX = event.getRawX();
+                        touchStartY = event.getRawY();
+                        initialX = params.x;
+                        initialY = params.y;
+                        isMoving = false;
+                        return true;
+
+                    case MotionEvent.ACTION_MOVE:
+                        float dx = event.getRawX() - touchStartX;
+                        float dy = event.getRawY() - touchStartY;
+                        float moveDist = (float) Math.hypot(dx, dy);
+
+                        if (moveDist > dp(6) || isMoving) {
+                            isMoving = true;
+                            if (rootFrame != null) rootFrame.setAlpha(0.70f);
+
+                            // Clamp within screen boundaries
+                            DisplayMetrics dm = v.getContext().getResources().getDisplayMetrics();
+                            int viewW = v.getWidth() > 0 ? v.getWidth() : dp(50);
+                            int viewH = v.getHeight() > 0 ? v.getHeight() : dp(50);
+
+                            int newX = initialX + (int) dx;
+                            int newY = initialY + (int) dy;
+
+                            params.x = Math.max(0, Math.min(newX, dm.widthPixels - viewW));
+                            params.y = Math.max(0, Math.min(newY, dm.heightPixels - viewH));
+
+                            try {
+                                wm.updateViewLayout(rootFrame, params);
+                            } catch (Throwable ignored) {}
+                        }
+                        return true;
+
+                    case MotionEvent.ACTION_UP:
+                        if (rootFrame != null) rootFrame.setAlpha(1.0f);
+                        if (!isMoving) {
+                            // Tap event
+                            if (collapsedView != null && collapsedView.getVisibility() == View.VISIBLE) {
+                                if (onExpand != null) {
+                                    onExpand.run();
+                                } else {
+                                    collapsedView.setVisibility(View.GONE);
+                                    if (expandedView != null) expandedView.setVisibility(View.VISIBLE);
+                                }
+                            } else if (expandedView != null && expandedView.getVisibility() == View.VISIBLE) {
+                                if (onCollapse != null) {
+                                    onCollapse.run();
+                                }
+                            }
+                        }
+                        return true;
+                }
+                return false;
+            }
+        };
     }
 
     // =========================================================================
@@ -340,6 +473,68 @@ public final class MenuController {
                 }
             }
         });
+    }
+
+    /**
+     * Binds a styled Circle Checkbox (used in Cyberpunk/NINLITE & modern minimalist UIs)
+     * to the central MenuController with full live synchronization.
+     */
+    public void bindCircleCheckbox(final View row, final FrameLayout circleBox, final View innerDot,
+                                   final int featNum, final String featName, final boolean defaultVal,
+                                   final int activeCircleColor, final int inactiveCircleColor, final int dotBgColor) {
+        if (row == null || circleBox == null) return;
+
+        final Context ctx = row.getContext();
+        final boolean[] state = { getToggleState(ctx, featNum, featName, defaultVal) };
+
+        final Runnable updateUi = () -> {
+            GradientDrawable circleBg = new GradientDrawable();
+            circleBg.setShape(GradientDrawable.OVAL);
+            circleBg.setColor(state[0] ? activeCircleColor : Color.TRANSPARENT);
+            circleBg.setStroke(dp(2.2f), state[0] ? activeCircleColor : inactiveCircleColor);
+            circleBox.setBackground(circleBg);
+
+            if (innerDot != null) {
+                GradientDrawable dotBg = new GradientDrawable();
+                dotBg.setShape(GradientDrawable.OVAL);
+                dotBg.setColor(dotBgColor);
+                innerDot.setBackground(dotBg);
+                innerDot.setVisibility(state[0] ? View.VISIBLE : View.GONE);
+            }
+        };
+
+        updateUi.run();
+
+        row.setOnClickListener(v -> {
+            boolean newState = !state[0];
+            state[0] = newState;
+            updateUi.run();
+            toggleFeature(v.getContext(), featNum, featName, newState);
+        });
+
+        // Register listener for external updates from other menus
+        addListener((fId, checked, val) -> {
+            if (fId == featNum && state[0] != checked) {
+                state[0] = checked;
+                updateUi.run();
+            }
+        });
+    }
+
+    /**
+     * Binds an Accent Slider with a live badge TextView (ensuring 100% uniform sliding rules).
+     */
+    public void bindAccentSlider(final SeekBar seekBar, final TextView liveBadge, final int featNum,
+                                 final String featName, final int min, final int max, final String unit) {
+        bindSeekBar(seekBar, liveBadge, featNum, featName, min, max, unit);
+    }
+
+    /**
+     * Binds a styled Dropdown Spinner with user-only selection guards.
+     */
+    public void bindDropdown(final Spinner spinner, final int featNum, final String featName,
+                             final String[] options, final int defaultIndex) {
+        bindSpinner(spinner, featNum, featName, options, defaultIndex);
     }
 
     // =========================================================================

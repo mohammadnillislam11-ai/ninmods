@@ -10,7 +10,11 @@ import java.util.List;
 import java.util.Map;
 
 import com.ninmods.main.core.Prefs;
+import com.ninmods.main.menu.bull.BullMenuProject;
+import com.ninmods.main.menu.cross.CrossMenuProject;
+import com.ninmods.main.menu.delta.DeltaMenuProject;
 import com.ninmods.main.menu.nin.NinMenuProject;
+import com.ninmods.main.menu.ninlite.NinLiteMenuProject;
 
 /**
  * Central Dynamic Routing Engine for Tactical Menus.
@@ -28,7 +32,13 @@ public class MenuRouter {
         // 1. Primary NINMODS Tactical Menu (Kernel Mode)
         register(new NinMenuProject());
         // 2. NINLITE Cyberpunk Menu (Pure Root Daemon Mode - Sidebar UI)
-        register(new com.ninmods.main.menu.ninlite.NinLiteMenuProject());
+        register(new NinLiteMenuProject());
+        // 3. Bull Tactical Brand Menu
+        register(new BullMenuProject());
+        // 4. Cross Tactical Brand Menu
+        register(new CrossMenuProject());
+        // 5. Delta Tactical Brand Menu
+        register(new DeltaMenuProject());
     }
 
     private static synchronized void register(IMenuProject menu) {

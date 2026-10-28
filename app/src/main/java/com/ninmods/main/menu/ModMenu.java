@@ -385,7 +385,8 @@ public class ModMenu {
         footer.setBackgroundColor(0x550C0E17);
 
         mFooterText = new TextView(mContext);
-        mFooterText.setText("NINMODS V90.86 • KERNEL DRIVER RING-0");
+        String vStr = mContext.getString(R.string.app_version);
+        mFooterText.setText("NINMODS V" + vStr + " • KERNEL DRIVER RING-0");
         mFooterText.setTextColor(COLOR_TEXT_DIM);
         mFooterText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
         mFooterText.setLetterSpacing(0.05f);
@@ -784,72 +785,16 @@ public class ModMenu {
     // --- Window Drag & Lifecycle Handlers ---
 
     private View.OnTouchListener createDragListener(final boolean isBubble) {
-        return new View.OnTouchListener() {
-            private float touchStartX, touchStartY;
-            private int initialX, initialY;
-            private boolean isMoving = false;
-
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        touchStartX = event.getRawX();
-                        touchStartY = event.getRawY();
-                        initialX = vmParams != null ? vmParams.x : mPosX;
-                        initialY = vmParams != null ? vmParams.y : mPosY;
-                        isMoving = false;
-                        return true;
-
-                    case MotionEvent.ACTION_MOVE:
-                        float dx = event.getRawX() - touchStartX;
-                        float dy = event.getRawY() - touchStartY;
-                        if (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6) || isMoving) {
-                            isMoving = true;
-                            if (vmParams != null && mWindowManager != null) {
-                                vmParams.x = initialX + (int) dx;
-                                vmParams.y = initialY + (int) dy;
-                                mPosX = vmParams.x;
-                                mPosY = vmParams.y;
-                                try {
-                                    mWindowManager.updateViewLayout(rootFrame, vmParams);
-                                } catch (Throwable ignored) {}
-                            }
-                        }
-                        return true;
-
-                    case MotionEvent.ACTION_UP:
-                        if (!isMoving) {
-                            if (isBubble) {
-                                expandMenu();
-                            }
-                        }
-                        return true;
-                }
-                return false;
-            }
-        };
+        return mController.createDragTouchListener(
+                rootFrame, vmParams, mWindowManager, mCollapsedView, mExpandedView,
+                this::expandMenu, this::collapseToLogo);
     }
 
     // --- Public Service Interface ---
 
     @SuppressLint("WrongConstant")
     public void SetWindowManagerWindowService() {
-        int overlayType = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
-
-        vmParams = new WindowManager.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                overlayType,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                        | WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS,
-                PixelFormat.TRANSLUCENT);
-
-        vmParams.gravity = Gravity.TOP | Gravity.START;
-        vmParams.x = mPosX;
-        vmParams.y = mPosY;
+        vmParams = mController.createWindowLayoutParams(mPosX, mPosY);
 
         mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
         if (mWindowManager != null) {
