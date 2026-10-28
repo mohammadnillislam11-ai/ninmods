@@ -1378,24 +1378,6 @@ Java_com_ninmods_main_core_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
   return env->NewStringUTF(OBFUSCATE("com.dts.freefireth"));
 }
 
-/* The mode selection (SAFE / EXTREME) used to feed the feature blocking
- * gate. The gate is gone - every feature is manually toggleable - so the
- * mode no longer changes any engine behaviour. The exports stay as no-ops
- * because the Java activities still call them. */
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_core_DashboardActivity_setModeNative(JNIEnv *env,
-                                                            jclass clazz,
-                                                            jint mode) {
-  (void) env; (void) clazz; (void) mode;
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_ninmods_main_core_ModeSelectActivity_setModeNative(JNIEnv *env,
-                                                            jclass clazz,
-                                                            jint mode) {
-  (void) env; (void) clazz; (void) mode;
-}
-
 extern "C" JavaVM *g_JavaVM = nullptr;
 
 /* Global reference to the Java NativeBridge class.

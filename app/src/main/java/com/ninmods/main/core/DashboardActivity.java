@@ -833,6 +833,4 @@ public class DashboardActivity extends BaseActivity {
                 getResources().getDisplayMetrics()
         );
     }
-
-    public static native void setModeNative(int mode);
 }

@@ -1,117 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">NINMODS</string>
-    <string name="menu_title">NINMODS</string>
-    <string name="dashboard_subtitle">Tactical Game Engine</string>
-    <string name="app_tagline">Tactical Game Engine</string>
     
     <!-- Navigation Items -->
     <string name="nav_dashboard">DASHBOARD</string>
-    <string name="nav_engines">ENGINE PROFILES</string>
-    <string name="nav_game_launcher">GAME LAUNCHER</string>
-    <string name="nav_floating_menu">FLOATING MENU</string>
-    <string name="nav_device_info">DEVICE TELEMETRY</string>
 
-    <!-- Statuses -->
-    <string name="status_ready">SYSTEM READY</string>
-    <string name="status_active">SERVICE ACTIVE</string>
-    <string name="status_stopped">SERVICE STOPPED</string>
-    <string name="status_online_root">ROOT / SYSTEM ONLINE</string>
-    <string name="status_daemon_running">Daemon Running</string>
-    <string name="status_safe_mode">SAFE MODE</string>
 
     <!-- Engine Profiles -->
     <string name="mode_select_title">TACTICAL ENGINE SELECTION</string>
-    <string name="mode_select_subtitle">Select optimal operational profile for your device</string>
-    <string name="mode_safe_title">Safe Engine</string>
-    <string name="mode_safe_desc">Main account safe anti-ban bypass profile</string>
-    <string name="mode_extreme_title">External Engine</string>
-    <string name="mode_extreme_desc">External hook and tactical combat profile</string>
 
     <!-- Action Buttons -->
-    <string name="btn_activate">ACTIVATE</string>
-    <string name="btn_activated">ACTIVE</string>
     <string name="btn_close">CLOSE</string>
     <string name="btn_safe">SAFE</string>
-    <string name="btn_launch_ff">LAUNCH FREE FIRE</string>
-    <string name="btn_launch_ff_max">LAUNCH FF MAX</string>
-    <string name="btn_start_service">START SERVICE</string>
-    <string name="btn_stop_service">STOP SERVICE</string>
-    <string name="btn_launch_game">LAUNCH GAME</string>
     <string name="btn_hide">MINIMIZE</string>
-    <string name="btn_secure_badge">PRO</string>
 
-    <!-- Menu Categories -->
-    <string name="cat_system">SYSTEM</string>
-    <string name="cat_aim">Aim</string>
-    <string name="cat_aim_setting">Aim Setting</string>
-    <string name="cat_esp">Esp</string>
-    <string name="cat_esp_setting">Esp Setting</string>
-    <string name="cat_position_fix">Position Fix</string>
-    <string name="cat_visual">RADAR</string>
-    <string name="cat_visual_setting">RADAR CONFIG</string>
-    <string name="cat_adjust">ADJUST</string>
 
-    <!-- Menu Controls -->
-    <string name="control_enable_functions">Enable Functions</string>
-    <string name="control_aim_external">Aim External</string>
-    <string name="control_aim_silent">Aim Silent</string>
-    <string name="control_silent_aim_target">Silent Aim Target</string>
-    <string name="control_target_priority">Target Priority</string>
-    <string name="control_aim_fov_radius">Aim FOV Radius</string>
-    <string name="control_aim_distance">Aim Distance</string>
 
-    <!-- ESP Controls -->
-    <string name="control_draw_line">Draw Line</string>
-    <string name="control_draw_distance">Draw Distance</string>
-    <string name="control_draw_aim_fov">Draw Aim FOV</string>
-    <string name="control_draw_box">Draw Box</string>
-    <string name="control_draw_name">Draw Name</string>
-    <string name="control_draw_health">Draw Health</string>
-    <string name="control_draw_count">Draw Count</string>
 
-    <!-- ESP Settings -->
-    <string name="control_esp_color">ESP Color</string>
-    <string name="control_box_type">Box Type</string>
-    <string name="control_line_type">Line Type</string>
-    <string name="control_text_size">Text Size</string>
-    <string name="control_thickness">Thickness</string>
-    <string name="control_esp_left_adjust">ESP Left Adjust</string>
-    <string name="control_esp_right_adjust">ESP Right Adjust</string>
-    <string name="control_reset_adjust">Reset Adjust</string>
 
-    <!-- Legacy / Compatibility keys -->
-    <string name="ctrl_enable_functions">Enable Functions</string>
-    <string name="ctrl_aim_external">Aim External</string>
-    <string name="ctrl_aim_silent">Aim Silent</string>
-    <string name="ctrl_silent_target">Silent Aim Target</string>
-    <string name="ctrl_target_priority">Target Priority</string>
-    <string name="ctrl_aim_fov_radius">Aim FOV Radius</string>
-    <string name="ctrl_aim_distance">Aim Distance</string>
-    <string name="ctrl_draw_line">Draw Line</string>
-    <string name="ctrl_draw_distance">Draw Distance</string>
-    <string name="ctrl_draw_aim_fov">Draw Aim FOV</string>
-    <string name="ctrl_draw_box">Draw Box</string>
-    <string name="ctrl_draw_name">Draw Name</string>
-    <string name="ctrl_draw_health">Draw Health</string>
-    <string name="ctrl_draw_count">Draw Count</string>
-    <string name="ctrl_esp_color">ESP Color</string>
-    <string name="ctrl_box_type">Box Type</string>
-    <string name="ctrl_line_type">Line Type</string>
-    <string name="ctrl_text_size">Text Size</string>
-    <string name="ctrl_thickness">Thickness</string>
-    <string name="ctrl_esp_left_adjust">ESP Left Adjust</string>
-    <string name="ctrl_esp_right_adjust">ESP Right Adjust</string>
-    <string name="ctrl_reset_adjust">Reset Adjust</string>
 
     <!-- Modular Brand Menus (Pure Brand Names Only) -->
     <string name="menu_tactical_1_name">NINMODS</string>
     <string name="menu_tactical_1_sub">VIP</string>
     <string name="menu_tactical_2_name">NINLITE</string>
     <string name="menu_tactical_2_sub">LITE</string>
-
-    <!-- Reference Mod Menu (DSL driven floating menu) -->
-    <!-- The colour of the value inside a slider label is part of the HTML
-         label of the row, so it is kept as a string resource. -->
-    <string name="menu_dsl_number_color">#41c300</string>
 </resources>
