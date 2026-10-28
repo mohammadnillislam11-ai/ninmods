@@ -93,6 +93,18 @@ public class MenuRouter {
     }
 
     /**
+     * Launches the currently active menu project configured in preferences.
+     *
+     * @param context Android context.
+     */
+    public static synchronized void launchActiveMenu(Context context) {
+        if (context == null) return;
+        IMenuProject active = getActiveMenu(context);
+        String targetId = active != null ? active.getId() : NinMenuProject.ID;
+        launchMenu(context, targetId);
+    }
+
+    /**
      * Launches a specific menu project by ID.
      * Enforces strict channel isolation: ensures other running overlays are stopped first.
      *

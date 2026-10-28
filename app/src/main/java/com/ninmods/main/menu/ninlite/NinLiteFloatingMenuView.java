@@ -142,6 +142,14 @@ public class NinLiteFloatingMenuView {
      */
     public void release() {
         FeatureSettings.removeListener(mFeatureListener);
+        if (mWindowManager != null && mRootFrame != null && mIsAttached) {
+            try {
+                if (mRootFrame.isAttachedToWindow()) {
+                    mWindowManager.removeView(mRootFrame);
+                }
+            } catch (Throwable ignored) {}
+            mIsAttached = false;
+        }
     }
 
     /** Re-reads one feature from the store and updates its control. */
@@ -969,20 +977,6 @@ public class NinLiteFloatingMenuView {
     public void collapseToLogo() {
         if (mCollapsedView != null && mExpandedView != null) {
             mController.animateCollapse(mCollapsedView, mExpandedView, mParams, mWindowManager, null);
-        }
-    }
-
-    /**
-     * Releases view resources and detaches from the WindowManager.
-     */
-    public void release() {
-        if (mWindowManager != null && mRootFrame != null && mIsAttached) {
-            try {
-                if (mRootFrame.isAttachedToWindow()) {
-                    mWindowManager.removeView(mRootFrame);
-                }
-            } catch (Throwable ignored) {}
-            mIsAttached = false;
         }
     }
 }
