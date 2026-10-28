@@ -2,6 +2,7 @@
 #include "Includes/Logger.h"
 #include "Engine/DaemonLink.h"
 
+#include <jni.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
