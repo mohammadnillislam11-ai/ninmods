@@ -1425,6 +1425,15 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
    */
   JNIEnv *env = nullptr;
   if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK && env != nullptr) {
+    if (g_NativeBridgeClassRef == nullptr) {
+      jclass local = env->FindClass("com/ninmods/main/core/NativeBridge");
+      if (local != nullptr) {
+        g_NativeBridgeClassRef = (jclass)env->NewGlobalRef(local);
+        env->DeleteLocalRef(local);
+      } else if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+      }
+    }
     if (RegisterNinMenu(env) != JNI_OK) {
       NIN_LOGI("MENU", "Native mod menu binding failed - the menu will not be available");
     }
