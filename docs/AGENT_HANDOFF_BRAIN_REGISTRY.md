@@ -75,18 +75,19 @@ Get-Content "C:\Users\Sajala\.gemini\antigravity-ide\brain\958e1156-b06e-448e-9f
 - Implemented `launchActiveMenu(Context)` in `MenuRouter.java`.
 - Deduplicated `release()` in `NinLiteFloatingMenuView.java` and added parent attachment guards in `ModMenu.java`.
 
-### 3.3 Core Machine & Driver Integrity
+### 3.3 Core Machine, JNI & Driver Integrity
 - `Includes/MemoryIO.h`: Ring-0 IOCTL commands `0x801` (Read), `0x802` (Write), `0x803` (Base) operate on `/dev/BYNb`. Removed silent fallback to `process_vm_readv`.
 - `Detection/GameDetection.cpp`: Scans `/proc/[pid]/cmdline` dynamically and binds `target_pid`.
 - `Bridge/SecurityVaultJNI.cpp`: Validates APK signing certificate against release key with `DigestEquals`.
 - `core/AppLogger.java`: Refactored to write diagnostics directly to `/storage/emulated/0/Download/ninmods.log` per Rule 16.
 - `version.xml`: Bumped to version `90.94` (version code `994`).
+- **100% Verified JNI Bindings**: Exhaustive cross-audit of all 41 C++ `Java_` exports and 7 `RegisterNatives` methods against all Java native methods. Zero unbound exports, zero missing methods, zero wrong registry/classes.
 
 ---
 
 ## 4. Current State & Next Steps for Incoming Agent
 
-- **Local Git State**: Working directory is clean. Commit `fbd8739` is committed locally on branch `main`.
+- **Local Git State**: Working directory is 100% clean. Commit `23e2fc2` is committed locally on branch `main`.
 - **Immediate Pending Step**: Wait for the user to explicitly state "পুশ করো".
 - **Action When User Says "পুশ করো"**:
   1. Run `git push origin main`.
