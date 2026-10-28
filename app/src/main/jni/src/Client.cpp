@@ -725,6 +725,7 @@ Java_com_ninmods_main_core_NativeBridge_setActiveChannel(JNIEnv *env,
     NIN_LOGE("CHANNEL", "Rejected invalid memory channel: %d", static_cast<int>(channel));
     return;
   }
+  StopMemoryWorkersForChannelSwitch();
   NIN_LOGI("CHANNEL", "active memory channel: %s", NinChannel::DescribeActiveChannel());
 }
 

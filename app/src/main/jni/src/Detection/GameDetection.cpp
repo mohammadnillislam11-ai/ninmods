@@ -195,7 +195,8 @@ pid_t GetPid() {
 }
 
 std::string GetPackageName() {
-    return Detect().packageName;
+    GameProcess detected = Detect();
+    return detected.packageName;
 }
 
 std::string GetTitle() {

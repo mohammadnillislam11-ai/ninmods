@@ -120,7 +120,10 @@ public:
         memcpy(socket_name + 1, NINLITE_SOCKET_NAME, nameLen);
 
         if (bind(listenfd, (sockaddr*)&addr_server, addrLen) < 0) {
-            CloseClient();
+            /* The listener fd is not usable after a failed bind. Keeping it
+             * open made IsListening() return true forever and the daemon
+             * repeatedly called accept4() on an unbound socket. */
+            Close();
             return false;
         }
         return true;
@@ -133,7 +136,7 @@ public:
     bool Listen() {
         if (listenfd < 0) return false;
         if (listen(listenfd, NINLITE_BACKLOG) < 0) {
-            CloseClient();
+            Close();
             return false;
         }
         return true;
@@ -147,7 +150,8 @@ public:
         if (listenfd < 0) return false;
         int fd = accept4(listenfd, nullptr, nullptr, SOCK_CLOEXEC);
         if (fd < 0) {
-            CloseClient();
+            /* Accept failure does not invalidate the listening socket. The
+             * next loop iteration can retry accept4() on the same listener. */
             return false;
         }
         CloseClient();

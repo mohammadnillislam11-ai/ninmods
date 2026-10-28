@@ -612,6 +612,12 @@ inline uint64_t ReadCurrentWeapon(uintptr_t player) {
 
 inline void ContinuousAimWorker() {
     while (true) {
+        if (NinChannel::IsQxActive()) {
+            /* In QX channel mode, the root daemon executes all memory operations.
+             * The RT aim worker must yield and never write memory. */
+            usleep(50000);
+            continue;
+        }
         bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock;
         if (!anyAimActive) {
             usleep(20000);
@@ -732,8 +738,8 @@ inline void EnsureContinuousAimThreadStarted() {
 
 inline void UpdateAimMagnetFast() {
     while (true) {
-        if (!pPlayer.aimMagnet && !pPlayer.PlayerToMe) {
-            usleep(100000);  // 100ms idle sleep to save CPU and memory bandwidth
+        if (NinChannel::IsQxActive() || (!pPlayer.aimMagnet && !pPlayer.PlayerToMe)) {
+            usleep(100000);  // 100ms idle sleep when QX mode or inactive
             continue;
         }
         usleep(10000);  // 10ms active sleep
@@ -1770,4 +1776,20 @@ inline bool isConnected() {
         return NinEngine::DaemonLink::Instance().IsConnected();
     }
     return MemoryIO::IsDriverReady();
+}
+
+/**
+ * @brief Stops all app-side memory workers when the selected channel changes.
+ *
+ * QX owns the game memory through the daemon. RT workers must not continue
+ * writing through the driver after QX is selected, and vice versa.
+ */
+inline void StopMemoryWorkersForChannelSwitch() {
+    keepAiming.store(false, std::memory_order_relaxed);
+    pPlayer.aimbot.store(false, std::memory_order_relaxed);
+    pPlayer.aimbotlock.store(false, std::memory_order_relaxed);
+    pPlayer.silen4a.store(false, std::memory_order_relaxed);
+    pPlayer.aimMagnet.store(false, std::memory_order_relaxed);
+    Actived.activar = false;
+    SyncWithNinLiteDaemon(Ninlite::MODE_MASTER, false, 0);
 }
