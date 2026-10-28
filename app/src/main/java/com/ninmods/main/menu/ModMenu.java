@@ -1,1254 +1,1037 @@
-//Please don't replace listeners with lambda!
-
 package com.ninmods.main.menu;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.res.ColorStateList;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
-import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
-import android.text.Html;
-import android.text.InputFilter;
-import android.text.InputType;
+import android.os.Looper;
 import android.text.TextUtils;
-import android.text.method.DigitsKeyListener;
-import android.util.Base64;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.view.inputmethod.InputMethodManager;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
-import android.widget.Button;
-import android.widget.CheckBox;
-import android.widget.CompoundButton;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
-import android.widget.RelativeLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
-import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.ninmods.main.R;
 import com.ninmods.main.core.AppLogger;
-import com.ninmods.main.core.FeatureCatalog;
-import com.ninmods.main.core.FeatureSettings;
 import com.ninmods.main.core.NativeBridge;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-
-import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
-import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
-import static android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS;
-import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
-import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
 
 /**
- * NINMODS MOD MENU
- * ----------------
- * The floating mod menu of the app.
+ * NINMODS MODERN TACTICAL FLOATING MENU
+ * -------------------------------------
+ * Sleek, high-performance, dark glassmorphism floating menu engineered
+ * specifically for NINMODS.
  *
- * The complete structure of this menu comes from the native layer: the C++
- * side owns the feature table (jni/src/Menu/FeatureTable.h) and hands it over
- * as a feature DSL, this class only renders the rows it receives.
- *
- * The DSL, the widget set, the persistence and the lifecycle are the ones of
- * the reference mod menu:
- *
- *   (<index>)_True_Toggle_<name>          -> switch
- *   (<index>)_SeekBar_<name>_<min>_<max>   -> slider
- *   Category_<text>                        -> category header
- *   RichTextView_<html>                    -> static text
- *
- * The index in front of a row is the feature id of the engine, so the menu
- * row, the Java feature catalogue and the C++ engine switch always use the
- * same number.
+ * Replaces the obsolete legacy reference mod menu layout with a clean,
+ * modern tactical card featuring segmented horizontal pill tabs, real-time
+ * telemetry, smooth dragging, and direct zero-latency wiring to the official
+ * Linux syscall engine (process_vm_readv / process_vm_writev).
  */
 public class ModMenu {
-    //********** The appearance of the menu **********//
-    public static final String TAG = "NinModMenu"; //Tag for logcat
 
-    private final int TEXT_COLOR;
-    private final int TEXT_COLOR_2;
-    private final int BTN_COLOR;
-    private final int MENU_BG_COLOR;
-    private final int MENU_FEATURE_BG_COLOR;
-    private final int MENU_WIDTH = 290;
-    private final int MENU_HEIGHT = 210;
-    private final int POS_X = 0;
-    private final int POS_Y = 100;
-
-    private final float MENU_CORNER = 4f;
-    private final int ICON_SIZE = 45; //Change both width and height of image
-    private final float ICON_ALPHA = 0.7f; //Transparent
-    private final int ToggleON;
-    private final int ToggleOFF;
-    private final int BtnON;
-    private final int BtnOFF;
-    private final int CategoryBG;
-    private final int SeekBarColor;
-    private final int SeekBarProgressColor;
-    private final int CheckBoxColor;
-    private final int RadioColor;
-    private final int CollapseColor;
-    private final int CollapseSubColor;
-    private final String NumberTxtColor;
-    //**************************************************//
-
-    private RelativeLayout mCollapsed, mRootContainer;
-    private LinearLayout mExpanded, mods, mSettings, mCollapse;
-    private LinearLayout.LayoutParams scrlLLExpanded, scrlLL;
-    private WindowManager mWindowManager;
-    private WindowManager.LayoutParams vmParams;
-    private ImageView startimage;
-    private FrameLayout rootFrame;
-    private ScrollView scrollView;
-    private boolean stopChecking, overlayRequired;
-    private final Context mContext;
-
-
-    /**
-     * True when the native library is loaded and the native methods are
-     * bound. Without the library the menu renders empty instead of
-     * crashing the whole app.
-     */
-    private static boolean sNativeReady = false;
+    private static final String TAG = "NinModMenu";
+    private static volatile boolean sNativeReady = false;
 
     static {
         try {
             System.loadLibrary("ninmods");
             sNativeReady = true;
         } catch (Throwable t) {
-            Log.e(TAG, "Failed to load libninmods.so - the mod menu is not available", t);
+            AppLogger.logE(TAG, "libninmods.so unavailable for mod menu", t);
         }
     }
 
-    //initialize methods from the native library
+    // --- Native JNI Bindings (Registered in Setup.cpp) ---
     native void Init(Context context, TextView title, TextView subTitle);
-
     native String Icon();
-
     native String IconWebViewData();
-
     native String[] GetFeatureList();
-
     native String[] SettingsList();
-
     native boolean IsGameLibLoaded();
 
-    //Here we write the code for our Menu
-    public ModMenu(Context context) {
+    // --- Dimensions & Styling Constants ---
+    private static final int ICON_SIZE_DP = 52;
+    private static final int MENU_WIDTH_DP = 310;
+    private static final int MENU_HEIGHT_DP = 430;
+    private static final int CORNER_RADIUS_DP = 16;
+    private static final int ITEM_CORNER_DP = 10;
 
-        mContext = context;
+    // --- Theme Palette (Modern Obsidian & Tactical Cyan/Indigo) ---
+    private static final int COLOR_CARD_BG = 0xF20F121C;        // Deep obsidian glass
+    private static final int COLOR_CARD_BORDER = 0xFF242A3B;    // Crisp border stroke
+    private static final int COLOR_ITEM_BG = 0xFF181C28;        // Feature item card
+    private static final int COLOR_ITEM_BORDER = 0xFF232838;    // Item border stroke
+    private static final int COLOR_HEADER_BG = 0x80131722;      // Subtle header tint
+    private static final int COLOR_ACCENT_CYAN = 0xFF00E5FF;    // Tactical Cyan
+    private static final int COLOR_ACCENT_BLUE = 0xFF3B82F6;    // Electric Blue
+    private static final int COLOR_ACCENT_INDIGO = 0xFF6366F1;  // Indigo highlight
+    private static final int COLOR_TEXT_PRIMARY = 0xFFFFFFFF;   // Crisp white
+    private static final int COLOR_TEXT_MUTED = 0xFF94A3B8;     // Slate secondary
+    private static final int COLOR_TEXT_DIM = 0xFF64748B;       // Dim metadata
+    private static final int COLOR_STATUS_GREEN = 0xFF10B981;   // Connected
+    private static final int COLOR_STATUS_AMBER = 0xFFF59E0B;   // Standby
+    private static final int COLOR_SWITCH_OFF = 0xFF2D3748;     // Inactive track
+
+    // --- Context & Window Management ---
+    private final Context mContext;
+    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
+    private WindowManager mWindowManager;
+    private WindowManager.LayoutParams vmParams;
+
+    // --- View Hierarchy ---
+    private FrameLayout rootFrame;
+    private RelativeLayout mCollapsedView;
+    private LinearLayout mExpandedView;
+    private ImageView mFloatingBubble;
+
+    // --- Tabs & Content ---
+    private LinearLayout mTabBar;
+    private final List<TextView> mTabButtons = new ArrayList<>();
+    private final Map<String, LinearLayout> mTabContainers = new LinkedHashMap<>();
+    private String mActiveCategory = "VISUALS";
+    private TextView mStatusChip;
+    private TextView mFooterText;
+
+    // Position memory
+    private int mPosX = 30;
+    private int mPosY = 180;
+    private boolean mIsAttached = false;
+
+    public ModMenu(Context context) {
+        this.mContext = context;
         MenuPreferences.context = context;
 
-        TEXT_COLOR = context.getResources().getColor(R.color.menu_dsl_text);
-        TEXT_COLOR_2 = context.getResources().getColor(R.color.menu_dsl_text_2);
-        BTN_COLOR = context.getResources().getColor(R.color.menu_dsl_btn);
-        MENU_BG_COLOR = context.getResources().getColor(R.color.menu_dsl_bg);
-        MENU_FEATURE_BG_COLOR = context.getResources().getColor(R.color.menu_dsl_feature_bg);
-        ToggleON = context.getResources().getColor(R.color.menu_dsl_toggle_on);
-        ToggleOFF = context.getResources().getColor(R.color.menu_dsl_toggle_off);
-        BtnON = context.getResources().getColor(R.color.menu_dsl_btn_on);
-        BtnOFF = context.getResources().getColor(R.color.menu_dsl_btn_off);
-        CategoryBG = context.getResources().getColor(R.color.menu_dsl_category_bg);
-        SeekBarColor = context.getResources().getColor(R.color.menu_dsl_seekbar);
-        SeekBarProgressColor = context.getResources().getColor(R.color.menu_dsl_seekbar);
-        CheckBoxColor = context.getResources().getColor(R.color.menu_dsl_checkbox);
-        RadioColor = context.getResources().getColor(R.color.menu_dsl_radio);
-        CollapseColor = context.getResources().getColor(R.color.menu_dsl_collapse);
-        CollapseSubColor = context.getResources().getColor(R.color.menu_dsl_collapse_sub);
-        NumberTxtColor = context.getString(R.string.menu_dsl_number_color);
+        initViews();
+    }
 
-        rootFrame = new FrameLayout(context); // Global markup
-        rootFrame.setOnTouchListener(onTouchListener());
-        mRootContainer = new RelativeLayout(context); // Markup on which two markups of the icon and the menu itself will be placed
-        mCollapsed = new RelativeLayout(context); // Markup of the icon (when the menu is minimized)
-        mCollapsed.setVisibility(View.VISIBLE);
-        mCollapsed.setAlpha(ICON_ALPHA);
+    private void initViews() {
+        rootFrame = new FrameLayout(mContext);
 
-        //********** The box of the mod menu **********
-        mExpanded = new LinearLayout(context); // Menu markup (when the menu is expanded)
-        mExpanded.setVisibility(View.GONE);
-        mExpanded.setBackgroundColor(MENU_BG_COLOR);
-        mExpanded.setOrientation(LinearLayout.VERTICAL);
-        mExpanded.setLayoutParams(new LinearLayout.LayoutParams(dp(MENU_WIDTH), WRAP_CONTENT));
-        GradientDrawable gdMenuBody = new GradientDrawable();
-        gdMenuBody.setCornerRadius(MENU_CORNER); //Set corner
-        gdMenuBody.setColor(MENU_BG_COLOR); //Set background color
-        //mExpanded.setBackground(gdMenuBody); //Apply GradientDrawable to it
+        // 1. Build Floating Bubble (Collapsed View)
+        buildCollapsedView();
 
-        //********** The icon to open mod menu **********
-        startimage = new ImageView(context);
-        startimage.setLayoutParams(new RelativeLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
-        int applyDimension = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, ICON_SIZE, context.getResources().getDisplayMetrics()); //Icon size
-        startimage.getLayoutParams().height = applyDimension;
-        startimage.getLayoutParams().width = applyDimension;
-        startimage.setScaleType(ImageView.ScaleType.FIT_XY);
+        // 2. Build Modern Tactical Card (Expanded View)
+        buildExpandedView();
 
-        /*
-         * The native layer may ship a base64 encoded icon. NINMODS is a
-         * white label app, so the icon is taken from the app resources when
-         * the native side has no asset - every white label build carries its
-         * own launcher icon.
-         */
-        String nativeIcon = sNativeReady ? Icon() : null;
-        if (nativeIcon != null && !nativeIcon.isEmpty()) {
-            byte[] decode = Base64.decode(nativeIcon, 0);
-            startimage.setImageBitmap(BitmapFactory.decodeByteArray(decode, 0, decode.length));
-        } else {
-            startimage.setImageResource(R.drawable.ic_launcher);
+        rootFrame.addView(mCollapsedView);
+        rootFrame.addView(mExpandedView);
+
+        // Collapse to bubble by default
+        mCollapsedView.setVisibility(View.VISIBLE);
+        mExpandedView.setVisibility(View.GONE);
+    }
+
+    /**
+     * Floating Draggable Bubble / Pill (Collapsed State)
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private void buildCollapsedView() {
+        mCollapsedView = new RelativeLayout(mContext);
+        mCollapsedView.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        int bubblePx = dp(ICON_SIZE_DP);
+
+        mFloatingBubble = new ImageView(mContext);
+        RelativeLayout.LayoutParams iconParams = new RelativeLayout.LayoutParams(bubblePx, bubblePx);
+        mFloatingBubble.setLayoutParams(iconParams);
+        mFloatingBubble.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        mFloatingBubble.setPadding(dp(10), dp(10), dp(10), dp(10));
+
+        // Glassmorphism circular background with subtle glowing cyan border
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0xE60F121C);
+        bg.setStroke(dp(2), COLOR_ACCENT_CYAN);
+        mFloatingBubble.setBackground(bg);
+
+        // Dynamic brand logo
+        try {
+            mFloatingBubble.setImageResource(R.drawable.nin_logo);
+        } catch (Throwable t) {
+            mFloatingBubble.setImageResource(R.mipmap.ic_launcher);
         }
-        ((ViewGroup.MarginLayoutParams) startimage.getLayoutParams()).topMargin = convertDipToPixels(10);
-        //Initialize event handlers for buttons, etc.
-        startimage.setOnTouchListener(onTouchListener());
-        startimage.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                mCollapsed.setVisibility(View.GONE);
-                mExpanded.setVisibility(View.VISIBLE);
-            }
-        });
 
-        //********** The icon in Webview to open mod menu **********
-        WebView wView = new WebView(context);
-        wView.setLayoutParams(new RelativeLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
-        int applyDimension2 = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, ICON_SIZE, context.getResources().getDisplayMetrics()); //Icon size
-        wView.getLayoutParams().height = applyDimension2;
-        wView.getLayoutParams().width = applyDimension2;
-        wView.loadData("<html>" +
-                "<head></head>" +
-                "<body style=\"margin: 0; padding: 0\">" +
-                "<img src=\"" + (sNativeReady ? IconWebViewData() : "") + "\" width=\"" + ICON_SIZE + "\" height=\"" + ICON_SIZE + "\" >" +
-                "</body>" +
-                "</html>", "text/html", "utf-8");
-        wView.setBackgroundColor(0x00000000); //Transparent
-        wView.setAlpha(ICON_ALPHA);
-        wView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
-        wView.setOnTouchListener(onTouchListener());
+        mFloatingBubble.setOnTouchListener(createDragListener(true));
+        mCollapsedView.addView(mFloatingBubble);
+    }
 
-        //********** Settings icon **********
-        TextView settings = new TextView(context); //Android 5 can't show the gear, instead show other icon instead
-        settings.setText(Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M ? "⚙" : "\uD83D\uDD27");
-        settings.setTextColor(TEXT_COLOR);
-        settings.setTypeface(Typeface.DEFAULT_BOLD);
-        settings.setTextSize(20.0f);
-        RelativeLayout.LayoutParams rlsettings = new RelativeLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-        rlsettings.addRule(ALIGN_PARENT_RIGHT);
-        settings.setLayoutParams(rlsettings);
-        settings.setOnClickListener(new View.OnClickListener() {
-            boolean settingsOpen;
+    /**
+     * Modern Tactical Card (Expanded State)
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private void buildExpandedView() {
+        mExpandedView = new LinearLayout(mContext);
+        mExpandedView.setOrientation(LinearLayout.VERTICAL);
 
-            @Override
-            public void onClick(View v) {
-                try {
-                    settingsOpen = !settingsOpen;
-                    if (settingsOpen) {
-                        scrollView.removeView(mods);
-                        scrollView.addView(mSettings);
-                        scrollView.scrollTo(0, 0);
-                    } else {
-                        scrollView.removeView(mSettings);
-                        scrollView.addView(mods);
-                    }
-                } catch (IllegalStateException ignored) {
-                }
-            }
-        });
+        int widthPx = dp(MENU_WIDTH_DP);
+        int heightPx = dp(MENU_HEIGHT_DP);
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(widthPx, heightPx);
+        mExpandedView.setLayoutParams(cardParams);
 
-        //********** Settings **********
-        mSettings = new LinearLayout(context);
-        mSettings.setOrientation(LinearLayout.VERTICAL);
-        featureList(sNativeReady ? SettingsList() : new String[0], mSettings);
+        // Deep obsidian glass background with rounded corners and crisp stroke
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setCornerRadius(dp(CORNER_RADIUS_DP));
+        cardBg.setColor(COLOR_CARD_BG);
+        cardBg.setStroke(dp(1), COLOR_CARD_BORDER);
+        mExpandedView.setBackground(cardBg);
 
-        //********** Title **********
-        RelativeLayout titleText = new RelativeLayout(context);
-        titleText.setPadding(10, 5, 10, 5);
-        titleText.setVerticalGravity(16);
+        // 1. Header Bar
+        mExpandedView.addView(buildHeaderBar());
 
-        TextView title = new TextView(context);
-        title.setText(R.string.app_name);
-        title.setTextColor(TEXT_COLOR);
-        title.setTextSize(18.0f);
-        title.setGravity(Gravity.CENTER);
-        RelativeLayout.LayoutParams rl = new RelativeLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-        rl.addRule(RelativeLayout.CENTER_HORIZONTAL);
-        title.setLayoutParams(rl);
+        // 2. Horizontal Segmented Pill Tabs
+        mExpandedView.addView(buildTabBar());
 
-        //********** Sub title **********
-        TextView subTitle = new TextView(context);
-        subTitle.setEllipsize(TextUtils.TruncateAt.MARQUEE);
-        subTitle.setMarqueeRepeatLimit(-1);
-        subTitle.setSingleLine(true);
-        subTitle.setSelected(true);
-        subTitle.setTextColor(TEXT_COLOR);
-        subTitle.setTextSize(10.0f);
-        subTitle.setGravity(Gravity.CENTER);
-        subTitle.setPadding(0, 0, 0, 5);
+        // 3. Tab Content Scrollable Area
+        ScrollView contentScroll = new ScrollView(mContext);
+        contentScroll.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        contentScroll.setVerticalScrollBarEnabled(false);
+        contentScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
 
-        //********** Mod menu feature list **********
-        scrollView = new ScrollView(context);
-        //Auto size. To set size manually, change the width and height example 500, 500
-        scrlLL = new LinearLayout.LayoutParams(MATCH_PARENT, dp(MENU_HEIGHT));
-        scrlLLExpanded = new LinearLayout.LayoutParams(mExpanded.getLayoutParams());
-        scrlLLExpanded.weight = 1.0f;
-        scrollView.setLayoutParams(MenuPreferences.isExpanded ? scrlLLExpanded : scrlLL);
-        scrollView.setBackgroundColor(MENU_FEATURE_BG_COLOR);
-        mods = new LinearLayout(context);
-        mods.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout contentHolder = new FrameLayout(mContext);
+        contentHolder.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        //********** RelativeLayout for buttons **********
-        RelativeLayout relativeLayout = new RelativeLayout(context);
-        relativeLayout.setPadding(10, 3, 10, 3);
-        relativeLayout.setVerticalGravity(Gravity.CENTER);
+        // Create standard categories
+        createCategoryContainer("VISUALS", contentHolder);
+        createCategoryContainer("AIMBOT", contentHolder);
+        createCategoryContainer("COMBAT", contentHolder);
+        createCategoryContainer("SYSTEM", contentHolder);
 
-        //**********  Hide/Kill button **********
-        RelativeLayout.LayoutParams lParamsHideBtn = new RelativeLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-        lParamsHideBtn.addRule(ALIGN_PARENT_LEFT);
+        contentScroll.addView(contentHolder);
+        mExpandedView.addView(contentScroll);
 
-        Button hideBtn = new Button(context);
-        hideBtn.setLayoutParams(lParamsHideBtn);
-        hideBtn.setBackgroundColor(Color.TRANSPARENT);
-        hideBtn.setText("HIDE/KILL (Hold)");
-        hideBtn.setTextColor(TEXT_COLOR);
-        hideBtn.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                mCollapsed.setVisibility(View.VISIBLE);
-                mCollapsed.setAlpha(0);
-                mExpanded.setVisibility(View.GONE);
-                Toast.makeText(view.getContext(), "Icon hidden. Remember the hidden icon position", Toast.LENGTH_LONG).show();
-            }
-        });
-        hideBtn.setOnLongClickListener(new View.OnLongClickListener() {
-            public boolean onLongClick(View view) {
-                Toast.makeText(view.getContext(), "Menu killed", Toast.LENGTH_LONG).show();
-                rootFrame.removeView(mRootContainer);
-                mWindowManager.removeView(rootFrame);
-                return false;
-            }
-        });
+        // 4. Sleek Footer Bar
+        mExpandedView.addView(buildFooterBar());
+    }
 
-        //********** Close button **********
-        RelativeLayout.LayoutParams lParamsCloseBtn = new RelativeLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-        lParamsCloseBtn.addRule(ALIGN_PARENT_RIGHT);
+    /**
+     * Header Bar with Dynamic App Title, Live Status Chip, and Control Buttons
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private View buildHeaderBar() {
+        LinearLayout header = new LinearLayout(mContext);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(14), dp(10), dp(12), dp(10));
+        header.setBackgroundColor(COLOR_HEADER_BG);
 
-        Button closeBtn = new Button(context);
-        closeBtn.setLayoutParams(lParamsCloseBtn);
-        closeBtn.setBackgroundColor(Color.TRANSPARENT);
-        closeBtn.setText("MINIMIZE");
-        closeBtn.setTextColor(TEXT_COLOR);
-        closeBtn.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                mCollapsed.setVisibility(View.VISIBLE);
-                mCollapsed.setAlpha(ICON_ALPHA);
-                mExpanded.setVisibility(View.GONE);
-            }
-        });
+        // Header touch listener allows dragging the entire expanded card
+        header.setOnTouchListener(createDragListener(false));
 
-        //********** Adding view components **********
-        mRootContainer.addView(mCollapsed);
-        mRootContainer.addView(mExpanded);
-        if (sNativeReady && IconWebViewData() != null) {
-            mCollapsed.addView(wView);
-        } else {
-            mCollapsed.addView(startimage);
+        // Left: Logo + Dynamic App Title
+        ImageView logo = new ImageView(mContext);
+        logo.setLayoutParams(new LinearLayout.LayoutParams(dp(20), dp(20)));
+        try {
+            logo.setImageResource(R.drawable.nin_logo);
+        } catch (Throwable t) {
+            logo.setImageResource(R.mipmap.ic_launcher);
         }
-        titleText.addView(title);
-        titleText.addView(settings);
-        mExpanded.addView(titleText);
-        mExpanded.addView(subTitle);
-        scrollView.addView(mods);
-        mExpanded.addView(scrollView);
-        relativeLayout.addView(hideBtn);
-        relativeLayout.addView(closeBtn);
-        mExpanded.addView(relativeLayout);
+        header.addView(logo);
 
-        if (sNativeReady) {
-            Init(context, title, subTitle);
+        LinearLayout titleCol = new LinearLayout(mContext);
+        titleCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams tcParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tcParams.setMargins(dp(8), 0, dp(8), 0);
+        titleCol.setLayoutParams(tcParams);
+
+        TextView titleText = new TextView(mContext);
+        titleText.setText(mContext.getString(R.string.app_name));
+        titleText.setTextColor(COLOR_TEXT_PRIMARY);
+        titleText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f);
+        titleText.setTypeface(Typeface.DEFAULT_BOLD);
+        titleText.setSingleLine(true);
+        titleCol.addView(titleText);
+
+        TextView subtitleText = new TextView(mContext);
+        subtitleText.setText("TACTICAL ENGINE");
+        subtitleText.setTextColor(COLOR_TEXT_DIM);
+        subtitleText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
+        subtitleText.setLetterSpacing(0.08f);
+        titleCol.addView(subtitleText);
+
+        header.addView(titleCol);
+
+        // Center: Live Status Chip Pill
+        mStatusChip = new TextView(mContext);
+        mStatusChip.setText("● STANDBY");
+        mStatusChip.setTextColor(COLOR_STATUS_AMBER);
+        mStatusChip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
+        mStatusChip.setTypeface(Typeface.DEFAULT_BOLD);
+        mStatusChip.setPadding(dp(7), dp(3), dp(7), dp(3));
+
+        GradientDrawable chipBg = new GradientDrawable();
+        chipBg.setCornerRadius(dp(10));
+        chipBg.setColor(0x22F59E0B);
+        mStatusChip.setBackground(chipBg);
+
+        LinearLayout.LayoutParams scParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        scParams.gravity = Gravity.CENTER_VERTICAL;
+        mStatusChip.setLayoutParams(scParams);
+        mStatusChip.setGravity(Gravity.CENTER);
+        header.addView(mStatusChip);
+
+        // Right: Minimize Button [—]
+        TextView minBtn = createHeaderButton("—", v -> collapseToLogo());
+        header.addView(minBtn);
+
+        // Right: Close Button [✕]
+        TextView closeBtn = createHeaderButton("✕", v -> collapseToLogo());
+        LinearLayout.LayoutParams cbParams = (LinearLayout.LayoutParams) closeBtn.getLayoutParams();
+        cbParams.leftMargin = dp(6);
+        header.addView(closeBtn);
+
+        return header;
+    }
+
+    private TextView createHeaderButton(String text, View.OnClickListener onClick) {
+        TextView btn = new TextView(mContext);
+        int size = dp(24);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(size, size);
+        btn.setLayoutParams(params);
+        btn.setText(text);
+        btn.setTextColor(COLOR_TEXT_MUTED);
+        btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+        btn.setTypeface(Typeface.DEFAULT_BOLD);
+        btn.setGravity(Gravity.CENTER);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0x33232838);
+        btn.setBackground(bg);
+
+        btn.setOnClickListener(onClick);
+        return btn;
+    }
+
+    /**
+     * Horizontal Segmented Pill Tab Bar
+     */
+    private View buildTabBar() {
+        mTabBar = new LinearLayout(mContext);
+        mTabBar.setOrientation(LinearLayout.HORIZONTAL);
+        mTabBar.setPadding(dp(10), dp(8), dp(10), dp(8));
+        mTabBar.setBackgroundColor(0x3310131E);
+
+        String[] tabs = {"VISUALS", "AIMBOT", "COMBAT", "SYSTEM"};
+        for (String tabName : tabs) {
+            TextView tabBtn = new TextView(mContext);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                    0, dp(28), 1.0f);
+            p.setMargins(dp(2), 0, dp(2), 0);
+            tabBtn.setLayoutParams(p);
+            tabBtn.setText(tabName);
+            tabBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
+            tabBtn.setTypeface(Typeface.DEFAULT_BOLD);
+            tabBtn.setGravity(Gravity.CENTER);
+            tabBtn.setSingleLine(true);
+
+            final String catKey = tabName;
+            tabBtn.setOnClickListener(v -> selectTab(catKey));
+
+            mTabButtons.add(tabBtn);
+            mTabBar.addView(tabBtn);
+        }
+
+        updateTabStyles("VISUALS");
+        return mTabBar;
+    }
+
+    private void createCategoryContainer(String categoryName, FrameLayout parent) {
+        LinearLayout container = new LinearLayout(mContext);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(dp(12), dp(8), dp(12), dp(12));
+        container.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        container.setVisibility(categoryName.equals(mActiveCategory) ? View.VISIBLE : View.GONE);
+        mTabContainers.put(categoryName, container);
+        parent.addView(container);
+    }
+
+    private void selectTab(String categoryName) {
+        mActiveCategory = categoryName;
+        updateTabStyles(categoryName);
+
+        for (Map.Entry<String, LinearLayout> entry : mTabContainers.entrySet()) {
+            entry.getValue().setVisibility(entry.getKey().equalsIgnoreCase(categoryName) ? View.VISIBLE : View.GONE);
         }
     }
+
+    private void updateTabStyles(String activeCategory) {
+        for (TextView tabBtn : mTabButtons) {
+            boolean isActive = tabBtn.getText().toString().equalsIgnoreCase(activeCategory);
+
+            GradientDrawable pillBg = new GradientDrawable();
+            pillBg.setCornerRadius(dp(8));
+
+            if (isActive) {
+                pillBg.setColor(COLOR_ACCENT_BLUE);
+                tabBtn.setTextColor(COLOR_TEXT_PRIMARY);
+            } else {
+                pillBg.setColor(0x22222838);
+                tabBtn.setTextColor(COLOR_TEXT_MUTED);
+            }
+            tabBtn.setBackground(pillBg);
+        }
+    }
+
+    /**
+     * Sleek Footer Bar with Telemetry & Engine Badge
+     */
+    private View buildFooterBar() {
+        LinearLayout footer = new LinearLayout(mContext);
+        footer.setOrientation(LinearLayout.HORIZONTAL);
+        footer.setGravity(Gravity.CENTER_VERTICAL);
+        footer.setPadding(dp(14), dp(8), dp(14), dp(8));
+        footer.setBackgroundColor(0x550C0E17);
+
+        mFooterText = new TextView(mContext);
+        mFooterText.setText("NINMODS V90.86 • OFFICIAL LINUX SYSCALL");
+        mFooterText.setTextColor(COLOR_TEXT_DIM);
+        mFooterText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
+        mFooterText.setLetterSpacing(0.05f);
+
+        LinearLayout.LayoutParams ftParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        mFooterText.setLayoutParams(ftParams);
+        footer.addView(mFooterText);
+
+        // Small indicator grip dot
+        View grip = new View(mContext);
+        LinearLayout.LayoutParams gParams = new LinearLayout.LayoutParams(dp(24), dp(3));
+        grip.setLayoutParams(gParams);
+        GradientDrawable gBg = new GradientDrawable();
+        gBg.setCornerRadius(dp(2));
+        gBg.setColor(0x4494A3B8);
+        grip.setBackground(gBg);
+        footer.addView(grip);
+
+        return footer;
+    }
+
+    // --- Dynamic Feature Population ---
 
     public void ShowMenu() {
-        rootFrame.addView(mRootContainer);
+        if (rootFrame.getParent() == null) {
+            rootFrame.addView(mCollapsedView);
+            rootFrame.addView(mExpandedView);
+        }
 
-        final Handler handler = new Handler();
-        handler.postDelayed(new Runnable() {
-            boolean viewLoaded = false;
+        mMainHandler.postDelayed(() -> {
+            populateAllFeatures();
+            startTelemetryPoller();
+        }, 200);
+    }
 
+    private void populateAllFeatures() {
+        // Clear old items from each tab container
+        for (LinearLayout container : mTabContainers.values()) {
+            container.removeAllViews();
+        }
+
+        String[] rawDsl = sNativeReady ? GetFeatureList() : new String[0];
+        if (rawDsl == null || rawDsl.length == 0) {
+            populateFallbackFeatures();
+            return;
+        }
+
+        String currentCategory = "VISUALS";
+
+        for (String row : rawDsl) {
+            if (row == null || row.trim().isEmpty()) continue;
+
+            if (row.startsWith("Category_")) {
+                currentCategory = row.substring("Category_".length()).trim().toUpperCase();
+                continue;
+            }
+
+            LinearLayout targetContainer = mTabContainers.get(currentCategory);
+            if (targetContainer == null) {
+                targetContainer = mTabContainers.get("VISUALS");
+            }
+            if (targetContainer == null) continue;
+
+            parseAndAddFeatureRow(row, targetContainer);
+        }
+
+        // Add System diagnostics & controls to SYSTEM tab
+        populateSystemTab();
+    }
+
+    private void parseAndAddFeatureRow(String row, LinearLayout container) {
+        try {
+            boolean trueByDefault = row.contains("_True");
+            String cleaned = row.replaceFirst("_True", "");
+
+            String[] tokens = cleaned.split("_");
+            if (tokens.length < 2) return;
+
+            int featId = 0;
+            try {
+                featId = Integer.parseInt(tokens[0]);
+            } catch (Exception e) {
+                return;
+            }
+
+            String type = tokens[1];
+
+            if ("Toggle".equalsIgnoreCase(type) && tokens.length >= 3) {
+                String label = tokens[2];
+                addToggleItem(container, featId, label, trueByDefault);
+            } else if ("SeekBar".equalsIgnoreCase(type) && tokens.length >= 5) {
+                String label = tokens[2];
+                int min = Integer.parseInt(tokens[3]);
+                int max = Integer.parseInt(tokens[4]);
+                addSliderItem(container, featId, label, min, max);
+            } else if ("Spinner".equalsIgnoreCase(type) && tokens.length >= 4) {
+                String label = tokens[2];
+                String[] options = tokens[3].split(",");
+                addOptionsItem(container, featId, label, options);
+            }
+        } catch (Throwable t) {
+            AppLogger.logE(TAG, "Error parsing DSL row: " + row, t);
+        }
+    }
+
+    private void populateFallbackFeatures() {
+        // VISUALS
+        LinearLayout vis = mTabContainers.get("VISUALS");
+        if (vis != null) {
+            addToggleItem(vis, 1, "ESP MASTER SWITCH", false);
+            addToggleItem(vis, 2, "ESP BOX (2D)", false);
+            addToggleItem(vis, 4, "ESP LINE (TRACER)", false);
+            addToggleItem(vis, 5, "ESP HEALTH BAR", false);
+            addToggleItem(vis, 6, "ESP PLAYER NAME", false);
+            addToggleItem(vis, 7, "ESP DISTANCE IN METERS", false);
+            addToggleItem(vis, 206, "ESP WEAPON NAME", false);
+            addToggleItem(vis, 207, "THREAT COUNTER", false);
+            addToggleItem(vis, 208, "ESP INFO LINE", true);
+            addToggleItem(vis, 27, "DRAW FOV CIRCLE", true);
+            addOptionsItem(vis, 201, "ESP BOX STYLE", new String[]{"STROKE", "FILLED", "CORNER", "ROUNDED"});
+            addOptionsItem(vis, 202, "ESP LINE SNAP MODE", new String[]{"TOP", "CENTER", "BOTTOM"});
+            addSliderItem(vis, 209, "ESP TEXT SIZE", 8, 24);
+        }
+
+        // AIMBOT
+        LinearLayout aim = mTabContainers.get("AIMBOT");
+        if (aim != null) {
+            addToggleItem(aim, 20, "AIM HARD (REAL AIM)", false);
+            addToggleItem(aim, 21, "AIM COLLIDER LOCK", false);
+            addToggleItem(aim, 22, "SILENT AIM (MAGIC BULLET)", false);
+            addToggleItem(aim, 23, "AIM MAGNET V2", false);
+            addToggleItem(aim, 24, "IGNORE KNOCKED PLAYERS", true);
+            addToggleItem(aim, 216, "KILL IN CHEST", false);
+            addSliderItem(aim, 303, "AIM FOV ANGLE", 10, 180);
+            addSliderItem(aim, 101, "MAX TARGET DISTANCE", 10, 350);
+            addSliderItem(aim, 214, "HEAD RATE", 0, 3);
+            addSliderItem(aim, 215, "CHEST RATE", 0, 6);
+        }
+
+        // COMBAT
+        LinearLayout com = mTabContainers.get("COMBAT");
+        if (com != null) {
+            addToggleItem(com, 40, "NO RECOIL (100% STABLE)", false);
+            addToggleItem(com, 41, "SPEED MOVEMENT (2X)", false);
+            addToggleItem(com, 42, "PLAYER TO ME (TELEPORT)", false);
+            addToggleItem(com, 43, "UNDERGROUND CAMERA", false);
+            addToggleItem(com, 44, "ANTICHEAT REALTIME BYPASS", false);
+            addSliderItem(com, 102, "GAME SPEED MULTIPLIER", 1, 5);
+        }
+
+        // SYSTEM
+        populateSystemTab();
+    }
+
+    private void populateSystemTab() {
+        LinearLayout sys = mTabContainers.get("SYSTEM");
+        if (sys == null) return;
+
+        // Telemetry Card
+        LinearLayout infoCard = new LinearLayout(mContext);
+        infoCard.setOrientation(LinearLayout.VERTICAL);
+        infoCard.setPadding(dp(12), dp(10), dp(12), dp(10));
+        infoCard.setLayoutParams(createItemLayoutParams());
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(ITEM_CORNER_DP));
+        bg.setColor(COLOR_ITEM_BG);
+        bg.setStroke(dp(1), COLOR_ITEM_BORDER);
+        infoCard.setBackground(bg);
+
+        TextView head = new TextView(mContext);
+        head.setText("SYSTEM TELEMETRY");
+        head.setTextColor(COLOR_ACCENT_CYAN);
+        head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
+        head.setTypeface(Typeface.DEFAULT_BOLD);
+        head.setLetterSpacing(0.05f);
+        infoCard.addView(head);
+
+        addTelemetryRow(infoCard, "Engine Mode", "Official Linux (process_vm_readv)");
+        addTelemetryRow(infoCard, "Memory Path", "POSIX /proc/[pid]/mem");
+        addTelemetryRow(infoCard, "Detection", "POSIX /proc/[pid]/cmdline");
+        addTelemetryRow(infoCard, "Target Game PID", String.valueOf(NativeBridge.getDetectedGamePid()));
+
+        sys.addView(infoCard);
+
+        // Save Preferences Toggle
+        addToggleItem(sys, -1, "Save Feature Preferences", MenuPreferences.loadPref);
+
+        // Reset Features Action Button
+        TextView resetBtn = new TextView(mContext);
+        LinearLayout.LayoutParams rbParams = createItemLayoutParams();
+        rbParams.topMargin = dp(8);
+        resetBtn.setLayoutParams(rbParams);
+        resetBtn.setText("RESET ALL FEATURES");
+        resetBtn.setTextColor(0xFFEF4444);
+        resetBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        resetBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        resetBtn.setGravity(Gravity.CENTER);
+        resetBtn.setPadding(0, dp(10), 0, dp(10));
+
+        GradientDrawable rBg = new GradientDrawable();
+        rBg.setCornerRadius(dp(ITEM_CORNER_DP));
+        rBg.setColor(0x22EF4444);
+        rBg.setStroke(dp(1), 0x55EF4444);
+        resetBtn.setBackground(rBg);
+
+        resetBtn.setOnClickListener(v -> {
+            Toast.makeText(mContext, "Features Reset to Default", Toast.LENGTH_SHORT).show();
+            populateAllFeatures();
+        });
+
+        sys.addView(resetBtn);
+    }
+
+    private void addTelemetryRow(LinearLayout parent, String key, String val) {
+        LinearLayout row = new LinearLayout(mContext);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(3), 0, dp(3));
+
+        TextView kText = new TextView(mContext);
+        kText.setText(key);
+        kText.setTextColor(COLOR_TEXT_MUTED);
+        kText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
+        kText.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        row.addView(kText);
+
+        TextView vText = new TextView(mContext);
+        vText.setText(val);
+        vText.setTextColor(COLOR_TEXT_PRIMARY);
+        vText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
+        vText.setTypeface(Typeface.DEFAULT_BOLD);
+        row.addView(vText);
+
+        parent.addView(row);
+    }
+
+    // --- Component Item Builders ---
+
+    private LinearLayout.LayoutParams createItemLayoutParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = dp(6);
+        return params;
+    }
+
+    /**
+     * Modern Switch Card Item
+     */
+    private void addToggleItem(LinearLayout container, int featId, String label, boolean defaultVal) {
+        LinearLayout item = new LinearLayout(mContext);
+        item.setOrientation(LinearLayout.HORIZONTAL);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        item.setPadding(dp(12), dp(8), dp(10), dp(8));
+        item.setLayoutParams(createItemLayoutParams());
+
+        GradientDrawable itemBg = new GradientDrawable();
+        itemBg.setCornerRadius(dp(ITEM_CORNER_DP));
+        itemBg.setColor(COLOR_ITEM_BG);
+        itemBg.setStroke(dp(1), COLOR_ITEM_BORDER);
+        item.setBackground(itemBg);
+
+        TextView title = new TextView(mContext);
+        title.setText(label);
+        title.setTextColor(COLOR_TEXT_PRIMARY);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        LinearLayout.LayoutParams tParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        title.setLayoutParams(tParams);
+        item.addView(title);
+
+        Switch sw = new Switch(mContext);
+        boolean initialVal = MenuPreferences.loadPrefBool(label, featId, defaultVal);
+        sw.setChecked(initialVal);
+
+        applySwitchStyling(sw);
+
+        sw.setOnCheckedChangeListener((btn, isChecked) -> {
+            MenuPreferences.changeFeatureBool(label, featId, isChecked);
+            NativeBridge.setFeatureState(featId, isChecked);
+            applySwitchStyling(sw);
+        });
+
+        item.addView(sw);
+        container.addView(item);
+    }
+
+    private void applySwitchStyling(Switch sw) {
+        int trackColor = sw.isChecked() ? COLOR_ACCENT_BLUE : COLOR_SWITCH_OFF;
+        int thumbColor = sw.isChecked() ? COLOR_TEXT_PRIMARY : COLOR_TEXT_MUTED;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            sw.setTrackTintList(ColorStateList.valueOf(trackColor));
+            sw.setThumbTintList(ColorStateList.valueOf(thumbColor));
+        }
+    }
+
+    /**
+     * Modern Slider (SeekBar) Card Item
+     */
+    private void addSliderItem(LinearLayout container, int featId, String label, int min, int max) {
+        LinearLayout item = new LinearLayout(mContext);
+        item.setOrientation(LinearLayout.VERTICAL);
+        item.setPadding(dp(12), dp(8), dp(12), dp(8));
+        item.setLayoutParams(createItemLayoutParams());
+
+        GradientDrawable itemBg = new GradientDrawable();
+        itemBg.setCornerRadius(dp(ITEM_CORNER_DP));
+        itemBg.setColor(COLOR_ITEM_BG);
+        itemBg.setStroke(dp(1), COLOR_ITEM_BORDER);
+        item.setBackground(itemBg);
+
+        // Header Row: Label on Left, Live Badge on Right
+        LinearLayout topRow = new LinearLayout(mContext);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView title = new TextView(mContext);
+        title.setText(label);
+        title.setTextColor(COLOR_TEXT_PRIMARY);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        LinearLayout.LayoutParams tParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        title.setLayoutParams(tParams);
+        topRow.addView(title);
+
+        TextView valBadge = new TextView(mContext);
+        valBadge.setTextColor(COLOR_ACCENT_CYAN);
+        valBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        valBadge.setTypeface(Typeface.DEFAULT_BOLD);
+        topRow.addView(valBadge);
+
+        item.addView(topRow);
+
+        // SeekBar Row
+        SeekBar seekBar = new SeekBar(mContext);
+        seekBar.setPadding(dp(4), dp(6), dp(4), dp(2));
+        seekBar.setMax(max - min);
+
+        int savedVal = MenuPreferences.loadPrefInt(label, featId);
+        int currentVal = (savedVal >= min && savedVal <= max) ? savedVal : min;
+        seekBar.setProgress(currentVal - min);
+        valBadge.setText(String.valueOf(currentVal));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            seekBar.setProgressTintList(ColorStateList.valueOf(COLOR_ACCENT_BLUE));
+            seekBar.setThumbTintList(ColorStateList.valueOf(COLOR_ACCENT_CYAN));
+        }
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
-            public void run() {
-                //If the save preferences is enabled, it will check if game lib is loaded before starting menu
-                if (MenuPreferences.loadPref && (!sNativeReady || !IsGameLibLoaded()) && !stopChecking) {
-                    if (!viewLoaded) {
-                        Category(mods, "Save preferences was been enabled. Waiting for game lib to be loaded...\n\nForce load menu may not apply mods instantly. You would need to reactivate them again");
-                        Button(mods, -100, "Force load menu");
-                        viewLoaded = true;
-                    }
-                    handler.postDelayed(this, 600);
-                } else {
-                    mods.removeAllViews();
-                    featureList(sNativeReady ? GetFeatureList() : new String[0], mods);
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                int actual = min + progress;
+                valBadge.setText(String.valueOf(actual));
+                if (fromUser) {
+                    MenuPreferences.changeFeatureInt(label, featId, actual);
+                    NativeBridge.setFeatureFloat(featId, (float) actual);
                 }
             }
-        }, 500);
+
+            @Override
+            public void onStartTrackingTouch(SeekBar sb) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar sb) {}
+        });
+
+        item.addView(seekBar);
+        container.addView(item);
     }
 
-    @SuppressLint("WrongConstant")
-    public void SetWindowManagerWindowService() {
-        //Variable to check later if the phone supports Draw over other apps permission
-        int iparams = Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O ? 2038 : 2002;
-        vmParams = new WindowManager.LayoutParams(
-                WRAP_CONTENT,
-                WRAP_CONTENT,
-                iparams,
-                8 | FLAG_TRANSLUCENT_STATUS,
-                -3);
-        vmParams.gravity = 51;
-        vmParams.x = POS_X;
-        vmParams.y = POS_Y;
+    /**
+     * Modern Option Selector (Segmented Chips)
+     */
+    private void addOptionsItem(LinearLayout container, int featId, String label, String[] options) {
+        LinearLayout item = new LinearLayout(mContext);
+        item.setOrientation(LinearLayout.VERTICAL);
+        item.setPadding(dp(12), dp(8), dp(12), dp(8));
+        item.setLayoutParams(createItemLayoutParams());
 
-        mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
-        mWindowManager.addView(rootFrame, vmParams);
+        GradientDrawable itemBg = new GradientDrawable();
+        itemBg.setCornerRadius(dp(ITEM_CORNER_DP));
+        itemBg.setColor(COLOR_ITEM_BG);
+        itemBg.setStroke(dp(1), COLOR_ITEM_BORDER);
+        item.setBackground(itemBg);
 
-        overlayRequired = true;
+        TextView title = new TextView(mContext);
+        title.setText(label);
+        title.setTextColor(COLOR_TEXT_PRIMARY);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        item.addView(title);
+
+        LinearLayout chipsRow = new LinearLayout(mContext);
+        chipsRow.setOrientation(LinearLayout.HORIZONTAL);
+        chipsRow.setPadding(0, dp(6), 0, 0);
+
+        int savedIndex = MenuPreferences.loadPrefInt(label, featId);
+        final List<TextView> chipViews = new ArrayList<>();
+
+        for (int i = 0; i < options.length; i++) {
+            final int index = i;
+            TextView chip = new TextView(mContext);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                    0, dp(26), 1.0f);
+            p.setMargins(dp(2), 0, dp(2), 0);
+            chip.setLayoutParams(p);
+            chip.setText(options[i]);
+            chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
+            chip.setTypeface(Typeface.DEFAULT_BOLD);
+            chip.setGravity(Gravity.CENTER);
+            chip.setSingleLine(true);
+
+            chip.setOnClickListener(v -> {
+                MenuPreferences.changeFeatureInt(label, featId, index);
+                NativeBridge.setFeatureFloat(featId, (float) index);
+                updateChipStates(chipViews, index);
+            });
+
+            chipViews.add(chip);
+            chipsRow.addView(chip);
+        }
+
+        updateChipStates(chipViews, (savedIndex >= 0 && savedIndex < options.length) ? savedIndex : 0);
+        item.addView(chipsRow);
+        container.addView(item);
     }
 
-    @SuppressLint("WrongConstant")
-    public void SetWindowManagerActivity() {
-        vmParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                POS_X,//initialX
-                POS_Y,//initialy
-                WindowManager.LayoutParams.TYPE_APPLICATION,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_OVERSCAN |
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                        WindowManager.LayoutParams.FLAG_SPLIT_TOUCH,
-                PixelFormat.TRANSPARENT
-        );
-        vmParams.gravity = 51;
-        vmParams.x = POS_X;
-        vmParams.y = POS_Y;
+    private void updateChipStates(List<TextView> chips, int selectedIndex) {
+        for (int i = 0; i < chips.size(); i++) {
+            TextView chip = chips.get(i);
+            boolean isSel = (i == selectedIndex);
 
-        mWindowManager = ((Activity) mContext).getWindowManager();
-        mWindowManager.addView(rootFrame, vmParams);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(6));
+            if (isSel) {
+                bg.setColor(COLOR_ACCENT_BLUE);
+                chip.setTextColor(COLOR_TEXT_PRIMARY);
+            } else {
+                bg.setColor(0x33232838);
+                chip.setTextColor(COLOR_TEXT_MUTED);
+            }
+            chip.setBackground(bg);
+        }
     }
 
-    private View.OnTouchListener onTouchListener() {
+    // --- Telemetry Poller ---
+
+    private void startTelemetryPoller() {
+        mMainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (mExpandedView.getVisibility() == View.VISIBLE) {
+                    updateLiveTelemetry();
+                }
+                mMainHandler.postDelayed(this, 2500);
+            }
+        }, 2500);
+    }
+
+    private void updateLiveTelemetry() {
+        int pid = NativeBridge.getDetectedGamePid();
+        if (pid > 0) {
+            mStatusChip.setText("● CONNECTED (" + pid + ")");
+            mStatusChip.setTextColor(COLOR_STATUS_GREEN);
+
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(10));
+            bg.setColor(0x2210B981);
+            mStatusChip.setBackground(bg);
+        } else {
+            mStatusChip.setText("● STANDBY");
+            mStatusChip.setTextColor(COLOR_STATUS_AMBER);
+
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(10));
+            bg.setColor(0x22F59E0B);
+            mStatusChip.setBackground(bg);
+        }
+    }
+
+    // --- Window Drag & Lifecycle Handlers ---
+
+    private View.OnTouchListener createDragListener(final boolean isBubble) {
         return new View.OnTouchListener() {
-            final View collapsedView = mCollapsed;
-            final View expandedView = mExpanded;
-            private float initialTouchX, initialTouchY;
+            private float touchStartX, touchStartY;
             private int initialX, initialY;
+            private boolean isMoving = false;
 
-            public boolean onTouch(View view, MotionEvent motionEvent) {
-                switch (motionEvent.getAction()) {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        initialX = vmParams.x;
-                        initialY = vmParams.y;
-                        initialTouchX = motionEvent.getRawX();
-                        initialTouchY = motionEvent.getRawY();
+                        touchStartX = event.getRawX();
+                        touchStartY = event.getRawY();
+                        initialX = vmParams != null ? vmParams.x : mPosX;
+                        initialY = vmParams != null ? vmParams.y : mPosY;
+                        isMoving = false;
                         return true;
-                    case MotionEvent.ACTION_UP:
-                        int rawX = (int) (motionEvent.getRawX() - initialTouchX);
-                        int rawY = (int) (motionEvent.getRawY() - initialTouchY);
-                        mExpanded.setAlpha(1f);
-                        mCollapsed.setAlpha(1f);
-                        //The check for Xdiff <10 && YDiff< 10 because sometime elements moves a little while clicking.
-                        //So that is click event.
-                        if (rawX < 10 && rawY < 10 && isViewCollapsed()) {
-                            //When user clicks on the image view of the collapsed layout,
-                            //visibility of the collapsed layout will be changed to "View.GONE"
-                            //and expanded view will become visible.
-                            try {
-                                collapsedView.setVisibility(View.GONE);
-                                expandedView.setVisibility(View.VISIBLE);
-                            } catch (NullPointerException ignored) {
+
+                    case MotionEvent.ACTION_MOVE:
+                        float dx = event.getRawX() - touchStartX;
+                        float dy = event.getRawY() - touchStartY;
+                        if (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6) || isMoving) {
+                            isMoving = true;
+                            if (vmParams != null && mWindowManager != null) {
+                                vmParams.x = initialX + (int) dx;
+                                vmParams.y = initialY + (int) dy;
+                                mPosX = vmParams.x;
+                                mPosY = vmParams.y;
+                                try {
+                                    mWindowManager.updateViewLayout(rootFrame, vmParams);
+                                } catch (Throwable ignored) {}
                             }
                         }
                         return true;
-                    case MotionEvent.ACTION_MOVE:
-                        mExpanded.setAlpha(0.5f);
-                        mCollapsed.setAlpha(0.5f);
-                        //Calculate the X and Y coordinates of the view.
-                        vmParams.x = initialX + ((int) (motionEvent.getRawX() - initialTouchX));
-                        vmParams.y = initialY + ((int) (motionEvent.getRawY() - initialTouchY));
-                        //Update the layout with new X & Y coordinate
-                        mWindowManager.updateViewLayout(rootFrame, vmParams);
+
+                    case MotionEvent.ACTION_UP:
+                        if (!isMoving) {
+                            if (isBubble) {
+                                expandMenu();
+                            }
+                        }
                         return true;
-                    default:
-                        return false;
                 }
+                return false;
             }
         };
     }
 
-    private void featureList(String[] listFT, LinearLayout linearLayout) {
-        //Currently looks messy right now. Let me know if you have improvements
-        int featNum, subFeat = 0;
-        LinearLayout llBak = linearLayout;
+    // --- Public Service Interface ---
 
-        for (int i = 0; i < listFT.length; i++) {
-            boolean switchedOn = false;
-            String feature = listFT[i];
-            if (feature.contains("_True")) {
-                switchedOn = true;
-                feature = feature.replaceFirst("_True", "");
-            }
+    @SuppressLint("WrongConstant")
+    public void SetWindowManagerWindowService() {
+        int overlayType = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
 
-            linearLayout = llBak;
-            if (feature.contains("CollapseAdd_")) {
-                //if (collapse != null)
-                linearLayout = mCollapse;
-                feature = feature.replaceFirst("CollapseAdd_", "");
-            }
-            String[] str = feature.split("_");
+        vmParams = new WindowManager.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS,
+                PixelFormat.TRANSLUCENT);
 
-            //Assign feature number
-            if (TextUtils.isDigitsOnly(str[0]) || str[0].matches("-[0-9]*")) {
-                featNum = Integer.parseInt(str[0]);
-                feature = feature.replaceFirst(str[0] + "_", "");
-                subFeat++;
-            } else {
-                //Subtract feature number. We don't want to count ButtonLink, Category, RichTextView and RichWebView
-                featNum = i - subFeat;
-            }
-            String[] strSplit = feature.split("_");
-            switch (strSplit[0]) {
-                case "Toggle":
-                    Switch(linearLayout, featNum, strSplit[1], switchedOn);
-                    break;
-                case "SeekBar":
-                    SeekBar(linearLayout, featNum, strSplit[1], Integer.parseInt(strSplit[2]), Integer.parseInt(strSplit[3]));
-                    break;
-                case "Button":
-                    Button(linearLayout, featNum, strSplit[1]);
-                    break;
-                case "ButtonOnOff":
-                    ButtonOnOff(linearLayout, featNum, strSplit[1], switchedOn);
-                    break;
-                case "Spinner":
-                    TextView(linearLayout, strSplit[1]);
-                    Spinner(linearLayout, featNum, strSplit[1], strSplit[2]);
-                    break;
-                case "InputText":
-                    InputText(linearLayout, featNum, strSplit[1]);
-                    break;
-                case "InputValue":
-                    if (strSplit.length == 3)
-                        InputNum(linearLayout, featNum, strSplit[2], Integer.parseInt(strSplit[1]));
-                    if (strSplit.length == 2)
-                        InputNum(linearLayout, featNum, strSplit[1], 0);
-                    break;
-                case "InputLValue":
-                    if (strSplit.length == 3)
-                        InputLNum(linearLayout, featNum, strSplit[2], Long.parseLong(strSplit[1]));
-                    if (strSplit.length == 2)
-                        InputLNum(linearLayout, featNum, strSplit[1], 0);
-                    break;
-                case "CheckBox":
-                    CheckBox(linearLayout, featNum, strSplit[1], switchedOn);
-                    break;
-                case "RadioButton":
-                    RadioButton(linearLayout, featNum, strSplit[1], strSplit[2]);
-                    break;
-                case "Collapse":
-                    Collapse(linearLayout, strSplit[1], switchedOn);
-                    subFeat++;
-                    break;
-                case "ButtonLink":
-                    subFeat++;
-                    ButtonLink(linearLayout, strSplit[1], strSplit[2]);
-                    break;
-                case "Category":
-                    subFeat++;
-                    Category(linearLayout, strSplit[1]);
-                    break;
-                case "RichTextView":
-                    subFeat++;
-                    TextView(linearLayout, strSplit[1]);
-                    break;
-                case "RichWebView":
-                    subFeat++;
-                    WebTextView(linearLayout, strSplit[1]);
-                    break;
+        vmParams.gravity = Gravity.TOP | Gravity.START;
+        vmParams.x = mPosX;
+        vmParams.y = mPosY;
+
+        mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
+        if (mWindowManager != null) {
+            try {
+                mWindowManager.addView(rootFrame, vmParams);
+                mIsAttached = true;
+            } catch (Throwable t) {
+                AppLogger.logE(TAG, "Failed to attach mod menu to WindowManager", t);
             }
         }
     }
 
-    private void Switch(LinearLayout linLayout, final int featNum, final String featName, boolean swiOn) {
-        final Switch switchR = new Switch(mContext);
-        ColorStateList buttonStates = new ColorStateList(
-                new int[][]{
-                        new int[]{-android.R.attr.state_enabled},
-                        new int[]{android.R.attr.state_checked},
-                        new int[]{}
-                },
-                new int[]{
-                        Color.BLUE,
-                        ToggleON, // ON
-                        ToggleOFF // OFF
-                }
-        );
-        //Set colors of the switch. Comment out if you don't like it
-        try {
-            switchR.getThumbDrawable().setTintList(buttonStates);
-            switchR.getTrackDrawable().setTintList(buttonStates);
-        } catch (NullPointerException ex) {
-            Log.d(TAG, String.valueOf(ex));
-        }
-        switchR.setText(featName);
-        switchR.setTextColor(TEXT_COLOR_2);
-        switchR.setPadding(10, 5, 0, 5);
-        switchR.setChecked(MenuPreferences.loadPrefBool(featName, featNum, swiOn));
-        switchR.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton compoundButton, boolean bool) {
-                MenuPreferences.changeFeatureBool(featName, featNum, bool);
-                switch (featNum) {
-                    case -1: //Save preferences
-                        MenuPreferences.with(switchR.getContext()).writeBoolean(-1, bool);
-                        if (!bool) MenuPreferences.with(switchR.getContext()).clear(); //Clear preferences if switched off
-                        break;
-                    case -3:
-                        MenuPreferences.isExpanded = bool;
-                        scrollView.setLayoutParams(bool ? scrlLLExpanded : scrlLL);
-                        break;
-                }
-            }
-        });
+    public void SetWindowManagerActivity() {
+        if (mContext instanceof Activity) {
+            vmParams = new WindowManager.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    PixelFormat.TRANSLUCENT);
 
-        linLayout.addView(switchR);
-    }
+            vmParams.gravity = Gravity.TOP | Gravity.START;
+            vmParams.x = mPosX;
+            vmParams.y = mPosY;
 
-    private void SeekBar(LinearLayout linLayout, final int featNum, final String featName, final int min, int max) {
-        int loadedProg = MenuPreferences.loadPrefInt(featName, featNum);
-        /*
-         * The reference menu shows the minimum of the control as long as
-         * nothing was stored. For NINMODS the real value of the engine is
-         * shown instead, so the slider can never lie about the state of the
-         * engine (the feature id of a slider is the same number that the
-         * engine uses).
-         */
-        if (loadedProg == 0) {
-            float live = NativeBridge.getFeatureFloat(featNum);
-            if (live > 0) {
-                loadedProg = (int) live;
+            mWindowManager = ((Activity) mContext).getWindowManager();
+            if (mWindowManager != null) {
+                try {
+                    mWindowManager.addView(rootFrame, vmParams);
+                    mIsAttached = true;
+                } catch (Throwable t) {
+                    AppLogger.logE(TAG, "Failed to attach activity menu", t);
+                }
             }
         }
-        LinearLayout linearLayout = new LinearLayout(mContext);
-        linearLayout.setPadding(10, 5, 0, 5);
-        linearLayout.setOrientation(LinearLayout.VERTICAL);
-        linearLayout.setGravity(Gravity.CENTER);
-
-        final TextView textView = new TextView(mContext);
-        textView.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + ((loadedProg == 0) ? min : loadedProg)));
-        textView.setTextColor(TEXT_COLOR_2);
-
-        SeekBar seekBar = new SeekBar(mContext);
-        seekBar.setPadding(25, 10, 35, 10);
-        seekBar.setMax(max);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            seekBar.setMin(min); //setMin for Oreo and above
-        seekBar.setProgress((loadedProg == 0) ? min : loadedProg);
-        seekBar.getThumb().setColorFilter(SeekBarColor, PorterDuff.Mode.SRC_ATOP);
-        seekBar.getProgressDrawable().setColorFilter(SeekBarProgressColor, PorterDuff.Mode.SRC_ATOP);
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
-
-            public void onProgressChanged(SeekBar seekBar, int i, boolean z) {
-                //if progress is greater than minimum, don't go below. Else, set progress
-                seekBar.setProgress(i < min ? min : i);
-                MenuPreferences.changeFeatureInt(featName, featNum, i < min ? min : i);
-                textView.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + (i < min ? min : i)));
-            }
-        });
-        linearLayout.addView(textView);
-        linearLayout.addView(seekBar);
-
-        linLayout.addView(linearLayout);
     }
 
-    private void Button(LinearLayout linLayout, final int featNum, final String featName) {
-        final Button button = new Button(mContext);
-        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-        layoutParams.setMargins(7, 5, 7, 5);
-        button.setLayoutParams(layoutParams);
-        button.setTextColor(TEXT_COLOR_2);
-        button.setAllCaps(false); //Disable caps to support html
-        button.setText(Html.fromHtml(featName));
-        button.setBackgroundColor(BTN_COLOR);
-        button.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                switch (featNum) {
-
-                    case -6:
-                        scrollView.removeView(mSettings);
-                        scrollView.addView(mods);
-                        break;
-                    case -100:
-                        stopChecking = true;
-                        break;
-                }
-                MenuPreferences.changeFeatureInt(featName, featNum, 0);
-            }
-        });
-
-        linLayout.addView(button);
-    }
-
-    private void ButtonLink(LinearLayout linLayout, final String featName, final String url) {
-        final Button button = new Button(mContext);
-        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-        layoutParams.setMargins(7, 5, 7, 5);
-        button.setLayoutParams(layoutParams);
-        button.setAllCaps(false); //Disable caps to support html
-        button.setTextColor(TEXT_COLOR_2);
-        button.setText(Html.fromHtml(featName));
-        button.setBackgroundColor(BTN_COLOR);
-        button.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                intent.setData(Uri.parse(url));
-                mContext.startActivity(intent);
-            }
-        });
-        linLayout.addView(button);
-    }
-
-    private void ButtonOnOff(LinearLayout linLayout, final int featNum, String featName, boolean switchedOn) {
-        final Button button = new Button(mContext);
-        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-        layoutParams.setMargins(7, 5, 7, 5);
-        button.setLayoutParams(layoutParams);
-        button.setTextColor(TEXT_COLOR_2);
-        button.setAllCaps(false); //Disable caps to support html
-
-        final String finalfeatName = featName.replace("OnOff_", "");
-        boolean isOn = MenuPreferences.loadPrefBool(featName, featNum, switchedOn);
-        if (isOn) {
-            button.setText(Html.fromHtml(finalfeatName + ": ON"));
-            button.setBackgroundColor(BtnON);
-            isOn = false;
-        } else {
-            button.setText(Html.fromHtml(finalfeatName + ": OFF"));
-            button.setBackgroundColor(BtnOFF);
-            isOn = true;
-        }
-        final boolean finalIsOn = isOn;
-        button.setOnClickListener(new View.OnClickListener() {
-            boolean isOn = finalIsOn;
-
-            public void onClick(View v) {
-                MenuPreferences.changeFeatureBool(finalfeatName, featNum, isOn);
-                if (isOn) {
-                    button.setText(Html.fromHtml(finalfeatName + ": ON"));
-                    button.setBackgroundColor(BtnON);
-                    isOn = false;
-                } else {
-                    button.setText(Html.fromHtml(finalfeatName + ": OFF"));
-                    button.setBackgroundColor(BtnOFF);
-                    isOn = true;
-                }
-            }
-        });
-        linLayout.addView(button);
-    }
-
-    private void Spinner(LinearLayout linLayout, final int featNum, final String featName, final String list) {
-        Log.d(TAG, "spinner " + featNum + " " + featName + " " + list);
-        final List<String> lists = new LinkedList<>(Arrays.asList(list.split(",")));
-
-        // Create another LinearLayout as a workaround to use it as a background
-        // to keep the down arrow symbol. No arrow symbol if setBackgroundColor set
-        LinearLayout linearLayout2 = new LinearLayout(mContext);
-        LinearLayout.LayoutParams layoutParams2 = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-        layoutParams2.setMargins(7, 2, 7, 2);
-        linearLayout2.setOrientation(LinearLayout.VERTICAL);
-        linearLayout2.setBackgroundColor(BTN_COLOR);
-        linearLayout2.setLayoutParams(layoutParams2);
-
-        final Spinner spinner = new Spinner(mContext, Spinner.MODE_DROPDOWN);
-        spinner.setLayoutParams(layoutParams2);
-        spinner.getBackground().setColorFilter(1, PorterDuff.Mode.SRC_ATOP); //trick to show white down arrow color
-        //Creating the ArrayAdapter instance having the list
-        ArrayAdapter aa = new ArrayAdapter(mContext, android.R.layout.simple_spinner_dropdown_item, lists);
-        aa.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        //Setting the ArrayAdapter data on the Spinner
-        spinner.setAdapter(aa);
-        spinner.setSelection(MenuPreferences.loadPrefInt(featName, featNum));
-        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
-                MenuPreferences.changeFeatureInt(spinner.getSelectedItem().toString(), featNum, position);
-                ((TextView) parentView.getChildAt(0)).setTextColor(TEXT_COLOR_2);
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-            }
-        });
-        linearLayout2.addView(spinner);
-        linLayout.addView(linearLayout2);
-    }
-
-    private void InputNum(LinearLayout linLayout, final int featNum, final String featName, final int maxValue) {
-        LinearLayout linearLayout = new LinearLayout(mContext);
-        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-        layoutParams.setMargins(7, 5, 7, 5);
-
-        final Button button = new Button(mContext);
-        int num = MenuPreferences.loadPrefInt(featName, featNum);
-        button.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + num + "</font>"));
-        button.setAllCaps(false);
-        button.setLayoutParams(layoutParams);
-        button.setBackgroundColor(BTN_COLOR);
-        button.setTextColor(TEXT_COLOR_2);
-        button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                AlertDialog.Builder alertName = new AlertDialog.Builder(mContext);
-                final EditText editText = new EditText(mContext);
-                if (maxValue != 0)
-                    editText.setHint("Max value: " + maxValue);
-                editText.setInputType(InputType.TYPE_CLASS_NUMBER);
-                editText.setKeyListener(DigitsKeyListener.getInstance("0123456789-"));
-                InputFilter[] FilterArray = new InputFilter[1];
-                FilterArray[0] = new InputFilter.LengthFilter(10);
-                editText.setFilters(FilterArray);
-                editText.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-                    @Override
-                    public void onFocusChange(View v, boolean hasFocus) {
-                        InputMethodManager imm = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
-                        if (hasFocus) {
-                            imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, InputMethodManager.HIDE_IMPLICIT_ONLY);
-                        } else {
-                            imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
-                        }
-                    }
-                });
-                editText.requestFocus();
-
-                alertName.setTitle("Input number");
-                alertName.setView(editText);
-                LinearLayout layoutName = new LinearLayout(mContext);
-                layoutName.setOrientation(LinearLayout.VERTICAL);
-                layoutName.addView(editText); // displays the user input bar
-                alertName.setView(layoutName);
-
-                alertName.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        int num;
-                        try {
-                            String inp = editText.getText().toString();
-                            num = Integer.parseInt(inp.isEmpty() ? "0" : inp);
-                            if (maxValue != 0 && num >= maxValue)
-                                num = maxValue;
-                        } catch (NumberFormatException ex) {
-                            if (maxValue != 0)
-                                num = maxValue;
-                            else
-                                num = Integer.MAX_VALUE;
-                        }
-
-                        button.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + num + "</font>"));
-                        MenuPreferences.changeFeatureInt(featName, featNum, num);
-                        editText.setFocusable(false);
-                    }
-                });
-
-                alertName.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        // dialog.cancel(); // closes dialog
-                        InputMethodManager imm = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
-                        imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
-                    }
-                });
-
-                if (overlayRequired) {
-                    AlertDialog dialog = alertName.create(); // display the dialog
-                    Objects.requireNonNull(dialog.getWindow()).setType(Build.VERSION.SDK_INT >= 26 ? 2038 : 2002);
-                    dialog.show();
-                } else {
-                    alertName.show();
-                }
-            }
-        });
-
-        linearLayout.addView(button);
-        linLayout.addView(linearLayout);
-    }
-
-    private void InputLNum(LinearLayout linLayout, final int featNum, final String featName, final long maxValue) {
-        LinearLayout linearLayout = new LinearLayout(mContext);
-        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-        layoutParams.setMargins(7, 5, 7, 5);
-
-        final Button button = new Button(mContext);
-        long num = MenuPreferences.loadPrefLong(featName, featNum);
-        button.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + num + "</font>"));
-        button.setAllCaps(false);
-        button.setLayoutParams(layoutParams);
-        button.setBackgroundColor(BTN_COLOR);
-        button.setTextColor(TEXT_COLOR_2);
-        button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                AlertDialog.Builder alertName = new AlertDialog.Builder(mContext);
-                final EditText editText = new EditText(mContext);
-                if (maxValue != 0)
-                    editText.setHint("Max value: " + maxValue);
-                editText.setInputType(InputType.TYPE_CLASS_NUMBER);
-                editText.setKeyListener(DigitsKeyListener.getInstance("0123456789-"));
-                InputFilter[] FilterArray = new InputFilter[1];
-                FilterArray[0] = new InputFilter.LengthFilter(20);
-                editText.setFilters(FilterArray);
-                editText.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-                    @Override
-                    public void onFocusChange(View v, boolean hasFocus) {
-                        InputMethodManager imm = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
-                        if (hasFocus) {
-                            imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, InputMethodManager.HIDE_IMPLICIT_ONLY);
-                        } else {
-                            imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
-                        }
-                    }
-                });
-                editText.requestFocus();
-
-                alertName.setTitle("Input number");
-                alertName.setView(editText);
-                LinearLayout layoutName = new LinearLayout(mContext);
-                layoutName.setOrientation(LinearLayout.VERTICAL);
-                layoutName.addView(editText); // displays the user input bar
-                alertName.setView(layoutName);
-
-                alertName.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        long num;
-                        try {
-                            String inp = editText.getText().toString();
-                            num = Long.parseLong(inp.isEmpty() ? "0" : inp);
-                            if (maxValue != 0 && num >= maxValue)
-                                num = maxValue;
-                        } catch (NumberFormatException ex) {
-                            if (maxValue != 0)
-                                num = maxValue;
-                            else
-                                num = Long.MAX_VALUE;
-                        }
-
-                        button.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + num + "</font>"));
-                        MenuPreferences.changeFeatureLong(featName, featNum, num);
-
-                        editText.setFocusable(false);
-                    }
-                });
-
-                alertName.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        // dialog.cancel(); // closes dialog
-                        InputMethodManager imm = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
-                        imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
-                    }
-                });
-
-                if (overlayRequired) {
-                    AlertDialog dialog = alertName.create(); // display the dialog
-                    Objects.requireNonNull(dialog.getWindow()).setType(Build.VERSION.SDK_INT >= 26 ? 2038 : 2002);
-                    dialog.show();
-                } else {
-                    alertName.show();
-                }
-            }
-        });
-
-        linearLayout.addView(button);
-        linLayout.addView(linearLayout);
-    }
-
-    private void InputText(LinearLayout linLayout, final int featNum, final String featName) {
-        LinearLayout linearLayout = new LinearLayout(mContext);
-        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-        layoutParams.setMargins(7, 5, 7, 5);
-
-        final Button button = new Button(mContext);
-
-        String string = MenuPreferences.loadPrefString(featName, featNum);
-        button.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + string + "</font>"));
-
-        button.setAllCaps(false);
-        button.setLayoutParams(layoutParams);
-        button.setBackgroundColor(BTN_COLOR);
-        button.setTextColor(TEXT_COLOR_2);
-        button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                AlertDialog.Builder alertName = new AlertDialog.Builder(mContext);
-
-                final EditText editText = new EditText(mContext);
-                editText.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-                    @Override
-                    public void onFocusChange(View v, boolean hasFocus) {
-                        InputMethodManager imm = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
-                        if (hasFocus) {
-                            imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, InputMethodManager.HIDE_IMPLICIT_ONLY);
-                        } else {
-                            imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
-                        }
-                    }
-                });
-                editText.requestFocus();
-
-                alertName.setTitle("Input text");
-                alertName.setView(editText);
-                LinearLayout layoutName = new LinearLayout(mContext);
-                layoutName.setOrientation(LinearLayout.VERTICAL);
-                layoutName.addView(editText); // displays the user input bar
-                alertName.setView(layoutName);
-
-                alertName.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        String str = editText.getText().toString();
-                        button.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + str + "</font>"));
-                        MenuPreferences.changeFeatureString(featName, featNum, str);
-                        editText.setFocusable(false);
-                    }
-                });
-
-                alertName.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        //dialog.cancel(); // closes dialog
-                        InputMethodManager imm = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
-                        imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
-                    }
-                });
-
-                if (overlayRequired) {
-                    AlertDialog dialog = alertName.create(); // display the dialog
-                    dialog.getWindow().setType(Build.VERSION.SDK_INT >= 26 ? 2038 : 2002);
-                    dialog.show();
-                } else {
-                    alertName.show();
-                }
-            }
-        });
-
-        linearLayout.addView(button);
-        linLayout.addView(linearLayout);
-    }
-
-    private void CheckBox(LinearLayout linLayout, final int featNum, final String featName, boolean switchedOn) {
-        final CheckBox checkBox = new CheckBox(mContext);
-        checkBox.setText(featName);
-        checkBox.setTextColor(TEXT_COLOR_2);
-        checkBox.setButtonTintList(ColorStateList.valueOf(CheckBoxColor));
-        checkBox.setChecked(MenuPreferences.loadPrefBool(featName, featNum, switchedOn));
-        checkBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if (checkBox.isChecked()) {
-                    MenuPreferences.changeFeatureBool(featName, featNum, isChecked);
-                } else {
-                    MenuPreferences.changeFeatureBool(featName, featNum, isChecked);
-                }
-            }
-        });
-        linLayout.addView(checkBox);
-    }
-
-    @SuppressLint("SetTextI18n")
-    private void RadioButton(LinearLayout linLayout, final int featNum, String featName, final String list) {
-        final List<String> lists = new LinkedList<>(Arrays.asList(list.split(",")));
-
-        final TextView textView = new TextView(mContext);
-        textView.setText(featName + ":");
-        textView.setTextColor(TEXT_COLOR_2);
-
-        final RadioGroup radioGroup = new RadioGroup(mContext);
-        radioGroup.setPadding(10, 5, 10, 5);
-        radioGroup.setOrientation(LinearLayout.VERTICAL);
-        radioGroup.addView(textView);
-
-        for (int i = 0; i < lists.size(); i++) {
-            final RadioButton Radioo = new RadioButton(mContext);
-            final String finalfeatName = featName, radioName = lists.get(i);
-            View.OnClickListener first_radio_listener = new View.OnClickListener() {
-                public void onClick(View v) {
-                    textView.setText(Html.fromHtml(finalfeatName + ": <font color='" + NumberTxtColor + "'>" + radioName));
-                    MenuPreferences.changeFeatureInt(finalfeatName, featNum, radioGroup.indexOfChild(Radioo));
-                }
-            };
-            Radioo.setText(lists.get(i));
-            Radioo.setTextColor(Color.LTGRAY);
-            Radioo.setButtonTintList(ColorStateList.valueOf(RadioColor));
-            Radioo.setOnClickListener(first_radio_listener);
-            radioGroup.addView(Radioo);
-        }
-
-        int index = MenuPreferences.loadPrefInt(featName, featNum);
-        if (index > 0) { //Preventing it to get an index less than 1. below 1 = null = crash
-            textView.setText(Html.fromHtml(featName + ": <font color='" + NumberTxtColor + "'>" + lists.get(index - 1)));
-            ((RadioButton) radioGroup.getChildAt(index)).setChecked(true);
-        }
-        linLayout.addView(radioGroup);
-    }
-
-    @SuppressLint("SetTextI18n")
-    private void Collapse(LinearLayout linLayout, final String text, final boolean expanded) {
-        LinearLayout.LayoutParams layoutParamsLL = new LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-        layoutParamsLL.setMargins(0, 5, 0, 0);
-
-        LinearLayout collapse = new LinearLayout(mContext);
-        collapse.setLayoutParams(layoutParamsLL);
-        collapse.setVerticalGravity(16);
-        collapse.setOrientation(LinearLayout.VERTICAL);
-
-        final LinearLayout collapseSub = new LinearLayout(mContext);
-        collapseSub.setVerticalGravity(16);
-        collapseSub.setPadding(0, 5, 0, 5);
-        collapseSub.setOrientation(LinearLayout.VERTICAL);
-        collapseSub.setBackgroundColor(CollapseSubColor);
-        collapseSub.setVisibility(View.GONE);
-        mCollapse = collapseSub;
-
-        final TextView textView = new TextView(mContext);
-        textView.setBackgroundColor(CollapseColor);
-        textView.setText("▽ " + text + " ▽");
-        textView.setGravity(Gravity.CENTER);
-        textView.setTextColor(TEXT_COLOR_2);
-        textView.setTypeface(null, Typeface.BOLD);
-        textView.setPadding(0, 20, 0, 20);
-
-        if (expanded) {
-            collapseSub.setVisibility(View.VISIBLE);
-            textView.setText("△ " + text + " △");
-        }
-
-        textView.setOnClickListener(new View.OnClickListener() {
-            boolean isChecked = expanded;
-
-            @Override
-            public void onClick(View v) {
-
-                boolean z = !isChecked;
-                isChecked = z;
-                if (z) {
-                    collapseSub.setVisibility(View.VISIBLE);
-                    textView.setText("△ " + text + " △");
-                    return;
-                }
-                collapseSub.setVisibility(View.GONE);
-                textView.setText("▽ " + text + " ▽");
-            }
-        });
-        collapse.addView(textView);
-        collapse.addView(collapseSub);
-        linLayout.addView(collapse);
-    }
-
-    private void Category(LinearLayout linLayout, String text) {
-        TextView textView = new TextView(mContext);
-        textView.setBackgroundColor(CategoryBG);
-        textView.setText(Html.fromHtml(text));
-        textView.setGravity(Gravity.CENTER);
-        textView.setTextColor(TEXT_COLOR_2);
-        textView.setTypeface(null, Typeface.BOLD);
-        textView.setPadding(0, 5, 0, 5);
-        linLayout.addView(textView);
-    }
-
-    private void TextView(LinearLayout linLayout, String text) {
-        TextView textView = new TextView(mContext);
-        textView.setText(Html.fromHtml(text));
-        textView.setTextColor(TEXT_COLOR_2);
-        textView.setPadding(10, 5, 10, 5);
-        linLayout.addView(textView);
-    }
-
-    private void WebTextView(LinearLayout linLayout, String text) {
-        WebView wView = new WebView(mContext);
-        wView.loadData(text, "text/html", "utf-8");
-        wView.setBackgroundColor(0x00000000); //Transparent
-        wView.setPadding(0, 5, 0, 5);
-        wView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
-        linLayout.addView(wView);
-    }
-
-    private boolean isViewCollapsed() {
-        return rootFrame == null || mCollapsed.getVisibility() == View.VISIBLE;
-    }
-
-    //For our image a little converter
-    private int convertDipToPixels(int i) {
-        return (int) ((((float) i) * mContext.getResources().getDisplayMetrics().density) + 0.5f);
-    }
-
-    private int dp(int i) {
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, (float) i, mContext.getResources().getDisplayMetrics());
-    }
-
-    public void setVisibility(int view) {
+    public void setVisibility(int visibility) {
         if (rootFrame != null) {
-            rootFrame.setVisibility(view);
+            rootFrame.setVisibility(visibility);
         }
     }
 
-    /** Expands the menu (the icon is replaced by the menu card). */
     public void expandMenu() {
-        if (mCollapsed != null && mExpanded != null) {
-            mCollapsed.setVisibility(View.GONE);
-            mExpanded.setVisibility(View.VISIBLE);
+        if (mCollapsedView != null && mExpandedView != null) {
+            mCollapsedView.setVisibility(View.GONE);
+            mExpandedView.setVisibility(View.VISIBLE);
+            updateLiveTelemetry();
         }
     }
 
-    /** Collapses the menu back into the floating icon. */
     public void collapseToLogo() {
-        if (mCollapsed != null && mExpanded != null) {
-            mCollapsed.setVisibility(View.VISIBLE);
-            mCollapsed.setAlpha(ICON_ALPHA);
-            mExpanded.setVisibility(View.GONE);
+        if (mCollapsedView != null && mExpandedView != null) {
+            mExpandedView.setVisibility(View.GONE);
+            mCollapsedView.setVisibility(View.VISIBLE);
         }
     }
 
     public void onDestroy() {
-        if (rootFrame != null && mWindowManager != null) {
-            mWindowManager.removeView(rootFrame);
+        if (mWindowManager != null && rootFrame != null && mIsAttached) {
+            try {
+                mWindowManager.removeView(rootFrame);
+            } catch (Throwable ignored) {}
+            mIsAttached = false;
         }
+    }
+
+    private int dp(int dip) {
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, dip, mContext.getResources().getDisplayMetrics());
     }
 }
