@@ -4,13 +4,13 @@ import android.content.Context;
 
 /**
  * Universal contract for modular tactical menu projects.
- * Enforces strict isolation: each brand or menu implementation resides
+ * Enforces strict isolation: each brand menu implementation resides
  * in its own dedicated package folder with its own distinct floating UI.
  */
 public interface IMenuProject {
 
     /**
-     * Unique alphanumeric identifier for this menu project (e.g., "nin", "bull", "cross", "delta").
+     * Unique alphanumeric identifier for this menu project ("nin" or "ninlite").
      */
     String getId();
 
@@ -45,7 +45,7 @@ public interface IMenuProject {
     void stop(Context context);
 
     /**
-     * Check if this menu overlay is currently active and attached.
+     * Whether this menu overlay is actively running on screen.
      */
     boolean isRunning();
 }
