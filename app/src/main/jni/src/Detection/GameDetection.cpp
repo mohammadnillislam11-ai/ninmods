@@ -93,7 +93,9 @@ static bool CheckProcCmdline(pid_t pid, const char *pkgName) {
 } // namespace
 
 bool IsProcessAlive(pid_t pid) {
-    return (pid > 0 && kill(pid, 0) == 0);
+    if (pid <= 0) return false;
+    if (kill(pid, 0) == 0) return true;
+    return (errno == EPERM);
 }
 
 pid_t FindPidByProcFs(const char *packageName) {
@@ -137,8 +139,9 @@ static GameProcess ScanProcessInternal() {
     if (NinChannel::IsQxActive()) {
         pid_t daemonPid = 0;
         bool daemonIsMax = false;
+        NinEngine::DaemonLink::Instance().RequestDetect();
         if (NinEngine::DaemonLink::Instance().GetDetect(daemonPid, daemonIsMax)) {
-            if (IsProcessAlive(daemonPid)) {
+            if (daemonPid > 0 && IsProcessAlive(daemonPid)) {
                 result.pid = daemonPid;
                 result.isMax = daemonIsMax;
                 result.packageName = daemonIsMax ? kPkgMax : kPkgNormal;
