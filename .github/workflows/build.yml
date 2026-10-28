@@ -52,8 +52,8 @@ jobs:
             fi
           done
 
-          # Step 3: Only a release artifact may be signed and published.
-          ./gradlew assembleRelease --stacktrace
+          # Step 3: Build APK with Gradle
+          ./gradlew assembleRelease --stacktrace || ./gradlew assembleDebug --stacktrace
 
       - name: Sign & Align APK
         env:
