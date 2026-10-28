@@ -171,6 +171,25 @@ public final class FeatureSettings {
     // =====================================================================
 
     /**
+     * Resets every persisted feature and pushes the real default to the C++ engine.
+     */
+    public static void resetAllToDefaults() {
+        ensureInitialised();
+        if (sPrefs == null) return;
+        for (FeatureCatalog feature : FeatureCatalog.values()) {
+            if (feature.isSlider()) {
+                writeStoredSlider(feature, feature.defaultValue());
+                pushSliderToEngine(feature, feature.defaultValue());
+                notifyChanged(feature, false, feature.defaultValue());
+            } else {
+                writeStoredSwitch(feature, feature.defaultSwitch());
+                pushSwitchToEngine(feature, feature.defaultSwitch());
+                notifyChanged(feature, feature.defaultSwitch(), 0);
+            }
+        }
+    }
+
+    /**
      * Restores the persisted configuration into the C++ engine.
      *
      * This has to run AFTER the native overlay was launched, because the engine

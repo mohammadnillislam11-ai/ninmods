@@ -429,7 +429,17 @@ public class ModMenu {
         List<MenuController.MenuFeatureItem> items = MenuController.parseDsl(rawDsl);
 
         if (items.isEmpty()) {
-            items = MenuController.getFeaturesFromCatalog();
+            /* The native DSL is the single source of truth. Falling back to a
+             * second Java catalog silently desynchronised labels, ids and
+             * defaults from the C++ engine. Show an explicit unavailable state
+             * instead of rendering controls that do not belong to the engine. */
+            AppLogger.logE(TAG, "Native feature catalog is empty; no feature controls rendered", null);
+            TextView unavailable = new TextView(mContext);
+            unavailable.setText("Native feature catalog unavailable");
+            unavailable.setTextColor(0xFFFF5252);
+            unavailable.setPadding(dp(12), dp(12), dp(12), dp(12));
+            LinearLayout visuals = mTabContainers.get("VISUALS");
+            if (visuals != null) visuals.addView(unavailable);
         }
 
         for (MenuController.MenuFeatureItem item : items) {
@@ -502,6 +512,7 @@ public class ModMenu {
         resetBtn.setBackground(rBg);
 
         resetBtn.setOnClickListener(v -> {
+            FeatureSettings.resetAllToDefaults();
             Toast.makeText(mContext, "Features Reset to Default", Toast.LENGTH_SHORT).show();
             populateAllFeatures();
         });

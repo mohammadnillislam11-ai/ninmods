@@ -143,8 +143,14 @@ public final class SecurityVault {
         try {
             return nativeSignRequest(payload, timestamp, nonce, hwid);
         } catch (UnsatisfiedLinkError ule) {
-            // Java fallback hash with internal salt
-            return fallbackHmacSha256(payload + "|" + timestamp + "|" + nonce + "|" + hwid);
+            /* A locally re-created signature cannot be trusted: the signing
+             * secret must never have a Java fallback copy. Returning an empty
+             * signature makes the server reject the request and keeps the
+             * native security boundary explicit. */
+            sNativeUnavailable = true;
+            sIsTampered = true;
+            sTamperReason = "Native signing library unavailable";
+            return "";
         }
     }
 

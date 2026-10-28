@@ -238,6 +238,7 @@ public class NativeOverlayManager {
                 // initialize the C++ native bridge.
                 NativeBridge.setActiveChannel(NativeBridge.CHANNEL_RT);
                 NativeBridge.launchBrandOverlay(mActiveBrandId, hwid, hasActiveLicense, mDensity, activeKey, serverUrl);
+                FeatureSettings.applyAllToEngine();
 
                 /*
                  * The floating menu owns the feature state from now on. It is
