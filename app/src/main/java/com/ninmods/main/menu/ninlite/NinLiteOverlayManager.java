@@ -96,7 +96,6 @@ public class NinLiteOverlayManager {
                 // native bridge.
                 NativeBridge.setActiveChannel(NativeBridge.CHANNEL_QX);
                 NativeBridge.launchBrandOverlay("ninlite", hwid, hasActiveLicense, density, activeKey, serverUrl);
-                FeatureSettings.applyAllToEngine();
 
                 /* The persistent feature store has to exist before the menu
                  * reads a single value. */

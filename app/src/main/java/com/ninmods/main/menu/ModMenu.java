@@ -407,6 +407,7 @@ public class ModMenu {
 
         mMainHandler.postDelayed(() -> {
             populateAllFeatures();
+            FeatureSettings.applyAllToEngine();
             startTelemetryPoller();
         }, 200);
     }

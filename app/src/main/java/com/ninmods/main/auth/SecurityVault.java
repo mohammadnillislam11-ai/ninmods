@@ -261,22 +261,6 @@ public final class SecurityVault {
         return null;
     }
 
-    private static String fallbackHmacSha256(String data) {
-        try {
-            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
-            mac.init(new javax.crypto.spec.SecretKeySpec(
-                    "N1N_B4NK1NG_S3CUR1TY_V90_K3RN3L".getBytes("UTF-8"), "HmacSHA256"));
-            byte[] hash = mac.doFinal(data.getBytes("UTF-8"));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
     // =========================================================================
     // NATIVE C++ BINDINGS (libninmods.so)
     // =========================================================================

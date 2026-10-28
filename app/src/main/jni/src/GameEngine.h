@@ -1791,5 +1791,4 @@ inline void StopMemoryWorkersForChannelSwitch() {
     pPlayer.silen4a.store(false, std::memory_order_relaxed);
     pPlayer.aimMagnet.store(false, std::memory_order_relaxed);
     Actived.activar = false;
-    SyncWithNinLiteDaemon(Ninlite::MODE_MASTER, false, 0);
 }
