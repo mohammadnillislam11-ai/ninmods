@@ -29,6 +29,7 @@ import android.widget.Toast;
 
 import com.ninmods.main.R;
 import com.ninmods.main.core.AppLogger;
+import com.ninmods.main.core.FeatureSettings;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
