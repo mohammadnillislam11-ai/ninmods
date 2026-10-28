@@ -123,18 +123,27 @@ public final class MenuController {
                 TypedValue.COMPLEX_UNIT_DIP, dip, mContext.getResources().getDisplayMetrics());
     }
 
-    // =========================================================================
-    // Official WindowManager & Draggable Overlay Management
-    // =========================================================================
-
     /**
-     * Creates standard official WindowManager parameters (zero magic numbers, official flags).
+     * Official WindowManager and Draggable Overlay Management.
+     * Provides standard layout parameters and screen-boundary clamped drag handling.
+     *
+     * @param posX Initial X position on screen.
+     * @param posY Initial Y position on screen.
+     * @return Initialized WindowManager.LayoutParams configured for application overlay.
      */
     public WindowManager.LayoutParams createWindowLayoutParams(int posX, int posY) {
         return createWindowLayoutParams(posX, posY, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
-    public WindowManager.LayoutParams createWindowLayoutParams(int posX, int posY, int width, int height) {
+    /**
+     * Creates standard official WindowManager parameters with custom dimensions.
+     *
+     * @param posX Initial X position on screen.
+     * @param posY Initial Y position on screen.
+     * @param width Width of the window.
+     * @param height Height of the window.
+     * @return Initialized WindowManager.LayoutParams configured for application overlay.
+     */
         int overlayType = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
@@ -235,13 +244,6 @@ public final class MenuController {
         };
     }
 
-    // =========================================================================
-    // Core Canonical Action Handlers (Single Path into JNI & Engine)
-    // =========================================================================
-
-    /**
-     * Toggles a feature state across all layers (JNI Changes, NativeBridge, FeatureSettings, SharedPreferences).
-     */
     public void toggleFeature(Context context, int featNum, String featName, boolean isOn) {
         Context ctx = context != null ? context : mContext;
         if (ctx != null) MenuPreferences.context = ctx;
@@ -268,9 +270,6 @@ public final class MenuController {
         notifyListeners(featNum, isOn, 0f);
     }
 
-    /**
-     * Updates a slider value across all layers with bounds validation.
-     */
     public void setSliderValue(Context context, int featNum, String featName, int value) {
         Context ctx = context != null ? context : mContext;
         if (ctx != null) MenuPreferences.context = ctx;
@@ -370,12 +369,13 @@ public final class MenuController {
         return (defaultIndex >= 0 && defaultIndex < optionsCount) ? defaultIndex : 0;
     }
 
-    // =========================================================================
-    // Standard UI View Binding Helpers (Ensures 100% Uniform Slider & Switch Behavior)
-    // =========================================================================
-
     /**
-     * Binds an Android Switch to the central system with standard activation behavior.
+     * Binds an Android Switch to the central system with standardized activation behavior.
+     *
+     * @param sw Switch view component.
+     * @param featNum Native feature identification number.
+     * @param featName Human-readable feature name or key.
+     * @param defaultVal Default boolean state if not configured.
      */
     public void bindSwitch(final Switch sw, final int featNum, final String featName, final boolean defaultVal) {
         if (sw == null) return;
@@ -397,6 +397,14 @@ public final class MenuController {
 
     /**
      * Binds an Android SeekBar to the central system with standardized sliding, bounds, and live label updates.
+     *
+     * @param seekBar SeekBar view component.
+     * @param liveBadge Optional TextView displaying the real-time numeric value.
+     * @param featNum Native feature identification number.
+     * @param featName Human-readable feature name or key.
+     * @param min Minimum allowable slider value.
+     * @param max Maximum allowable slider value.
+     * @param unit Optional measurement unit suffix (e.g., "%", "m").
      */
     public void bindSeekBar(final SeekBar seekBar, final TextView liveBadge, final int featNum,
                             final String featName, final int min, final int max, final String unit) {
@@ -445,6 +453,12 @@ public final class MenuController {
 
     /**
      * Binds a Spinner dropdown to the central system.
+     *
+     * @param spinner Spinner view component.
+     * @param featNum Native feature identification number.
+     * @param featName Human-readable feature name or key.
+     * @param options Array of string option labels.
+     * @param defaultIndex Default zero-based option index.
      */
     public void bindSpinner(final Spinner spinner, final int featNum, final String featName,
                             final String[] options, final int defaultIndex) {
@@ -478,6 +492,16 @@ public final class MenuController {
     /**
      * Binds a styled Circle Checkbox (used in Cyberpunk/NINLITE & modern minimalist UIs)
      * to the central MenuController with full live synchronization.
+     *
+     * @param row View container for the clickable row.
+     * @param circleBox Outer circular border frame.
+     * @param innerDot Inner circular indicator dot.
+     * @param featNum Native feature identification number.
+     * @param featName Human-readable feature name or key.
+     * @param defaultVal Default boolean state if not configured.
+     * @param activeCircleColor ARGB color for active circle border and fill.
+     * @param inactiveCircleColor ARGB color for inactive circle border.
+     * @param dotBgColor ARGB color for inner indicator dot.
      */
     public void bindCircleCheckbox(final View row, final FrameLayout circleBox, final View innerDot,
                                    final int featNum, final String featName, final boolean defaultVal,
@@ -523,6 +547,14 @@ public final class MenuController {
 
     /**
      * Binds an Accent Slider with a live badge TextView (ensuring 100% uniform sliding rules).
+     *
+     * @param seekBar SeekBar view component.
+     * @param liveBadge Optional TextView displaying the real-time numeric value.
+     * @param featNum Native feature identification number.
+     * @param featName Human-readable feature name or key.
+     * @param min Minimum allowable slider value.
+     * @param max Maximum allowable slider value.
+     * @param unit Optional measurement unit suffix.
      */
     public void bindAccentSlider(final SeekBar seekBar, final TextView liveBadge, final int featNum,
                                  final String featName, final int min, final int max, final String unit) {
@@ -531,19 +563,24 @@ public final class MenuController {
 
     /**
      * Binds a styled Dropdown Spinner with user-only selection guards.
+     *
+     * @param spinner Spinner view component.
+     * @param featNum Native feature identification number.
+     * @param featName Human-readable feature name or key.
+     * @param options Array of string option labels.
+     * @param defaultIndex Default zero-based option index.
      */
     public void bindDropdown(final Spinner spinner, final int featNum, final String featName,
                              final String[] options, final int defaultIndex) {
         bindSpinner(spinner, featNum, featName, options, defaultIndex);
     }
 
-    // =========================================================================
-    // Dynamic JNI Feature Parser (Parses GetFeatureList() without hardcoded options)
-    // =========================================================================
-
     /**
      * Parses raw JNI DSL strings into structured MenuFeatureItem objects dynamically.
      * Each brand UI can render these items in its own distinct visual design.
+     *
+     * @param rawDsl Array of DSL strings received from native C++ engine via GetFeatureList().
+     * @return List of parsed MenuFeatureItem objects.
      */
     public static List<MenuFeatureItem> parseDsl(String[] rawDsl) {
         if (rawDsl == null || rawDsl.length == 0) {
@@ -593,10 +630,11 @@ public final class MenuController {
         return items;
     }
 
-    // =========================================================================
-    // Live Telemetry & Process Info
-    // =========================================================================
-
+    /**
+     * Resolves the target process ID of the detected game.
+     *
+     * @return Process identifier (PID) if detected, or -1 otherwise.
+     */
     public int getTargetPid() {
         try {
             return NativeBridge.getDetectedGamePid();
@@ -605,10 +643,20 @@ public final class MenuController {
         }
     }
 
+    /**
+     * Determines whether the engine is actively connected to a target game process.
+     *
+     * @return True if target PID is valid and positive, false otherwise.
+     */
     public boolean isGameConnected() {
         return getTargetPid() > 0;
     }
 
+    /**
+     * Retrieves the detected game title.
+     *
+     * @return Game title string.
+     */
     public String getGameTitle() {
         try {
             String title = NativeBridge.getDetectedGameTitle();
@@ -618,20 +666,31 @@ public final class MenuController {
         }
     }
 
+    /**
+     * Returns the engine communication channel description.
+     *
+     * @return Engine mode string.
+     */
     public String getEngineMode() {
         return "Kernel Driver (Ring-0)";
     }
 
-    // =========================================================================
-    // Multi-UI Observer Management
-    // =========================================================================
-
+    /**
+     * Registers a feature state change observer.
+     *
+     * @param listener Observer callback to add.
+     */
     public void addListener(OnFeatureChangeListener listener) {
         if (listener != null && !mListeners.contains(listener)) {
             mListeners.add(listener);
         }
     }
 
+    /**
+     * Unregisters a feature state change observer.
+     *
+     * @param listener Observer callback to remove.
+     */
     public void removeListener(OnFeatureChangeListener listener) {
         if (listener != null) {
             mListeners.remove(listener);
