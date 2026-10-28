@@ -232,9 +232,11 @@ void StartEngine(const std::string &nativeLibDir) {
 
             NinEngine::DaemonLink::Instance().EnsureStarted();
 
+            NIN_LOGI("QX", "Waiting for daemon handshake on IPC socket...");
             for (int i = 0; i < 60; ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 if (isNinLiteDaemonAvailable()) {
+                    NIN_LOGI("QX", "Daemon handshake successful (took %d ms)!", (i + 1) * 100);
                     break;
                 }
             }

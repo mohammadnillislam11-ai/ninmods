@@ -25,6 +25,7 @@
 #include <sys/types.h>
 
 #include "Includes/NinliteProtocol.h"
+#include "Includes/Logger.h"
 
 namespace NinEngine {
 
@@ -118,6 +119,7 @@ private:
         auto lastDetect = std::chrono::steady_clock::now() - std::chrono::seconds(1);
         auto lastConnect = std::chrono::steady_clock::now() - std::chrono::seconds(1);
 
+        NIN_LOGI("DaemonLink", "Worker thread started - beginning IPC connection loop.");
         while (true) {
             /* 0. Keep the connection alive. Connect() runs ONLY here, on the
              * worker, at most once per 200ms during initial handshake. */
@@ -128,6 +130,7 @@ private:
                     if (client.Connect()) {
                         std::lock_guard<std::mutex> lock(cacheMutex_);
                         cache_.connected = true;
+                        NIN_LOGI("DaemonLink", "Connected to root daemon IPC stream successfully!");
                     }
                 }
             }
@@ -148,7 +151,11 @@ private:
                 req.value = c.value;
                 Ninlite::Response ignored;
                 memset(&ignored, 0, sizeof(ignored));
-                client.Request(req, &ignored);
+                if (client.Request(req, &ignored)) {
+                    NIN_LOGI("DaemonLink", "Control sent: mode %d, enabled %d, val %d", c.mode, (int)c.enabled, c.value);
+                } else {
+                    NIN_LOGE("DaemonLink", "Failed to send control: mode %d", c.mode);
+                }
             }
 
             /* 2. Periodic ESP snapshot, at most ~30 Hz, only while asked. */
@@ -191,6 +198,9 @@ private:
                     cache_.detectedPid = (wire.detectedPid > 0) ? (pid_t)wire.detectedPid : 0;
                     cache_.detectedIsMax = (strstr(wire.detectedPackage, "freefiremax") != nullptr);
                     cache_.connected = true;
+                    if (wire.detectedPid > 0) {
+                        NIN_LOGI("DaemonLink", "Daemon reports Game PID: %d (%s)", (int)wire.detectedPid, wire.detectedPackage);
+                    }
                 } else {
                     std::lock_guard<std::mutex> lock(cacheMutex_);
                     cache_.detectValid = false;
