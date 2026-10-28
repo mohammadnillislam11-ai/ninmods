@@ -585,6 +585,8 @@ public class NinLiteFloatingMenuView {
             org.json.JSONObject state = new org.json.JSONObject(stateJsonStr);
             boolean isStarting = state.optBoolean("isStarting", false);
             boolean isEngineStarted = state.optBoolean("isEngineStarted", false);
+            mIsEngineStarting = isStarting;
+            mIsEngineStarted = isEngineStarted;
             boolean canStart = state.optBoolean("canStart", false);
             boolean gameDetected = state.optBoolean("gameDetected", false);
             int pid = state.optInt("gamePid", 0);
