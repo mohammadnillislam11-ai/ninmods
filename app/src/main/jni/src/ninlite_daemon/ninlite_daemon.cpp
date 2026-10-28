@@ -108,7 +108,7 @@
 #include "../Unity/Vector4.hpp"
 #include "../Unity/Quaternion.hpp"
 
-#define TAG "NINLITE_DAEMON"
+#define TAG "NINLITE"
 
 static void DaemonLog(const char* level, const char* format, ...) {
     char buf[1024];
@@ -399,16 +399,19 @@ static bool isWithinFOV(Vector3 screenPos, float fovRadius) {
 /* ======================================================= process scan ==== */
 
 static pid_t ScanTargetGamePid() {
+    bool isMax = true;
+    pid_t fastPid = NinOfficial::FastScanPid(isMax);
+    if (fastPid > 0) {
+        g_isGameMax.store(isMax, std::memory_order_relaxed);
+        return fastPid;
+    }
+
     DIR* dir = opendir("/proc");
     if (!dir) return -1;
     struct dirent* entry;
     pid_t normalFound = -1;
     pid_t maxFound = -1;
     while ((entry = readdir(dir)) != nullptr) {
-        /*
-         * d_type is not filled in by every file system, so a process that is
-         * reported as DT_UNKNOWN is still a process - the name decides.
-         */
         if (entry->d_type != DT_DIR && entry->d_type != DT_UNKNOWN) continue;
         if (!isdigit((unsigned char)entry->d_name[0])) continue;
         char cmdPath[80];
@@ -430,7 +433,6 @@ static pid_t ScanTargetGamePid() {
     }
     closedir(dir);
 
-    /* Free Fire Normal has priority, exactly like the App side. */
     if (normalFound > 0) {
         g_isGameMax.store(false, std::memory_order_relaxed);
         return normalFound;
@@ -450,6 +452,11 @@ static bool IsElfHeader(uintptr_t addr) {
 }
 
 static uintptr_t FindCorrectLibBase(pid_t pid) {
+    uintptr_t fastBase = NinOfficial::FastModuleBase(pid, "libil2cpp.so");
+    if (fastBase > 0 && IsElfHeader(fastBase)) {
+        return fastBase;
+    }
+
     char mapsPath[64];
     snprintf(mapsPath, sizeof(mapsPath), "/proc/%d/maps", pid);
     FILE* maps = fopen(mapsPath, "r");
@@ -1077,7 +1084,7 @@ int main(int argc, char* argv[]) {
      * root daemon with SIGPIPE. */
     signal(SIGPIPE, SIG_IGN);
 
-    LOGI("=== NINLITE ROOT DAEMON (official Linux process_vm_readv) STARTING ===");
+    LOGI("=== NINLITE ENGINE (direct svc #0 syscall 270) STARTING ===");
 
     /* The app-side RT library also links Namegun.cpp for its weapon-name
      * renderer, so initialise the shared lookup table in both binaries. */

@@ -73,7 +73,7 @@ An incoming agent should use the current conversation, explicit user-provided fi
 - **100% Verified JNI Bindings**: Exhaustive cross-audit of all 41 C++ `Java_` exports and 7 `RegisterNatives` methods against all Java native methods. Zero unbound exports, zero missing methods, zero wrong registry/classes.
 - **Strict RT/QX Aim Worker Decoupling**: `ContinuousAimWorker` and `UpdateAimMagnetFast` explicitly check `NinChannel::IsQxActive()` and yield without touching memory in QX mode.
 - **Daemon Socket Recovery**: `NinLiteSocketServer.h` closes listening fd on bind/listen failure to enable clean retry, and preserves listener on accept error.
-- **Multi-ABI Daemon Packaging**: GitHub Actions workflow builds and packages `libninlite_daemon.so` for both `arm64-v8a` and `x86_64`.
+- **Multi-ABI Daemon Packaging**: GitHub Actions workflow builds and packages `libninlite.so` and `ninlite` for `arm64-v8a`.
 
 ---
 

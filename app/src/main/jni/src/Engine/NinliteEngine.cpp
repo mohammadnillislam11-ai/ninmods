@@ -158,6 +158,7 @@ bool CheckShellDaemonRunning() {
  * @param nativeLibDir directory that carries the daemon executable
  */
 void StartEngine(const std::string &nativeLibDir) {
+    NinChannel::SetActiveChannel(NinChannel::CHANNEL_QX);
     if (g_ninlite_starting.exchange(true)) {
         return;
     }
@@ -167,6 +168,7 @@ void StartEngine(const std::string &nativeLibDir) {
             NIN_LOGI("QX", "daemon already running - reusing the existing root session");
         } else {
             std::string script;
+            script += "killall -9 ninlite >/dev/null 2>&1\n";
             script += "killall -9 ninlite_daemon >/dev/null 2>&1\n";
             script += "setenforce 0 >/dev/null 2>&1\n";
 
@@ -204,25 +206,29 @@ void StartEngine(const std::string &nativeLibDir) {
             }
             script += "fi\n";
 
-            const std::string daemonLibPath = nativeLibDir + "/libninlite_daemon.so";
-            const std::string daemonAltPath = nativeLibDir + "/ninlite_daemon";
-            const std::string finalExecPath = "/data/local/tmp/ninlite_daemon";
+            const std::string daemonLibPath = nativeLibDir + "/libninlite.so";
+            const std::string daemonAltPath = nativeLibDir + "/ninlite";
+            const std::string finalExecPath = "/data/local/tmp/ninlite";
             /* Rule 16: strictly write to /storage/emulated/0/Download/ninmods/ninmods.log */
             const std::string daemonLog = "/storage/emulated/0/Download/ninmods/ninmods.log";
 
             script += "mkdir -p /storage/emulated/0/Download/ninmods >/dev/null 2>&1\n";
-            script += "echo \"=== NINLITE DAEMON LAUNCH $(date) ===\" >> " + daemonLog + "\n";
+            script += "echo \"=== NINLITE ENGINE LAUNCH $(date) ===\" >> " + daemonLog + "\n";
             script += "if [ -f " + daemonLibPath + " ]; then cp -f " + daemonLibPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
             script += "if [ ! -f " + finalExecPath + " ] && [ -f " + daemonAltPath + " ]; then cp -f " + daemonAltPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
             script += "if [ ! -f " + finalExecPath + " ]; then\n";
-            script += "  CANDIDATE=$(find /data/app -type f -name \"libninlite_daemon.so\" 2>/dev/null | head -n 1)\n";
+            script += "  CANDIDATE=$(find /data/app -type f -name \"libninlite.so\" 2>/dev/null | head -n 1)\n";
             script += "  if [ -n \"$CANDIDATE\" ]; then cp -f \"$CANDIDATE\" " + finalExecPath + " >/dev/null 2>&1; fi\n";
             script += "fi\n";
             script += "if [ ! -f " + finalExecPath + " ]; then\n";
-            script += "  echo \"[ERROR] ninlite_daemon binary not found in native library dirs\" >> " + daemonLog + "\n";
+            script += "  echo \"[ERROR] ninlite binary not found in native library dirs\" >> " + daemonLog + "\n";
             script += "else\n";
-            script += "  echo \"[INFO] ninlite_daemon deployed to " + finalExecPath + "\" >> " + daemonLog + "\n";
+            script += "  echo \"[INFO] ninlite deployed to " + finalExecPath + "\" >> " + daemonLog + "\n";
             script += "  chmod 777 " + finalExecPath + " >/dev/null 2>&1\n";
+            script += "  chmod +x " + finalExecPath + " >/dev/null 2>&1\n";
+            script += "  cp -f " + finalExecPath + " /data/local/tmp/ninlite.sh >/dev/null 2>&1\n";
+            script += "  chmod 777 /data/local/tmp/ninlite.sh >/dev/null 2>&1\n";
+            script += "  chmod +x /data/local/tmp/ninlite.sh >/dev/null 2>&1\n";
             script += "  if command -v nohup >/dev/null 2>&1; then\n";
             script += "    nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
             script += "  else\n";

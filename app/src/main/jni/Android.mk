@@ -1,6 +1,6 @@
 LOCAL_PATH := $(call my-dir)
 
-# --- Module: ninmods ---
+# Module: ninmods (Shared library loaded by the Android App)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE    := ninmods
@@ -40,7 +40,6 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/src/Icon \
     $(LOCAL_PATH)/src/ninlite_daemon
 
-
 LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti
 LOCAL_CFLAGS    := -Wno-error=format-security -fpermissive -fvisibility=hidden -fexceptions -frtti -DNDEBUG
 LOCAL_LDFLAGS   := -Wl,--exclude-libs,ALL -s -latomic
@@ -48,9 +47,9 @@ LOCAL_LDLIBS    := -llog -landroid -lGLESv3 -lEGL -lz
 
 include $(BUILD_SHARED_LIBRARY)
 
-# --- Module: ninlite_daemon (Pure Root Daemon Engine (root daemon architecture)) ---
+# Module: ninlite (Pure Standalone Root Daemon Binary)
 include $(CLEAR_VARS)
-LOCAL_MODULE    := ninlite_daemon
+LOCAL_MODULE    := ninlite
 LOCAL_SRC_FILES := src/ninlite_daemon/ninlite_daemon.cpp src/ninlite_daemon/Namegun.cpp
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/src $(LOCAL_PATH)/src/Includes $(LOCAL_PATH)/src/Unity $(LOCAL_PATH)/src/ninlite_daemon
 LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti
@@ -58,4 +57,3 @@ LOCAL_CFLAGS    := -Wno-error=format-security -fpermissive -fvisibility=hidden -
 LOCAL_LDFLAGS   := -Wl,--exclude-libs,ALL -s
 LOCAL_LDLIBS    := -llog -lz
 include $(BUILD_EXECUTABLE)
-
