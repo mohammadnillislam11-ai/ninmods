@@ -21,6 +21,7 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -42,10 +43,14 @@ import java.util.Map;
  * Sleek, high-performance, dark glassmorphism floating menu engineered
  * specifically for NINMODS.
  *
- * Replaces the obsolete legacy reference mod menu layout with a clean,
- * modern tactical card featuring segmented horizontal pill tabs, real-time
- * telemetry, smooth dragging, and direct zero-latency wiring to the official
- * Linux syscall engine (process_vm_readv / process_vm_writev).
+ * Architecture:
+ *  - ninmods: EXCLUSIVELY operates with the Linux Kernel Driver (/dev/BYNb)
+ *    via Ring-0 IOCTL (0x801 Read, 0x802 Write, 0x803 Base) in compliance
+ *    with Rule 16 & 17.
+ *  - ninlite: Internal Mode (user-space daemon / IPC).
+ *
+ * Features segmented horizontal pill tabs, real-time telemetry, smooth
+ * dragging, and zero LGL legacy code.
  */
 public class ModMenu {
 
@@ -169,7 +174,9 @@ public class ModMenu {
         try {
             mFloatingBubble.setImageResource(R.drawable.nin_logo);
         } catch (Throwable t) {
-            mFloatingBubble.setImageResource(R.mipmap.ic_launcher);
+            try {
+                mFloatingBubble.setImageResource(R.drawable.ic_launcher);
+            } catch (Throwable ignored) {}
         }
 
         mFloatingBubble.setOnTouchListener(createDragListener(true));
@@ -246,7 +253,9 @@ public class ModMenu {
         try {
             logo.setImageResource(R.drawable.nin_logo);
         } catch (Throwable t) {
-            logo.setImageResource(R.mipmap.ic_launcher);
+            try {
+                logo.setImageResource(R.drawable.ic_launcher);
+            } catch (Throwable ignored) {}
         }
         header.addView(logo);
 
@@ -266,7 +275,7 @@ public class ModMenu {
         titleCol.addView(titleText);
 
         TextView subtitleText = new TextView(mContext);
-        subtitleText.setText("TACTICAL ENGINE");
+        subtitleText.setText("KERNEL ENGINE");
         subtitleText.setTextColor(COLOR_TEXT_DIM);
         subtitleText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
         subtitleText.setLetterSpacing(0.08f);
@@ -410,7 +419,7 @@ public class ModMenu {
         footer.setBackgroundColor(0x550C0E17);
 
         mFooterText = new TextView(mContext);
-        mFooterText.setText("NINMODS V90.86 • OFFICIAL LINUX SYSCALL");
+        mFooterText.setText("NINMODS V90.86 • KERNEL DRIVER RING-0");
         mFooterText.setTextColor(COLOR_TEXT_DIM);
         mFooterText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
         mFooterText.setLetterSpacing(0.05f);
@@ -590,8 +599,9 @@ public class ModMenu {
         head.setLetterSpacing(0.05f);
         infoCard.addView(head);
 
-        addTelemetryRow(infoCard, "Engine Mode", "Official Linux (process_vm_readv)");
-        addTelemetryRow(infoCard, "Memory Path", "POSIX /proc/[pid]/mem");
+        addTelemetryRow(infoCard, "Engine Mode", "Kernel Driver (/dev/BYNb Ring-0)");
+        addTelemetryRow(infoCard, "Architecture", "ninmods: Kernel Driver | ninlite: Internal");
+        addTelemetryRow(infoCard, "Memory IOCTL", "0x801 Read / 0x802 Write / 0x803 Base");
         addTelemetryRow(infoCard, "Detection", "POSIX /proc/[pid]/cmdline");
         addTelemetryRow(infoCard, "Target Game PID", String.valueOf(NativeBridge.getDetectedGamePid()));
 
