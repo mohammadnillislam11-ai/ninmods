@@ -2,7 +2,6 @@ package com.ninmods.main.core;
 
 import android.content.Context;
 import android.os.Build;
-import android.os.Environment;
 import android.util.Log;
 
 import java.io.File;
@@ -18,12 +17,13 @@ import java.util.concurrent.Executors;
 
 /**
  * Diagnostic and telemetry logger for NINMODS.
- * Writes diagnostic events to public Download/ninmods.log per Rule 16,
- * with fallback to app-private files if external storage is inaccessible.
+ * Writes diagnostic events strictly to /storage/emulated/0/Download/ninmods/ninmods.log.
  */
 public final class AppLogger {
     private static final String TAG = "NINMODS_LOG";
     private static final Object LOCK = new Object();
+
+    private static final String TARGET_LOG_PATH = "/storage/emulated/0/Download/ninmods/ninmods.log";
 
     private static final ThreadLocal<SimpleDateFormat> SDF =
             ThreadLocal.withInitial(() -> new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US));
@@ -64,34 +64,21 @@ public final class AppLogger {
     }
 
     /**
-     * Resolves the log file location in the public Download directory per Rule 16,
-     * falling back to app-private storage if Download is unwritable.
+     * Resolves the log file location strictly to /storage/emulated/0/Download/ninmods/ninmods.log.
      * @return File handle for logging
      */
     private static File getDedicatedLogFile() {
-        try {
-            File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-            if (downloadDir != null && (downloadDir.exists() || downloadDir.mkdirs())) {
-                File pubLog = new File(downloadDir, "ninmods.log");
-                return pubLog;
-            }
-        } catch (Throwable ignored) {}
-
-        File base = (sContext != null) ? sContext.getFilesDir() : null;
-        if (base == null) {
-            return null;
+        File logFile = new File(TARGET_LOG_PATH);
+        File parentDir = logFile.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs();
         }
-        File logDir = new File(base, "logs");
-        if (!logDir.exists()) {
-            logDir.mkdirs();
-        }
-        return new File(logDir, "ninmods.log");
+        return logFile;
     }
 
     private static void ensureLogFolderAndFile() {
         try {
             File logFile = getDedicatedLogFile();
-            if (logFile == null) return;
             File parentDir = logFile.getParentFile();
             if (parentDir != null && !parentDir.exists()) {
                 parentDir.mkdirs();
@@ -113,8 +100,7 @@ public final class AppLogger {
         log("SYSTEM", "Hardware: " + Build.HARDWARE + " | Board: " + Build.BOARD);
         log("SYSTEM", "Primary ABI: " + (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "arm64-v8a"));
         log("SYSTEM", "Android OS: Android " + Build.VERSION.RELEASE + " (API Level " + Build.VERSION.SDK_INT + ")");
-        File logFile = getDedicatedLogFile();
-        log("SYSTEM", "Log Target: " + (logFile != null ? logFile.getAbsolutePath() : "In-Memory Only"));
+        log("SYSTEM", "Log Target: " + TARGET_LOG_PATH);
         log("SYSTEM", "SELinux State: " + getSelinuxStatus());
         log("SYSTEM", "SuperUser Binary: " + (new File("/system/bin/su").exists() || new File("/system/xbin/su").exists() ? "DETECTED" : "STANDARD"));
         log("SYSTEM", "Kernel Driver Node: /dev/BYNb (Ring 0 IOCTL 0x801/0x802/0x803)");
@@ -139,11 +125,6 @@ public final class AppLogger {
             synchronized (LOCK) {
                 try {
                     File logFile = getDedicatedLogFile();
-                    if (logFile == null) return;
-                    File parentDir = logFile.getParentFile();
-                    if (parentDir != null && !parentDir.exists()) {
-                        parentDir.mkdirs();
-                    }
                     FileWriter fw = new FileWriter(logFile, true);
                     fw.write(formattedLine + "\n");
                     fw.flush();
@@ -211,8 +192,7 @@ public final class AppLogger {
         synchronized (LOCK) {
             List<String> result = new ArrayList<>();
             if (sMemoryLogBuffer.isEmpty()) {
-                File logFile = getDedicatedLogFile();
-                result.add("No live memory logs recorded yet. Telemetry target: " + (logFile != null ? logFile.getAbsolutePath() : "in-memory"));
+                result.add("No live memory logs recorded yet. Telemetry target: " + TARGET_LOG_PATH);
                 return result;
             }
             int start = Math.max(0, sMemoryLogBuffer.size() - maxLines);

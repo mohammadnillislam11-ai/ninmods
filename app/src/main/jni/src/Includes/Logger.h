@@ -13,17 +13,9 @@
 /**
  * NINMODS NATIVE LOGGER
  * ---------------------
- * Rule 15: every persistent log file lives inside the Android Download
- * directory, never in the root of the sdcard.
- *
- * RELIABILITY NOTE (previous implementation was a performance bug):
- * The old logger executed two mkdir() + one fopen() + one fflush() +
- * one fclose() + one chmod() for EVERY log line, all under a process wide
- * mutex. Because the engine logs from the aim thread (250 Hz) and from the
- * render thread, that turned every single log call into a multi millisecond
- * blocking filesystem operation and serialised the whole engine behind one
- * mutex. The log file is now opened ONCE and kept open; the stream is flushed
- * in batches so the frame loop never blocks on the storage device.
+ * Strictly saves to /storage/emulated/0/Download/ninmods/ninmods.log only.
+ * Flushes on every line so that diagnostic data is immediately readable in
+ * the file manager and never remains 0 bytes.
  */
 class NinLogger {
 public:
@@ -49,7 +41,6 @@ public:
         std::lock_guard<std::mutex> lock(s_mutex);
 
         static FILE* s_file = nullptr;
-        static unsigned int s_pending = 0;
 
         if (s_file == nullptr) {
             mkdir("/storage/emulated/0/Download", 0777);
@@ -60,7 +51,7 @@ public:
             }
         }
         if (s_file == nullptr) {
-            return;   /* storage not available - logcat only */
+            return;
         }
 
         auto now = std::chrono::system_clock::now();
@@ -75,20 +66,11 @@ public:
                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec, (int)ms.count());
 
         fprintf(s_file, "[%s] [%s] %s\n", timeStr, tag, buffer);
-
-        /* Batch the flushes - a disk sync per line is what killed the frame
-         * budget before. 32 lines per flush keeps the file readable in real
-         * time while removing ~97% of the IOPS. */
-        if (++s_pending >= 32) {
-            fflush(s_file);
-            s_pending = 0;
-        }
+        fflush(s_file);
 
         if (ferror(s_file)) {
-            /* The file was removed or the storage died - reopen once. */
             fclose(s_file);
             s_file = nullptr;
-            s_pending = 0;
         }
     }
 };

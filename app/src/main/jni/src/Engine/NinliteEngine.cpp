@@ -199,17 +199,28 @@ void StartEngine(const std::string &nativeLibDir) {
             const std::string daemonLibPath = nativeLibDir + "/libninlite_daemon.so";
             const std::string daemonAltPath = nativeLibDir + "/ninlite_daemon";
             const std::string finalExecPath = "/data/local/tmp/ninlite_daemon";
-            /* Rule 16: the daemon log belongs in the Download folder. */
-            const std::string daemonLog = "/storage/emulated/0/Download/ninmods/ninlite_daemon.log";
+            /* Rule 16: strictly write to /storage/emulated/0/Download/ninmods/ninmods.log */
+            const std::string daemonLog = "/storage/emulated/0/Download/ninmods/ninmods.log";
 
             script += "mkdir -p /storage/emulated/0/Download/ninmods >/dev/null 2>&1\n";
+            script += "echo \"=== NINLITE DAEMON LAUNCH $(date) ===\" >> " + daemonLog + "\n";
             script += "if [ -f " + daemonLibPath + " ]; then cp -f " + daemonLibPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
             script += "if [ ! -f " + finalExecPath + " ] && [ -f " + daemonAltPath + " ]; then cp -f " + daemonAltPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
-            script += "chmod 777 " + finalExecPath + " >/dev/null 2>&1\n";
-            script += "if command -v nohup >/dev/null 2>&1; then\n";
-            script += "  nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "if [ ! -f " + finalExecPath + " ]; then\n";
+            script += "  CANDIDATE=$(find /data/app -type f -name \"libninlite_daemon.so\" 2>/dev/null | head -n 1)\n";
+            script += "  if [ -n \"$CANDIDATE\" ]; then cp -f \"$CANDIDATE\" " + finalExecPath + " >/dev/null 2>&1; fi\n";
+            script += "fi\n";
+            script += "if [ ! -f " + finalExecPath + " ]; then\n";
+            script += "  echo \"[ERROR] ninlite_daemon binary not found in native library dirs\" >> " + daemonLog + "\n";
             script += "else\n";
-            script += "  " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "  echo \"[INFO] ninlite_daemon deployed to " + finalExecPath + "\" >> " + daemonLog + "\n";
+            script += "  chmod 777 " + finalExecPath + " >/dev/null 2>&1\n";
+            script += "  chcon u:object_r:system_file:s0 " + finalExecPath + " >/dev/null 2>&1\n";
+            script += "  if command -v nohup >/dev/null 2>&1; then\n";
+            script += "    nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "  else\n";
+            script += "    " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "  fi\n";
             script += "fi\n";
 
             int rc = RunRootScriptViaJava(script);

@@ -81,6 +81,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <signal.h>
+#include <cstdarg>
 #include "../Engine/OfficialMemory.h"
 #include <atomic>
 #include <thread>
@@ -107,9 +108,26 @@
 #include "../Unity/Vector4.hpp"
 #include "../Unity/Quaternion.hpp"
 
-#define TAG "NINLITE_DAEMON"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+static void DaemonLog(const char* level, const char* format, ...) {
+    char buf[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buf, sizeof(buf), format, args);
+    va_end(args);
+
+    __android_log_print(level[0] == 'E' ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO, TAG, "%s", buf);
+
+    time_t now = time(nullptr);
+    struct tm tm_buf;
+    localtime_r(&now, &tm_buf);
+    char timeStr[32];
+    snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
+
+    fprintf(stderr, "[%s] [%s] %s\n", timeStr, level, buf);
+    fflush(stderr);
+}
+#define LOGI(...) DaemonLog("INFO", __VA_ARGS__)
+#define LOGE(...) DaemonLog("ERROR", __VA_ARGS__)
 
 /* ============================================================== state ==== */
 
