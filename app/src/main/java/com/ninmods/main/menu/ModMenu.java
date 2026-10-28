@@ -11,7 +11,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -30,7 +29,6 @@ import android.widget.Toast;
 
 import com.ninmods.main.R;
 import com.ninmods.main.core.AppLogger;
-import com.ninmods.main.core.NativeBridge;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -38,19 +36,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * NINMODS MODERN TACTICAL FLOATING MENU
- * -------------------------------------
- * Sleek, high-performance, dark glassmorphism floating menu engineered
- * specifically for NINMODS.
+ * NINMODS MODERN FLOATING MOD MENU
+ * ---------------------------------
+ * Sleek, high-performance, dark glassmorphism floating menu.
  *
- * Architecture:
- *  - ninmods: EXCLUSIVELY operates with the Linux Kernel Driver (/dev/BYNb)
- *    via Ring-0 IOCTL (0x801 Read, 0x802 Write, 0x803 Base) in compliance
- *    with Rule 16 & 17.
- *  - ninlite: Internal Mode (user-space daemon / IPC).
- *
- * Features segmented horizontal pill tabs, real-time telemetry, smooth
- * dragging, and zero LGL legacy code.
+ * All feature activations, sliding rules, persistence, and JNI engine
+ * communication are driven by the central MenuController.
  */
 public class ModMenu {
 
@@ -74,42 +65,40 @@ public class ModMenu {
     native String[] SettingsList();
     native boolean IsGameLibLoaded();
 
-    // --- Dimensions & Styling Constants ---
+    // --- Styling Constants ---
     private static final int ICON_SIZE_DP = 52;
     private static final int MENU_WIDTH_DP = 310;
     private static final int MENU_HEIGHT_DP = 430;
     private static final int CORNER_RADIUS_DP = 16;
     private static final int ITEM_CORNER_DP = 10;
 
-    // --- Theme Palette (Modern Obsidian & Tactical Cyan/Indigo) ---
-    private static final int COLOR_CARD_BG = 0xF20F121C;        // Deep obsidian glass
-    private static final int COLOR_CARD_BORDER = 0xFF242A3B;    // Crisp border stroke
-    private static final int COLOR_ITEM_BG = 0xFF181C28;        // Feature item card
-    private static final int COLOR_ITEM_BORDER = 0xFF232838;    // Item border stroke
-    private static final int COLOR_HEADER_BG = 0x80131722;      // Subtle header tint
-    private static final int COLOR_ACCENT_CYAN = 0xFF00E5FF;    // Tactical Cyan
-    private static final int COLOR_ACCENT_BLUE = 0xFF3B82F6;    // Electric Blue
-    private static final int COLOR_ACCENT_INDIGO = 0xFF6366F1;  // Indigo highlight
-    private static final int COLOR_TEXT_PRIMARY = 0xFFFFFFFF;   // Crisp white
-    private static final int COLOR_TEXT_MUTED = 0xFF94A3B8;     // Slate secondary
-    private static final int COLOR_TEXT_DIM = 0xFF64748B;       // Dim metadata
-    private static final int COLOR_STATUS_GREEN = 0xFF10B981;   // Connected
-    private static final int COLOR_STATUS_AMBER = 0xFFF59E0B;   // Standby
-    private static final int COLOR_SWITCH_OFF = 0xFF2D3748;     // Inactive track
+    // Palette
+    private static final int COLOR_CARD_BG = 0xF20F121C;
+    private static final int COLOR_CARD_BORDER = 0xFF242A3B;
+    private static final int COLOR_ITEM_BG = 0xFF181C28;
+    private static final int COLOR_ITEM_BORDER = 0xFF232838;
+    private static final int COLOR_HEADER_BG = 0x80131722;
+    private static final int COLOR_ACCENT_CYAN = 0xFF00E5FF;
+    private static final int COLOR_ACCENT_BLUE = 0xFF3B82F6;
+    private static final int COLOR_TEXT_PRIMARY = 0xFFFFFFFF;
+    private static final int COLOR_TEXT_MUTED = 0xFF94A3B8;
+    private static final int COLOR_TEXT_DIM = 0xFF64748B;
+    private static final int COLOR_STATUS_GREEN = 0xFF10B981;
+    private static final int COLOR_STATUS_AMBER = 0xFFF59E0B;
+    private static final int COLOR_SWITCH_OFF = 0xFF2D3748;
 
-    // --- Context & Window Management ---
     private final Context mContext;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
+    private final MenuController mController;
+
     private WindowManager mWindowManager;
     private WindowManager.LayoutParams vmParams;
 
-    // --- View Hierarchy ---
     private FrameLayout rootFrame;
     private RelativeLayout mCollapsedView;
     private LinearLayout mExpandedView;
     private ImageView mFloatingBubble;
 
-    // --- Tabs & Content ---
     private LinearLayout mTabBar;
     private final List<TextView> mTabButtons = new ArrayList<>();
     private final Map<String, LinearLayout> mTabContainers = new LinkedHashMap<>();
@@ -117,14 +106,14 @@ public class ModMenu {
     private TextView mStatusChip;
     private TextView mFooterText;
 
-    // Position memory
     private int mPosX = 30;
     private int mPosY = 180;
     private boolean mIsAttached = false;
 
     public ModMenu(Context context) {
         this.mContext = context;
-        MenuPreferences.context = context;
+        this.mController = MenuController.getInstance();
+        this.mController.init(context);
 
         initViews();
     }
@@ -132,22 +121,18 @@ public class ModMenu {
     private void initViews() {
         rootFrame = new FrameLayout(mContext);
 
-        // 1. Build Floating Bubble (Collapsed View)
         buildCollapsedView();
-
-        // 2. Build Modern Tactical Card (Expanded View)
         buildExpandedView();
 
         rootFrame.addView(mCollapsedView);
         rootFrame.addView(mExpandedView);
 
-        // Collapse to bubble by default
         mCollapsedView.setVisibility(View.VISIBLE);
         mExpandedView.setVisibility(View.GONE);
     }
 
     /**
-     * Floating Draggable Bubble / Pill (Collapsed State)
+     * Floating Draggable Bubble (Collapsed State)
      */
     @SuppressLint("ClickableViewAccessibility")
     private void buildCollapsedView() {
@@ -163,14 +148,12 @@ public class ModMenu {
         mFloatingBubble.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         mFloatingBubble.setPadding(dp(10), dp(10), dp(10), dp(10));
 
-        // Glassmorphism circular background with subtle glowing cyan border
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.OVAL);
         bg.setColor(0xE60F121C);
         bg.setStroke(dp(2), COLOR_ACCENT_CYAN);
         mFloatingBubble.setBackground(bg);
 
-        // Dynamic brand logo
         try {
             mFloatingBubble.setImageResource(R.drawable.nin_logo);
         } catch (Throwable t) {
@@ -184,7 +167,7 @@ public class ModMenu {
     }
 
     /**
-     * Modern Tactical Card (Expanded State)
+     * Modern Card (Expanded State)
      */
     @SuppressLint("ClickableViewAccessibility")
     private void buildExpandedView() {
@@ -196,20 +179,19 @@ public class ModMenu {
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(widthPx, heightPx);
         mExpandedView.setLayoutParams(cardParams);
 
-        // Deep obsidian glass background with rounded corners and crisp stroke
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setCornerRadius(dp(CORNER_RADIUS_DP));
         cardBg.setColor(COLOR_CARD_BG);
         cardBg.setStroke(dp(1), COLOR_CARD_BORDER);
         mExpandedView.setBackground(cardBg);
 
-        // 1. Header Bar
+        // Header
         mExpandedView.addView(buildHeaderBar());
 
-        // 2. Horizontal Segmented Pill Tabs
+        // Horizontal Segmented Pill Tabs
         mExpandedView.addView(buildTabBar());
 
-        // 3. Tab Content Scrollable Area
+        // Content Area
         ScrollView contentScroll = new ScrollView(mContext);
         contentScroll.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
@@ -220,7 +202,6 @@ public class ModMenu {
         contentHolder.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // Create standard categories
         createCategoryContainer("VISUALS", contentHolder);
         createCategoryContainer("AIMBOT", contentHolder);
         createCategoryContainer("COMBAT", contentHolder);
@@ -229,13 +210,10 @@ public class ModMenu {
         contentScroll.addView(contentHolder);
         mExpandedView.addView(contentScroll);
 
-        // 4. Sleek Footer Bar
+        // Footer
         mExpandedView.addView(buildFooterBar());
     }
 
-    /**
-     * Header Bar with Dynamic App Title, Live Status Chip, and Control Buttons
-     */
     @SuppressLint("ClickableViewAccessibility")
     private View buildHeaderBar() {
         LinearLayout header = new LinearLayout(mContext);
@@ -243,11 +221,8 @@ public class ModMenu {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(14), dp(10), dp(12), dp(10));
         header.setBackgroundColor(COLOR_HEADER_BG);
-
-        // Header touch listener allows dragging the entire expanded card
         header.setOnTouchListener(createDragListener(false));
 
-        // Left: Logo + Dynamic App Title
         ImageView logo = new ImageView(mContext);
         logo.setLayoutParams(new LinearLayout.LayoutParams(dp(20), dp(20)));
         try {
@@ -283,7 +258,6 @@ public class ModMenu {
 
         header.addView(titleCol);
 
-        // Center: Live Status Chip Pill
         mStatusChip = new TextView(mContext);
         mStatusChip.setText("● STANDBY");
         mStatusChip.setTextColor(COLOR_STATUS_AMBER);
@@ -303,11 +277,9 @@ public class ModMenu {
         mStatusChip.setGravity(Gravity.CENTER);
         header.addView(mStatusChip);
 
-        // Right: Minimize Button [—]
         TextView minBtn = createHeaderButton("—", v -> collapseToLogo());
         header.addView(minBtn);
 
-        // Right: Close Button [✕]
         TextView closeBtn = createHeaderButton("✕", v -> collapseToLogo());
         LinearLayout.LayoutParams cbParams = (LinearLayout.LayoutParams) closeBtn.getLayoutParams();
         cbParams.leftMargin = dp(6);
@@ -336,9 +308,6 @@ public class ModMenu {
         return btn;
     }
 
-    /**
-     * Horizontal Segmented Pill Tab Bar
-     */
     private View buildTabBar() {
         mTabBar = new LinearLayout(mContext);
         mTabBar.setOrientation(LinearLayout.HORIZONTAL);
@@ -408,9 +377,6 @@ public class ModMenu {
         }
     }
 
-    /**
-     * Sleek Footer Bar with Telemetry & Engine Badge
-     */
     private View buildFooterBar() {
         LinearLayout footer = new LinearLayout(mContext);
         footer.setOrientation(LinearLayout.HORIZONTAL);
@@ -429,7 +395,6 @@ public class ModMenu {
         mFooterText.setLayoutParams(ftParams);
         footer.addView(mFooterText);
 
-        // Small indicator grip dot
         View grip = new View(mContext);
         LinearLayout.LayoutParams gParams = new LinearLayout.LayoutParams(dp(24), dp(3));
         grip.setLayoutParams(gParams);
@@ -442,7 +407,7 @@ public class ModMenu {
         return footer;
     }
 
-    // --- Dynamic Feature Population ---
+    // --- Dynamic Population via MenuController & JNI ---
 
     public void ShowMenu() {
         if (rootFrame.getParent() == null) {
@@ -457,77 +422,39 @@ public class ModMenu {
     }
 
     private void populateAllFeatures() {
-        // Clear old items from each tab container
         for (LinearLayout container : mTabContainers.values()) {
             container.removeAllViews();
         }
 
+        // Fetch dynamic JNI DSL features without hardcoding
         String[] rawDsl = sNativeReady ? GetFeatureList() : new String[0];
-        if (rawDsl == null || rawDsl.length == 0) {
+        List<MenuController.MenuFeatureItem> items = MenuController.parseDsl(rawDsl);
+
+        if (items.isEmpty()) {
             populateFallbackFeatures();
             return;
         }
 
-        String currentCategory = "VISUALS";
-
-        for (String row : rawDsl) {
-            if (row == null || row.trim().isEmpty()) continue;
-
-            if (row.startsWith("Category_")) {
-                currentCategory = row.substring("Category_".length()).trim().toUpperCase();
-                continue;
+        for (MenuController.MenuFeatureItem item : items) {
+            LinearLayout container = mTabContainers.get(item.category);
+            if (container == null) {
+                container = mTabContainers.get("VISUALS");
             }
+            if (container == null) continue;
 
-            LinearLayout targetContainer = mTabContainers.get(currentCategory);
-            if (targetContainer == null) {
-                targetContainer = mTabContainers.get("VISUALS");
+            if ("Toggle".equalsIgnoreCase(item.type)) {
+                addToggleItem(container, item.id, item.name, item.defaultOn);
+            } else if ("SeekBar".equalsIgnoreCase(item.type)) {
+                addSliderItem(container, item.id, item.name, item.minVal, item.maxVal);
+            } else if ("Spinner".equalsIgnoreCase(item.type)) {
+                addOptionsItem(container, item.id, item.name, item.options);
             }
-            if (targetContainer == null) continue;
-
-            parseAndAddFeatureRow(row, targetContainer);
         }
 
-        // Add System diagnostics & controls to SYSTEM tab
         populateSystemTab();
     }
 
-    private void parseAndAddFeatureRow(String row, LinearLayout container) {
-        try {
-            boolean trueByDefault = row.contains("_True");
-            String cleaned = row.replaceFirst("_True", "");
-
-            String[] tokens = cleaned.split("_");
-            if (tokens.length < 2) return;
-
-            int featId = 0;
-            try {
-                featId = Integer.parseInt(tokens[0]);
-            } catch (Exception e) {
-                return;
-            }
-
-            String type = tokens[1];
-
-            if ("Toggle".equalsIgnoreCase(type) && tokens.length >= 3) {
-                String label = tokens[2];
-                addToggleItem(container, featId, label, trueByDefault);
-            } else if ("SeekBar".equalsIgnoreCase(type) && tokens.length >= 5) {
-                String label = tokens[2];
-                int min = Integer.parseInt(tokens[3]);
-                int max = Integer.parseInt(tokens[4]);
-                addSliderItem(container, featId, label, min, max);
-            } else if ("Spinner".equalsIgnoreCase(type) && tokens.length >= 4) {
-                String label = tokens[2];
-                String[] options = tokens[3].split(",");
-                addOptionsItem(container, featId, label, options);
-            }
-        } catch (Throwable t) {
-            AppLogger.logE(TAG, "Error parsing DSL row: " + row, t);
-        }
-    }
-
     private void populateFallbackFeatures() {
-        // VISUALS
         LinearLayout vis = mTabContainers.get("VISUALS");
         if (vis != null) {
             addToggleItem(vis, 1, "ESP MASTER SWITCH", false);
@@ -545,7 +472,6 @@ public class ModMenu {
             addSliderItem(vis, 209, "ESP TEXT SIZE", 8, 24);
         }
 
-        // AIMBOT
         LinearLayout aim = mTabContainers.get("AIMBOT");
         if (aim != null) {
             addToggleItem(aim, 20, "AIM HARD (REAL AIM)", false);
@@ -560,7 +486,6 @@ public class ModMenu {
             addSliderItem(aim, 215, "CHEST RATE", 0, 6);
         }
 
-        // COMBAT
         LinearLayout com = mTabContainers.get("COMBAT");
         if (com != null) {
             addToggleItem(com, 40, "NO RECOIL (100% STABLE)", false);
@@ -571,7 +496,6 @@ public class ModMenu {
             addSliderItem(com, 102, "GAME SPEED MULTIPLIER", 1, 5);
         }
 
-        // SYSTEM
         populateSystemTab();
     }
 
@@ -579,7 +503,6 @@ public class ModMenu {
         LinearLayout sys = mTabContainers.get("SYSTEM");
         if (sys == null) return;
 
-        // Telemetry Card
         LinearLayout infoCard = new LinearLayout(mContext);
         infoCard.setOrientation(LinearLayout.VERTICAL);
         infoCard.setPadding(dp(12), dp(10), dp(12), dp(10));
@@ -603,14 +526,12 @@ public class ModMenu {
         addTelemetryRow(infoCard, "Architecture", "ninmods: Kernel Driver | ninlite: Internal");
         addTelemetryRow(infoCard, "Memory IOCTL", "0x801 Read / 0x802 Write / 0x803 Base");
         addTelemetryRow(infoCard, "Detection", "POSIX /proc/[pid]/cmdline");
-        addTelemetryRow(infoCard, "Target Game PID", String.valueOf(NativeBridge.getDetectedGamePid()));
+        addTelemetryRow(infoCard, "Target Game PID", String.valueOf(mController.getTargetPid()));
 
         sys.addView(infoCard);
 
-        // Save Preferences Toggle
         addToggleItem(sys, -1, "Save Feature Preferences", MenuPreferences.loadPref);
 
-        // Reset Features Action Button
         TextView resetBtn = new TextView(mContext);
         LinearLayout.LayoutParams rbParams = createItemLayoutParams();
         rbParams.topMargin = dp(8);
@@ -658,8 +579,6 @@ public class ModMenu {
         parent.addView(row);
     }
 
-    // --- Component Item Builders ---
-
     private LinearLayout.LayoutParams createItemLayoutParams() {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -667,9 +586,6 @@ public class ModMenu {
         return params;
     }
 
-    /**
-     * Modern Switch Card Item
-     */
     private void addToggleItem(LinearLayout container, int featId, String label, boolean defaultVal) {
         LinearLayout item = new LinearLayout(mContext);
         item.setOrientation(LinearLayout.HORIZONTAL);
@@ -688,20 +604,16 @@ public class ModMenu {
         title.setTextColor(COLOR_TEXT_PRIMARY);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        LinearLayout.LayoutParams tParams = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        title.setLayoutParams(tParams);
+        title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
         item.addView(title);
 
         Switch sw = new Switch(mContext);
-        boolean initialVal = MenuPreferences.loadPrefBool(label, featId, defaultVal);
-        sw.setChecked(initialVal);
-
+        // Bind switch to central MenuController
+        mController.bindSwitch(sw, featId, label, defaultVal);
         applySwitchStyling(sw);
 
         sw.setOnCheckedChangeListener((btn, isChecked) -> {
-            MenuPreferences.changeFeatureBool(label, featId, isChecked);
-            NativeBridge.setFeatureState(featId, isChecked);
+            mController.toggleFeature(mContext, featId, label, isChecked);
             applySwitchStyling(sw);
         });
 
@@ -719,9 +631,6 @@ public class ModMenu {
         }
     }
 
-    /**
-     * Modern Slider (SeekBar) Card Item
-     */
     private void addSliderItem(LinearLayout container, int featId, String label, int min, int max) {
         LinearLayout item = new LinearLayout(mContext);
         item.setOrientation(LinearLayout.VERTICAL);
@@ -734,7 +643,6 @@ public class ModMenu {
         itemBg.setStroke(dp(1), COLOR_ITEM_BORDER);
         item.setBackground(itemBg);
 
-        // Header Row: Label on Left, Live Badge on Right
         LinearLayout topRow = new LinearLayout(mContext);
         topRow.setOrientation(LinearLayout.HORIZONTAL);
         topRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -744,9 +652,7 @@ public class ModMenu {
         title.setTextColor(COLOR_TEXT_PRIMARY);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        LinearLayout.LayoutParams tParams = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        title.setLayoutParams(tParams);
+        title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
         topRow.addView(title);
 
         TextView valBadge = new TextView(mContext);
@@ -757,46 +663,21 @@ public class ModMenu {
 
         item.addView(topRow);
 
-        // SeekBar Row
         SeekBar seekBar = new SeekBar(mContext);
         seekBar.setPadding(dp(4), dp(6), dp(4), dp(2));
-        seekBar.setMax(max - min);
-
-        int savedVal = MenuPreferences.loadPrefInt(label, featId);
-        int currentVal = (savedVal >= min && savedVal <= max) ? savedVal : min;
-        seekBar.setProgress(currentVal - min);
-        valBadge.setText(String.valueOf(currentVal));
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             seekBar.setProgressTintList(ColorStateList.valueOf(COLOR_ACCENT_BLUE));
             seekBar.setThumbTintList(ColorStateList.valueOf(COLOR_ACCENT_CYAN));
         }
 
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
-                int actual = min + progress;
-                valBadge.setText(String.valueOf(actual));
-                if (fromUser) {
-                    MenuPreferences.changeFeatureInt(label, featId, actual);
-                    NativeBridge.setFeatureFloat(featId, (float) actual);
-                }
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar sb) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar sb) {}
-        });
+        // Bind seekbar to central MenuController
+        mController.bindSeekBar(seekBar, valBadge, featId, label, min, max, "");
 
         item.addView(seekBar);
         container.addView(item);
     }
 
-    /**
-     * Modern Option Selector (Segmented Chips)
-     */
     private void addOptionsItem(LinearLayout container, int featId, String label, String[] options) {
         LinearLayout item = new LinearLayout(mContext);
         item.setOrientation(LinearLayout.VERTICAL);
@@ -820,14 +701,13 @@ public class ModMenu {
         chipsRow.setOrientation(LinearLayout.HORIZONTAL);
         chipsRow.setPadding(0, dp(6), 0, 0);
 
-        int savedIndex = MenuPreferences.loadPrefInt(label, featId);
+        int savedIndex = mController.getOptionIndex(mContext, featId, label, options.length, 0);
         final List<TextView> chipViews = new ArrayList<>();
 
         for (int i = 0; i < options.length; i++) {
             final int index = i;
             TextView chip = new TextView(mContext);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                    0, dp(26), 1.0f);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(26), 1.0f);
             p.setMargins(dp(2), 0, dp(2), 0);
             chip.setLayoutParams(p);
             chip.setText(options[i]);
@@ -837,8 +717,7 @@ public class ModMenu {
             chip.setSingleLine(true);
 
             chip.setOnClickListener(v -> {
-                MenuPreferences.changeFeatureInt(label, featId, index);
-                NativeBridge.setFeatureFloat(featId, (float) index);
+                mController.setOptionValue(mContext, featId, label, index);
                 updateChipStates(chipViews, index);
             });
 
@@ -869,8 +748,6 @@ public class ModMenu {
         }
     }
 
-    // --- Telemetry Poller ---
-
     private void startTelemetryPoller() {
         mMainHandler.postDelayed(new Runnable() {
             @Override
@@ -884,7 +761,7 @@ public class ModMenu {
     }
 
     private void updateLiveTelemetry() {
-        int pid = NativeBridge.getDetectedGamePid();
+        int pid = mController.getTargetPid();
         if (pid > 0) {
             mStatusChip.setText("● CONNECTED (" + pid + ")");
             mStatusChip.setTextColor(COLOR_STATUS_GREEN);
