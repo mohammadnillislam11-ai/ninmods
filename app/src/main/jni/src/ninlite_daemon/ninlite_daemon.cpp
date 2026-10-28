@@ -108,6 +108,8 @@
 #include "../Unity/Vector4.hpp"
 #include "../Unity/Quaternion.hpp"
 
+#define TAG "NINLITE_DAEMON"
+
 static void DaemonLog(const char* level, const char* format, ...) {
     char buf[1024];
     va_list args;
