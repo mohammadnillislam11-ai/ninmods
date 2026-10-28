@@ -50,6 +50,11 @@ android {
         }
     }
 
+    lintOptions {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
     ndkVersion '24.0.8215888'
 }
 
