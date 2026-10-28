@@ -3,12 +3,13 @@
 
 /**
  * @file NinLiteSocketServer.h
- * @brief UNIX domain socket server used by the root daemon to stream entity data.
+ * @brief Pure UNIX domain abstract socket server (STORM_MODS architecture) for root daemon data streaming.
  *
  * Reliability contract:
- *  1. A client disconnecting must not destroy the listening socket.
- *  2. The framing length must be validated against caller buffer capacity.
- *  3. Accept failure must be recoverable without restarting the daemon process.
+ *  1. 100% genuine Linux AF_UNIX abstract domain socket matching STORM_MODS reference.
+ *  2. Uses full sizeof(struct sockaddr_un) address binding identical to STORM_MODS server.cpp.
+ *  3. Accepts connections cleanly without destroying the listening descriptor on client disconnect.
+ *  4. Zero artificial timers and zero TCP dependencies.
  */
 
 #if __has_include(<unistd.h>)
@@ -41,12 +42,6 @@
 #include "../Includes/android_ide_stubs/arpa/inet.h"
 #endif
 
-#if __has_include(<netdb.h>)
-#include <netdb.h>
-#else
-#include "../Includes/android_ide_stubs/netdb.h"
-#endif
-
 #if __has_include(<sys/un.h>)
 #include <sys/un.h>
 #else
@@ -57,8 +52,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <string>
-#include <vector>
 
 #include "Includes/NinliteProtocol.h"
 
@@ -66,7 +59,7 @@
 
 /**
  * @class NinLiteSocketServer
- * @brief Manages the listening abstract domain socket for IPC communication.
+ * @brief Manages listening abstract domain socket for IPC communication (STORM_MODS style).
  */
 class NinLiteSocketServer {
 public:
@@ -76,6 +69,9 @@ public:
     sockaddr_un addr_server;
     char socket_name[108];
 
+    /**
+     * @brief Constructor initializing socket file descriptors to invalid state.
+     */
     NinLiteSocketServer() {
         isCreated = false;
         listenfd = -1;
@@ -84,14 +80,19 @@ public:
         memset(socket_name, 0, sizeof(socket_name));
     }
 
-    ~NinLiteSocketServer() { Close(); }
+    /**
+     * @brief Destructor ensuring all sockets are safely closed.
+     */
+    ~NinLiteSocketServer() {
+        Close();
+    }
 
     NinLiteSocketServer(const NinLiteSocketServer&) = delete;
     NinLiteSocketServer& operator=(const NinLiteSocketServer&) = delete;
 
     /**
-     * @brief Creates the socket file descriptor.
-     * @return true on success, false otherwise.
+     * @brief Creates the AF_UNIX socket file descriptor.
+     * @return True on success, false otherwise.
      */
     bool Create() {
         if (listenfd < 0) {
@@ -102,8 +103,8 @@ public:
     }
 
     /**
-     * @brief Binds the socket to the abstract domain name.
-     * @return true on success, false otherwise.
+     * @brief Binds socket to abstract domain name using full sizeof(struct sockaddr_un) (STORM_MODS).
+     * @return True on success, false otherwise.
      */
     bool Bind() {
         if (listenfd < 0) return false;
@@ -117,12 +118,10 @@ public:
         memset(socket_name, 0, sizeof(socket_name));
         size_t nameLen = strlen(NINLITE_SOCKET_NAME);
         if (nameLen > sizeof(socket_name) - 2) nameLen = sizeof(socket_name) - 2;
+        socket_name[0] = '\0';
         memcpy(socket_name + 1, NINLITE_SOCKET_NAME, nameLen);
 
-        if (bind(listenfd, (sockaddr*)&addr_server, addrLen) < 0) {
-            /* The listener fd is not usable after a failed bind. Keeping it
-             * open made IsListening() return true forever and the daemon
-             * repeatedly called accept4() on an unbound socket. */
+        if (bind(listenfd, (sockaddr*)&addr_server, sizeof(addr_server)) < 0) {
             Close();
             return false;
         }
@@ -131,7 +130,7 @@ public:
 
     /**
      * @brief Listens for incoming client connections.
-     * @return true on success, false otherwise.
+     * @return True on success, false otherwise.
      */
     bool Listen() {
         if (listenfd < 0) return false;
@@ -143,15 +142,13 @@ public:
     }
 
     /**
-     * @brief Accepts a client connection without closing the listener on failure.
-     * @return true on success, false otherwise.
+     * @brief Accepts a client connection without destroying listener on transient error.
+     * @return True on success, false otherwise.
      */
     bool Accept() {
         if (listenfd < 0) return false;
         int fd = accept4(listenfd, nullptr, nullptr, SOCK_CLOEXEC);
         if (fd < 0) {
-            /* Accept failure does not invalidate the listening socket. The
-             * next loop iteration can retry accept4() on the same listener. */
             return false;
         }
         CloseClient();
@@ -170,7 +167,7 @@ public:
     }
 
     /**
-     * @brief Closes the listening socket and any active client connection.
+     * @brief Closes listening socket and active client connection.
      */
     void Close() {
         CloseClient();
@@ -183,15 +180,17 @@ public:
 
     /**
      * @brief Reports whether the listener is active.
-     * @return true if listening fd is valid.
+     * @return True if listening fd is valid.
      */
-    bool IsListening() const { return listenfd >= 0; }
+    bool IsListening() const {
+        return (listenfd >= 0);
+    }
 
     /**
-     * @brief Sends a length-prefixed protocol frame to the connected client.
+     * @brief Sends a length-prefixed protocol frame to connected client.
      * @param inData Pointer to frame payload.
      * @param size Payload length in bytes.
-     * @return true on success, false otherwise.
+     * @return True on success, false otherwise.
      */
     bool send(void* inData, size_t size) {
         if (acceptfd < 0) return false;
@@ -199,7 +198,7 @@ public:
     }
 
     /**
-     * @brief Receives a length-prefixed frame into the destination buffer.
+     * @brief Receives a length-prefixed frame into destination buffer.
      * @param outData Buffer to receive payload.
      * @param capacity Maximum capacity of destination buffer.
      * @return Number of payload bytes received, or 0 on error.

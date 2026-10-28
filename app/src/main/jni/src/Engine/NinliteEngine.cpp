@@ -180,7 +180,15 @@ void StartEngine(const std::string &nativeLibDir) {
                 "allow su untrusted_app_32 file { read write open getattr }",
                 "allow su untrusted_app_30 file { read write open getattr }",
                 "allow su priv_app file { read write open getattr }",
-                "allow su su file { execute execute_no_trans open read write }"
+                "allow su su file { execute execute_no_trans open read write }",
+                "allow untrusted_app su unix_stream_socket { connectto read write }",
+                "allow untrusted_app_32 su unix_stream_socket { connectto read write }",
+                "allow untrusted_app_30 su unix_stream_socket { connectto read write }",
+                "allow untrusted_app_29 su unix_stream_socket { connectto read write }",
+                "allow su untrusted_app unix_stream_socket { connectto read write }",
+                "allow su untrusted_app_32 unix_stream_socket { connectto read write }",
+                "allow su untrusted_app_30 unix_stream_socket { connectto read write }",
+                "allow su untrusted_app_29 unix_stream_socket { connectto read write }"
             };
             script += "if command -v magiskpolicy >/dev/null 2>&1; then\n";
             for (const char *rule : selinuxRules) {
@@ -215,7 +223,6 @@ void StartEngine(const std::string &nativeLibDir) {
             script += "else\n";
             script += "  echo \"[INFO] ninlite_daemon deployed to " + finalExecPath + "\" >> " + daemonLog + "\n";
             script += "  chmod 777 " + finalExecPath + " >/dev/null 2>&1\n";
-            script += "  chcon u:object_r:system_file:s0 " + finalExecPath + " >/dev/null 2>&1\n";
             script += "  if command -v nohup >/dev/null 2>&1; then\n";
             script += "    nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
             script += "  else\n";

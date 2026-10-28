@@ -95,8 +95,8 @@ public class MainActivity extends BaseActivity {
 
         if (isNavigatingAway) {
             isNavigatingAway = false;
-            // Delay check by 250ms to allow Android OS AppOps service to commit permission state
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            // Post naturally to Android main looper queue without artificial timers
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
                 if (isFinishing() || isAppStarted) return;
                 if (currentStep == STEP_OVERLAY) {
                     if (isOverlayGranted()) {
@@ -108,7 +108,7 @@ public class MainActivity extends BaseActivity {
                     }
                 }
                 executeCurrentStep();
-            }, 250);
+            });
         } else {
             // Check in case user returned without isNavigatingAway trigger or state changed
             if (currentStep == STEP_OVERLAY && isOverlayGranted()) {

@@ -432,11 +432,11 @@ public class ModMenu {
             mExpandedView.setVisibility(View.GONE);
         }
 
-        mMainHandler.postDelayed(() -> {
+        mMainHandler.post(() -> {
             populateAllFeatures();
             FeatureSettings.applyAllToEngine();
             startTelemetryPoller();
-        }, 200);
+        });
     }
 
     private void populateAllFeatures() {

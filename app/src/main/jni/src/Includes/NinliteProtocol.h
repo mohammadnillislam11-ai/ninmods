@@ -37,8 +37,8 @@
 #include <unistd.h>
 #include "Logger.h"
 
-/* Abstract UNIX domain socket name (leading NUL => abstract namespace). */
-#define NINLITE_SOCKET_NAME "ninlite_daemon_stream"
+#define SOCKET_NAME "УБИЙЦА. ХД"
+#define NINLITE_SOCKET_NAME "УБИЙЦА. ХД"
 
 namespace Ninlite {
 
@@ -60,7 +60,7 @@ namespace Ninlite {
  * ------------------------------------------------------------------ */
 inline socklen_t BuildAbstractAddress(struct sockaddr_un* addr) {
     if (!addr) return 0;
-    memset(addr, 0, sizeof(*addr));
+    memset(addr, 0, sizeof(struct sockaddr_un));
     addr->sun_family = AF_UNIX;
     addr->sun_path[0] = '\0';                 /* leading NUL => abstract */
 
@@ -70,9 +70,8 @@ inline socklen_t BuildAbstractAddress(struct sockaddr_un* addr) {
     }
     memcpy(addr->sun_path + 1, NINLITE_SOCKET_NAME, nameLen);
 
-    /* The abstract name length is derived from this value, so it MUST be
-     * identical on the bind() and the connect() side. */
-    return (socklen_t)(sizeof(sa_family_t) + 1 + nameLen);
+    /* Use full sizeof(struct sockaddr_un) matching STORM_MODS server.cpp / client.cpp */
+    return (socklen_t)sizeof(struct sockaddr_un);
 }
 
 
@@ -115,11 +114,11 @@ enum PlayerFlags : uint32_t {
 
 #pragma pack(push, 4)
 struct Request {
-    int32_t  mode;
-    int32_t  value;
-    int32_t  screenWidth;
-    int32_t  screenHeight;
-    uint32_t enabled;      /* 0 / 1 - no C++ `bool` on the wire */
+    int32_t  mode;          /* Matches Mode in STORM_MODS / Power */
+    uint32_t enabled;       /* Matches m_IsOn in STORM_MODS / Power (4 bytes) */
+    int32_t  value;         /* Matches value in STORM_MODS / Power */
+    int32_t  screenWidth;   /* Matches ScreenWidth in STORM_MODS / Power */
+    int32_t  screenHeight;  /* Matches ScreenHeight in STORM_MODS / Power */
 };
 #pragma pack(pop)
 
@@ -291,9 +290,7 @@ public:
         }
     }
 
-    /* Opens the abstract UNIX socket. Returns false when the Daemon is not
-     * listening. Never blocks for more than a few milliseconds because an
-     * abstract UNIX socket connect() fails immediately with ECONNREFUSED. */
+    /* Opens the abstract UNIX socket matching STORM_MODS client.cpp. */
     bool Connect() {
         if (fd_ >= 0) return true;
 
@@ -301,15 +298,13 @@ public:
         if (sock < 0) return false;
 
         struct sockaddr_un addr;
-        /* The address (name bytes AND length) is built by the shared helper
-         * so that it can never differ from the one the Daemon binds to. */
         socklen_t len = BuildAbstractAddress(&addr);
         if (len == 0) {
             ::close(sock);
             return false;
         }
 
-        if (::connect(sock, (struct sockaddr*)&addr, len) != 0) {
+        if (::connect(sock, (struct sockaddr*)&addr, sizeof(addr)) != 0) {
             int err = errno;
             ::close(sock);
             NinLogger::Log("NIN_CLIENT", "[DEBUG] connect() error: %d (%s)", err, strerror(err));
