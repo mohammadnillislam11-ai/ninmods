@@ -1,3 +1,5 @@
+package com.ninmods.main.menu;
+
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -263,7 +265,7 @@ public final class MenuController {
         try {
             FeatureCatalog cat = FeatureCatalog.byNativeId(featNum);
             if (cat != null) {
-                FeatureSettings.setSwitchState(cat, isOn);
+                FeatureSettings.setEnabled(cat, isOn);
             }
         } catch (Throwable ignored) {}
 
@@ -289,7 +291,7 @@ public final class MenuController {
         try {
             FeatureCatalog cat = FeatureCatalog.byNativeId(featNum);
             if (cat != null) {
-                FeatureSettings.setSliderValue(cat, value);
+                FeatureSettings.setIntValue(cat, value);
             }
         } catch (Throwable ignored) {}
 
@@ -336,7 +338,7 @@ public final class MenuController {
             if (featNum > 0) {
                 FeatureCatalog cat = FeatureCatalog.byNativeId(featNum);
                 if (cat != null) {
-                    return FeatureSettings.getSwitchState(cat);
+                    return FeatureSettings.isEnabled(cat);
                 }
             }
         } catch (Throwable ignored) {}
