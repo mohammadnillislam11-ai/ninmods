@@ -41,15 +41,11 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/src/ninlite_daemon
 
 
-# Added -frtti to fix the dynamic_cast error
 LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti
 LOCAL_CFLAGS    := -Wno-error=format-security -fpermissive -fvisibility=hidden -fexceptions -frtti -DNDEBUG
-
-# Moved -latomic here to fix the linker warning
 LOCAL_LDFLAGS   := -Wl,--exclude-libs,ALL -s -latomic
 LOCAL_LDLIBS    := -llog -landroid -lGLESv3 -lEGL -lz
 
-LOCAL_ARM_MODE  := arm
 include $(BUILD_SHARED_LIBRARY)
 
 # --- Module: ninlite_daemon (Pure Root Daemon Engine (root daemon architecture)) ---
@@ -61,6 +57,5 @@ LOCAL_CPPFLAGS  := -fvisibility=hidden -DNDEBUG -std=c++17 -fexceptions -frtti
 LOCAL_CFLAGS    := -Wno-error=format-security -fpermissive -fvisibility=hidden -fexceptions -frtti -DNDEBUG
 LOCAL_LDFLAGS   := -Wl,--exclude-libs,ALL -s
 LOCAL_LDLIBS    := -llog -lz
-LOCAL_ARM_MODE  := arm
 include $(BUILD_EXECUTABLE)
 

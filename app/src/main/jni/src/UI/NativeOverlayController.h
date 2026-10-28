@@ -53,9 +53,6 @@ public:
     // Apply device-specific DPI and touch-friendly styling
     static void ApplyDpiTheme();
 
-    // Main Render Loop (called every frame on OpenGL ES3 EGL surface)
-    static void RenderFrame(bool isKernelActive);
-
     // Check if any modal popup (License or Driver Alert) is currently requesting input
     static bool IsModalPopupActive();
 

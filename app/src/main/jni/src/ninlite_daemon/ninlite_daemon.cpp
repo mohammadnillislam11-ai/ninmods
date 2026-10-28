@@ -1055,6 +1055,9 @@ int main(int argc, char* argv[]) {
     signal(SIGPIPE, SIG_IGN);
 
     LOGI("=== NINLITE ROOT DAEMON (official Linux process_vm_readv) STARTING ===");
+
+    /* The app-side RT library also links Namegun.cpp for its weapon-name
+     * renderer, so initialise the shared lookup table in both binaries. */
     Namegun::Init();
 
     if (!BringServerUpWithRetry(10, 500)) {
