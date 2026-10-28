@@ -205,8 +205,12 @@ void StartEngine(const std::string &nativeLibDir) {
             script += "mkdir -p /storage/emulated/0/Download/ninmods >/dev/null 2>&1\n";
             script += "if [ -f " + daemonLibPath + " ]; then cp -f " + daemonLibPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
             script += "if [ ! -f " + finalExecPath + " ] && [ -f " + daemonAltPath + " ]; then cp -f " + daemonAltPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
-            script += "chmod 755 " + finalExecPath + " >/dev/null 2>&1\n";
-            script += "nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "chmod 777 " + finalExecPath + " >/dev/null 2>&1\n";
+            script += "if command -v nohup >/dev/null 2>&1; then\n";
+            script += "  nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "else\n";
+            script += "  " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "fi\n";
 
             int rc = RunRootScriptViaJava(script);
             if (rc != 0) {
@@ -235,6 +239,9 @@ void StartEngine(const std::string &nativeLibDir) {
             NIN_LOGI("QX", "root daemon is up and attached");
         } else {
             NIN_LOGE("QX", "root daemon did not answer - the engine stays stopped");
+            if (g_ninlite_last_error.empty()) {
+                g_ninlite_last_error = "Root daemon not responding (verify Superuser grant)";
+            }
         }
         g_ninlite_starting.store(false, std::memory_order_relaxed);
     }).detach();

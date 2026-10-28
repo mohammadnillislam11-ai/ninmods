@@ -114,9 +114,16 @@ public final class NativeBridge {
             return -1;
         }
         try {
-            Process process = new ProcessBuilder("su", "-c", script)
+            Process process = new ProcessBuilder("su")
                     .redirectErrorStream(true)
                     .start();
+
+            // Feed script directly into root shell standard input
+            try (java.io.OutputStream os = process.getOutputStream()) {
+                os.write(script.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                os.write("\nexit\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                os.flush();
+            }
 
             final java.util.concurrent.atomic.AtomicInteger exitCode =
                     new java.util.concurrent.atomic.AtomicInteger(-1);
@@ -127,7 +134,7 @@ public final class NativeBridge {
                         new java.io.InputStreamReader(process.getInputStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        AppLogger.log(TAG, line);
+                        AppLogger.log(TAG, "[SU] " + line);
                     }
                     exitCode.set(process.waitFor());
                 } catch (Throwable ignored) {}
