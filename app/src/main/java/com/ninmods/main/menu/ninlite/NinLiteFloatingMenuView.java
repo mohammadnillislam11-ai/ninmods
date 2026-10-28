@@ -70,7 +70,7 @@ public class NinLiteFloatingMenuView {
 
     private WindowManager.LayoutParams mParams;
     private FrameLayout mRootFrame;
-    private RelativeLayout mCollapsedView;
+    private View mCollapsedView;
     private LinearLayout mExpandedView;
     private ImageView mStartImage;
 
@@ -184,45 +184,28 @@ public class NinLiteFloatingMenuView {
 
         mParams = mController.createWindowLayoutParams(dp(20), dp(140));
 
-        mCollapsedView = createCollapsedLogoView();
         mExpandedView = createExpandedMenuView();
+        mCollapsedView = createCollapsedLogoView();
 
         mRootFrame.addView(mCollapsedView);
         mRootFrame.addView(mExpandedView);
-
-        View.OnTouchListener logoTouch = mController.createDragTouchListener(
-                mRootFrame, mParams, mWindowManager, mCollapsedView, mExpandedView,
-                this::expandMenu, this::collapseToLogo);
-
-        mCollapsedView.setOnTouchListener(logoTouch);
-        if (mStartImage != null) {
-            mStartImage.setOnTouchListener(logoTouch);
-        }
 
         mCollapsedView.setVisibility(View.VISIBLE);
         mExpandedView.setVisibility(View.GONE);
     }
 
-    private RelativeLayout createCollapsedLogoView() {
-        RelativeLayout collapsed = new RelativeLayout(mContext);
-        int logoSize = dp(54);
-        collapsed.setLayoutParams(new RelativeLayout.LayoutParams(logoSize, logoSize));
+    private View createCollapsedLogoView() {
+        View.OnTouchListener logoTouch = mController.createDragTouchListener(
+                mRootFrame, mParams, mWindowManager, null, mExpandedView,
+                this::expandMenu, this::collapseToLogo);
 
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(0xF0080C14);
-        bg.setStroke(dp(2.2f), COLOR_CYAN);
-        collapsed.setBackground(bg);
-
-        mStartImage = new ImageView(mContext);
-        RelativeLayout.LayoutParams ivLp = new RelativeLayout.LayoutParams(dp(36), dp(36));
-        ivLp.addRule(RelativeLayout.CENTER_IN_PARENT);
-        mStartImage.setLayoutParams(ivLp);
-        mStartImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        mStartImage.setImageResource(R.drawable.ic_menu_ninlite);
-        collapsed.addView(mStartImage);
-
-        return collapsed;
+        return mController.buildFloatingLogoWithCloseBadge(
+                mContext,
+                R.drawable.ic_menu_ninlite,
+                COLOR_CYAN,
+                logoTouch,
+                () -> mController.killOverlay(mContext, "ninlite", this::release)
+        );
     }
 
     private LinearLayout createExpandedMenuView() {

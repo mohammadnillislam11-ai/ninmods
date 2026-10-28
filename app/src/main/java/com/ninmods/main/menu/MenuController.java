@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
@@ -22,6 +23,7 @@ import android.view.animation.OvershootInterpolator;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.Switch;
@@ -256,6 +258,140 @@ public final class MenuController {
                     })
                     .start();
         }
+    }
+
+    /**
+     * Central builder for modern floating logo widgets with an integrated corner close/kill button.
+     * Tapping the corner close badge kills and dismisses the floating overlay completely.
+     * Tapping or dragging the central bubble operates the full menu lifecycle.
+     *
+     * @param context Android context.
+     * @param iconResId Drawable resource ID for the brand logo.
+     * @param accentColor Primary theme accent color for the glowing ring.
+     * @param dragListener Universal touch drag and tap listener.
+     * @param onKillAction Callback executed when the close badge is clicked to kill the overlay.
+     * @return Complete modern floating logo container with integrated corner kill button.
+     */
+    public FrameLayout buildFloatingLogoWithCloseBadge(
+            final Context context,
+            final int iconResId,
+            final int accentColor,
+            final View.OnTouchListener dragListener,
+            final Runnable onKillAction) {
+
+        final FrameLayout container = new FrameLayout(context);
+        final int containerSize = dp(62);
+        container.setLayoutParams(new FrameLayout.LayoutParams(containerSize, containerSize));
+        container.setClipChildren(false);
+        container.setClipToPadding(false);
+
+        final int bubbleSize = dp(52);
+        final FrameLayout bubble = new FrameLayout(context);
+        FrameLayout.LayoutParams bubbleLp = new FrameLayout.LayoutParams(bubbleSize, bubbleSize);
+        bubbleLp.gravity = Gravity.BOTTOM | Gravity.START;
+        bubble.setLayoutParams(bubbleLp);
+
+        GradientDrawable bubbleBg = new GradientDrawable();
+        bubbleBg.setShape(GradientDrawable.OVAL);
+        bubbleBg.setColor(0xF00A0D14);
+        bubbleBg.setStroke(dp(2.2f), accentColor);
+        bubble.setBackground(bubbleBg);
+
+        ImageView iv = new ImageView(context);
+        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(dp(32), dp(32));
+        ivLp.gravity = Gravity.CENTER;
+        iv.setLayoutParams(ivLp);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        try {
+            iv.setImageResource(iconResId);
+        } catch (Throwable t) {
+            try {
+                iv.setImageResource(android.R.drawable.ic_dialog_info);
+            } catch (Throwable ignored) {}
+        }
+        bubble.addView(iv);
+
+        if (dragListener != null) {
+            bubble.setOnTouchListener(dragListener);
+        }
+        container.addView(bubble);
+
+        final FrameLayout closeBadge = new FrameLayout(context);
+        final int badgeSize = dp(20);
+        FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(badgeSize, badgeSize);
+        badgeLp.gravity = Gravity.TOP | Gravity.END;
+        closeBadge.setLayoutParams(badgeLp);
+
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setShape(GradientDrawable.OVAL);
+        badgeBg.setColor(0xF2300A10);
+        badgeBg.setStroke(dp(1.5f), 0xFFFF3B30);
+        closeBadge.setBackground(badgeBg);
+        closeBadge.setClickable(true);
+        closeBadge.setFocusable(true);
+
+        TextView closeIcon = new TextView(context);
+        FrameLayout.LayoutParams ciLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ciLp.gravity = Gravity.CENTER;
+        closeIcon.setLayoutParams(ciLp);
+        closeIcon.setText("✕");
+        closeIcon.setTextColor(0xFFFFFFFF);
+        closeIcon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
+        closeIcon.setTypeface(Typeface.DEFAULT_BOLD);
+        closeIcon.setGravity(Gravity.CENTER);
+        closeBadge.addView(closeIcon);
+
+        closeBadge.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                closeBadge.animate().scaleX(0.8f).scaleY(0.8f).setDuration(60).start();
+            } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                closeBadge.animate().scaleX(1.0f).scaleY(1.0f).setDuration(60).start();
+                container.animate()
+                        .alpha(0f)
+                        .scaleX(0.3f)
+                        .scaleY(0.3f)
+                        .setDuration(160)
+                        .withEndAction(() -> {
+                            if (onKillAction != null) {
+                                onKillAction.run();
+                            }
+                        })
+                        .start();
+                return true;
+            } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+                closeBadge.animate().scaleX(1.0f).scaleY(1.0f).setDuration(60).start();
+            }
+            return true;
+        });
+
+        container.addView(closeBadge);
+        return container;
+    }
+
+    /**
+     * Centrally kills and dismisses the floating overlay completely.
+     *
+     * @param context Android context.
+     * @param overlayId Overlay identifier ("nin" or "ninlite").
+     * @param customCleanup Optional additional cleanup runnable.
+     */
+    public void killOverlay(final Context context, final String overlayId, final Runnable customCleanup) {
+        mMainHandler.post(() -> {
+            try {
+                if (customCleanup != null) {
+                    customCleanup.run();
+                }
+                if ("ninlite".equalsIgnoreCase(overlayId)) {
+                    com.ninmods.main.menu.ninlite.NinLiteOverlayManager.stop();
+                } else {
+                    com.ninmods.main.overlay.NativeOverlayManager.stop();
+                }
+                AppLogger.log(TAG, "Floating overlay killed cleanly: " + overlayId);
+            } catch (Throwable t) {
+                AppLogger.logE(TAG, "Failed to kill floating overlay: " + overlayId, t);
+            }
+        });
     }
 
     /**

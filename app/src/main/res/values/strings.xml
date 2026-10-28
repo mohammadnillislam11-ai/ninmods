@@ -109,10 +109,6 @@
     <string name="menu_tactical_1_sub">VIP</string>
     <string name="menu_tactical_2_name">NINLITE</string>
     <string name="menu_tactical_2_sub">LITE</string>
-    <string name="menu_tactical_3_name">CROSS</string>
-    <string name="menu_tactical_3_sub">PRECISION</string>
-    <string name="menu_tactical_4_name">DELTA</string>
-    <string name="menu_tactical_4_sub">STEALTH</string>
 
     <!-- Reference Mod Menu (DSL driven floating menu) -->
     <!-- The colour of the value inside a slider label is part of the HTML

@@ -95,7 +95,7 @@ public class ModMenu {
     private WindowManager.LayoutParams vmParams;
 
     private FrameLayout rootFrame;
-    private RelativeLayout mCollapsedView;
+    private View mCollapsedView;
     private LinearLayout mExpandedView;
     private ImageView mFloatingBubble;
 
@@ -134,38 +134,17 @@ public class ModMenu {
     }
 
     /**
-     * Floating Draggable Bubble (Collapsed State)
+     * Floating Draggable Bubble with Integrated Corner Close Button (Collapsed State)
      */
     @SuppressLint("ClickableViewAccessibility")
     private void buildCollapsedView() {
-        mCollapsedView = new RelativeLayout(mContext);
-        mCollapsedView.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        int bubblePx = dp(ICON_SIZE_DP);
-
-        mFloatingBubble = new ImageView(mContext);
-        RelativeLayout.LayoutParams iconParams = new RelativeLayout.LayoutParams(bubblePx, bubblePx);
-        mFloatingBubble.setLayoutParams(iconParams);
-        mFloatingBubble.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        mFloatingBubble.setPadding(dp(10), dp(10), dp(10), dp(10));
-
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(0xE60F121C);
-        bg.setStroke(dp(2), COLOR_ACCENT_CYAN);
-        mFloatingBubble.setBackground(bg);
-
-        try {
-            mFloatingBubble.setImageResource(R.drawable.nin_logo);
-        } catch (Throwable t) {
-            try {
-                mFloatingBubble.setImageResource(R.drawable.ic_launcher);
-            } catch (Throwable ignored) {}
-        }
-
-        mFloatingBubble.setOnTouchListener(createDragListener(true));
-        mCollapsedView.addView(mFloatingBubble);
+        mCollapsedView = mController.buildFloatingLogoWithCloseBadge(
+                mContext,
+                R.drawable.nin_logo,
+                COLOR_ACCENT_CYAN,
+                createDragListener(true),
+                () -> mController.killOverlay(mContext, "nin", this::onDestroy)
+        );
     }
 
     /**
