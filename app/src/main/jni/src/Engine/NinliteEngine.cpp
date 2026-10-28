@@ -128,7 +128,7 @@ bool CheckEmulatorDetected() {
  * @return the connection mode for the UI and the logs
  */
 const char *GetConnectionModeStr() {
-    if (isNinLiteDaemonAvailable()) {
+    if (isNinLiteDaemonAvailable() || g_ninlite_engine_started.load(std::memory_order_relaxed)) {
         return "QX Root Daemon (IPC)";
     }
     if (g_ninlite_starting.load(std::memory_order_relaxed)) {
@@ -301,7 +301,7 @@ bool IsSetupDone() {
 std::string GetStateJson() {
     bool isStarting = g_ninlite_starting.load(std::memory_order_relaxed);
     bool daemonRunning = isNinLiteDaemonAvailable();
-    bool isEngineStarted = g_ninlite_engine_started.load(std::memory_order_relaxed) && daemonRunning;
+    bool isEngineStarted = g_ninlite_engine_started.load(std::memory_order_relaxed);
 
     NinDetection::GameProcess detected = NinDetection::Detect();
     pid_t pid = detected.pid;

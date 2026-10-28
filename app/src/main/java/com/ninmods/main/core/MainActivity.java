@@ -409,9 +409,9 @@ public class MainActivity extends BaseActivity {
             drainStream(process.getInputStream());
             drainStream(process.getErrorStream());
 
-            os.writeBytes("setenforce 0 2>/dev/null\n");
-            os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /dev/nh* /dev/wanbai* /proc/uevents_records 2>/dev/null\n");
-            os.writeBytes("exit\n");
+            os.writeBytes("setenforce 0 2>/dev/null || true\n");
+            os.writeBytes("chmod 666 /dev/BYNb* /dev/mem_tool* /dev/nh* /dev/wanbai* /proc/uevents_records 2>/dev/null || true\n");
+            os.writeBytes("exit 0\n");
             os.flush();
 
             // Compatible wait with 10s timeout that works on every Android version (API 21-35)

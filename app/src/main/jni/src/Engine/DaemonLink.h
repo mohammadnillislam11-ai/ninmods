@@ -125,12 +125,15 @@ private:
              * worker, at most once per 200ms during initial handshake. */
             if (!client.IsConnected()) {
                 auto tryAt = std::chrono::steady_clock::now();
-                if (tryAt - lastConnect >= std::chrono::milliseconds(200)) {
+                if (tryAt - lastConnect >= std::chrono::milliseconds(100)) {
                     lastConnect = tryAt;
                     if (client.Connect()) {
                         std::lock_guard<std::mutex> lock(cacheMutex_);
                         cache_.connected = true;
                         NIN_LOGI("DaemonLink", "Connected to root daemon IPC stream successfully!");
+                    } else {
+                        std::lock_guard<std::mutex> lock(cacheMutex_);
+                        cache_.connected = false;
                     }
                 }
             }
@@ -205,6 +208,7 @@ private:
                     std::lock_guard<std::mutex> lock(cacheMutex_);
                     cache_.detectValid = false;
                     cache_.detectedPid = 0;
+                    cache_.connected = client.IsConnected();
                 }
             }
 

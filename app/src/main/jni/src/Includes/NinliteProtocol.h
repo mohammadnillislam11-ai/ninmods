@@ -35,6 +35,7 @@
 #include <sys/un.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include "Logger.h"
 
 /* Abstract UNIX domain socket name (leading NUL => abstract namespace). */
 #define NINLITE_SOCKET_NAME "ninlite_daemon_stream"
@@ -300,8 +301,8 @@ public:
         if (sock < 0) return false;
 
         struct timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = 200000;                 /* 200 ms guard            */
+        tv.tv_sec = 3;
+        tv.tv_usec = 0;                     /* 3s timeout - never drop on temporary frame lag */
         ::setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         ::setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
@@ -317,12 +318,11 @@ public:
         if (::connect(sock, (struct sockaddr*)&addr, len) != 0) {
             int err = errno;
             ::close(sock);
-            #if __has_include(<android/log.h>)
-            __android_log_print(ANDROID_LOG_DEBUG, "NIN_CLIENT", "connect() error: %d (%s)", err, strerror(err));
-            #endif
+            NinLogger::Log("NIN_CLIENT", "[DEBUG] connect() error: %d (%s)", err, strerror(err));
             return false;
         }
         fd_ = sock;
+        NinLogger::Log("NIN_CLIENT", "connect() succeeded, fd=%d", sock);
         return true;
     }
 
@@ -332,6 +332,8 @@ public:
         if (!Connect()) return false;
 
         if (!SendFrame(fd_, &req, sizeof(req))) {
+            int err = errno;
+            NinLogger::Log("NIN_CLIENT", "[ERROR] SendFrame failed for mode %d: %d (%s)", req.mode, err, strerror(err));
             Close();
             return false;
         }
@@ -340,9 +342,8 @@ public:
         Response tmp;
         size_t got = RecvFrame(fd_, &tmp, sizeof(tmp));
         if (got < sizeof(Response)) {
-            /* The Daemon answers with the full Response structure. A short
-             * frame means a protocol mismatch - drop the connection instead of
-             * interpreting garbage. */
+            int err = errno;
+            NinLogger::Log("NIN_CLIENT", "[ERROR] RecvFrame got %zu bytes (expected %zu): %d (%s)", got, sizeof(Response), err, strerror(err));
             Close();
             return false;
         }
