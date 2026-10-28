@@ -144,6 +144,7 @@ public final class MenuController {
      * @param height Height of the window.
      * @return Initialized WindowManager.LayoutParams configured for application overlay.
      */
+    public WindowManager.LayoutParams createWindowLayoutParams(int posX, int posY, int width, int height) {
         int overlayType = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
@@ -317,10 +318,15 @@ public final class MenuController {
         notifyListeners(featNum, true, (float) optionIndex);
     }
 
-    // =========================================================================
-    // State Query Helpers (Restores state safely from Engine / Preferences)
-    // =========================================================================
-
+    /**
+     * Retrieves the stored or live toggle state of a feature.
+     *
+     * @param context Context used to resolve shared preferences.
+     * @param featNum Native feature index.
+     * @param featName Feature name or key.
+     * @param defaultVal Default state if no prior state was saved.
+     * @return Stored or live boolean state of the feature.
+     */
     public boolean getToggleState(Context context, int featNum, String featName, boolean defaultVal) {
         Context ctx = context != null ? context : mContext;
         if (ctx != null) MenuPreferences.context = ctx;
@@ -338,6 +344,17 @@ public final class MenuController {
         return MenuPreferences.loadPrefBool(featName, featNum, defaultVal);
     }
 
+    /**
+     * Retrieves the stored or live slider value of a feature within bounds.
+     *
+     * @param context Context used to resolve shared preferences.
+     * @param featNum Native feature index.
+     * @param featName Feature name or key.
+     * @param min Minimum allowable value.
+     * @param max Maximum allowable value.
+     * @param defaultVal Default value if unset or out of bounds.
+     * @return Stored or live integer value within [min, max].
+     */
     public int getSliderValue(Context context, int featNum, String featName, int min, int max, int defaultVal) {
         Context ctx = context != null ? context : mContext;
         if (ctx != null) MenuPreferences.context = ctx;
@@ -358,6 +375,16 @@ public final class MenuController {
         return defaultVal >= min && defaultVal <= max ? defaultVal : min;
     }
 
+    /**
+     * Retrieves the stored option selection index for a dropdown or spinner.
+     *
+     * @param context Context used to resolve shared preferences.
+     * @param featNum Native feature index.
+     * @param featName Feature name or key.
+     * @param optionsCount Total number of options available.
+     * @param defaultIndex Default index if unset or invalid.
+     * @return Validated zero-based selection index.
+     */
     public int getOptionIndex(Context context, int featNum, String featName, int optionsCount, int defaultIndex) {
         Context ctx = context != null ? context : mContext;
         if (ctx != null) MenuPreferences.context = ctx;
