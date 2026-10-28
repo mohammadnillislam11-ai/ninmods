@@ -45,6 +45,7 @@
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
 #include "Detection/GameDetection.h"
+#include "Includes/NativeCrypto.h"
 #include "Includes/obfuscate.h"
 #include "Unity/Color.hpp"
 #include "Unity/ESP.h"
@@ -720,8 +721,11 @@ Java_com_ninmods_main_core_NativeBridge_setActiveChannel(JNIEnv *env,
   (void) env;
   (void) clazz;
   /* Rule 3: the user selects the channel, the engine never switches it. */
-  NinChannel::SetActiveChannel(static_cast<int>(channel));
-  NIN_LOGI("RT", "active memory channel: %s", NinChannel::DescribeActiveChannel());
+  if (!NinChannel::SetActiveChannel(static_cast<int>(channel))) {
+    NIN_LOGE("CHANNEL", "Rejected invalid memory channel: %d", static_cast<int>(channel));
+    return;
+  }
+  NIN_LOGI("CHANNEL", "active memory channel: %s", NinChannel::DescribeActiveChannel());
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -1419,6 +1423,7 @@ Java_com_ninmods_main_core_NativeBridge_setEspWatermark(JNIEnv *env, jclass claz
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
   g_JavaVM = vm;
   signal(SIGPIPE, SIG_IGN);
+  Namegun::Init();
 
   /*
    * The mod menu binds its native methods here. A failed binding is logged
