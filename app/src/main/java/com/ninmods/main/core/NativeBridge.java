@@ -121,7 +121,7 @@ public final class NativeBridge {
             // Feed script directly into root shell standard input
             try (java.io.OutputStream os = process.getOutputStream()) {
                 os.write(script.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                os.write("\nexit\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                os.write("\nexit 0\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 os.flush();
             }
 
@@ -140,18 +140,7 @@ public final class NativeBridge {
                 } catch (Throwable ignored) {}
             }, "runAsRootDrain");
             drainer.start();
-
-            /* A broken or half installed root binary can sit forever without
-             * printing a single byte - the old waitFor() then blocked this
-             * thread (and, on the UI path, the whole app) until Android
-             * killed it. The wait is now bounded. */
-            drainer.join(25000);
-            if (drainer.isAlive()) {
-                process.destroyForcibly();
-                drainer.interrupt();
-                Log.e(TAG, "runAsRoot timed out after 25s - root shell unresponsive");
-                return -1;
-            }
+            drainer.join();
             return exitCode.get();
         } catch (Throwable t) {
             Log.e(TAG, "runAsRoot failed", t);

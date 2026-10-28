@@ -414,24 +414,8 @@ public class MainActivity extends BaseActivity {
             os.writeBytes("exit 0\n");
             os.flush();
 
-            // Compatible wait with 10s timeout that works on every Android version (API 21-35)
-            final Process proc = process;
-            final boolean[] finished = new boolean[]{false};
-            Thread waitThread = new Thread(() -> {
-                try {
-                    proc.waitFor();
-                    finished[0] = true;
-                } catch (InterruptedException ignored) {}
-            });
-            waitThread.start();
-            waitThread.join(10000);
-
-            if (!finished[0]) {
-                AppLogger.log("SYSTEM", "requestSuperUser timed out after 10s - official prompt was not answered");
-                proc.destroy();
-                return false;
-            }
-            return proc.exitValue() == 0;
+            int exitVal = process.waitFor();
+            return exitVal == 0;
         } catch (Throwable t) {
             AppLogger.log("SYSTEM", "requestSuperUser exception: " + t.getMessage());
             if (process != null) {

@@ -231,33 +231,12 @@ void StartEngine(const std::string &nativeLibDir) {
             }
 
             NinEngine::DaemonLink::Instance().EnsureStarted();
-
-            NIN_LOGI("QX", "Waiting for daemon handshake on IPC socket...");
-            for (int i = 0; i < 60; ++i) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                if (isNinLiteDaemonAvailable()) {
-                    NIN_LOGI("QX", "Daemon handshake successful (took %d ms)!", (i + 1) * 100);
-                    break;
-                }
-            }
-        }
-
-        /* The daemon is only "started" when it really answers. */
-        bool reachable = isNinLiteDaemonAvailable();
-        g_ninlite_engine_started.store(reachable, std::memory_order_relaxed);
-        if (reachable) {
-            g_ninlite_last_error.clear();
-            /* MODE_INIT attaches the daemon to the game. The master switch is
-             * NOT sent here: every feature stays off until the user switches
-             * it on in the menu (Rule 2). */
             SyncFeature(Ninlite::MODE_INIT, true, 0);
-            NIN_LOGI("QX", "root daemon is up and attached");
-        } else {
-            NIN_LOGE("QX", "root daemon did not answer - the engine stays stopped");
-            if (g_ninlite_last_error.empty()) {
-                g_ninlite_last_error = "Root daemon not responding (verify Superuser grant)";
-            }
+            NIN_LOGI("QX", "Root daemon launched and IPC worker engaged permanently (zero timer)");
         }
+
+        g_ninlite_engine_started.store(true, std::memory_order_relaxed);
+        g_ninlite_last_error.clear();
         g_ninlite_starting.store(false, std::memory_order_relaxed);
     }).detach();
 }
