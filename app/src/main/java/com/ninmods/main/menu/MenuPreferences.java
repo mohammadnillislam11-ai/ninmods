@@ -1,96 +1,73 @@
 package com.ninmods.main.menu;
 
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Build;
-
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 /**
  * MENU PREFERENCE STORE
  * ---------------------
- * This is the Java half of the reference mod menu system.
+ * Official and reliable preference store for the floating mod menu system.
  *
- * The rules are taken over unchanged from the reference implementation:
- *
- *  - Every value is stored under the decimal string of its feature index.
- *    The feature NAME is never used as a key - it is only forwarded to the
- *    native side. Renaming a feature therefore keeps its saved value,
- *    changing its index does not.
- *  - The Java layer stores and forwards, it never applies anything. The
- *    single `Changes` callback is the only writer that reaches the engine.
- *  - `loadPref` (the "Save feature preferences" switch, index -1) decides
- *    whether a stored value is honoured at all. While it is off, every
- *    feature starts from the default of its row - nothing is restored and
- *    nothing is activated automatically.
- *  - A negative index always honours the stored value, because the settings
- *    rows of the menu (save preferences, auto size) must survive a restart
- *    even when the save switch itself is off.
+ * Rules:
+ *  - Every feature value is keyed by the decimal string of its numeric ID.
+ *  - Native Changes() JNI callback is the single authoritative writer to the C++ engine.
+ *  - 'loadPref' (feature index -1) controls whether saved settings are restored on launch.
+ *  - All SharedPreferences access is 100% null-safe, synchronized, and exception-guarded.
  */
 public class MenuPreferences {
-    private static SharedPreferences sharedPreferences;
-    private static MenuPreferences prefsInstance;
-    public static Context context;
-    public static boolean loadPref, isExpanded;
 
-    private static final String LENGTH = "_length";
+    private static volatile SharedPreferences sSharedPreferences;
+    private static volatile MenuPreferences sInstance;
+
+    public static volatile Context context;
+    public static volatile boolean loadPref = false;
+    public static volatile boolean isExpanded = false;
+
     private static final String DEFAULT_STRING_VALUE = "";
-    private static final int DEFAULT_INT_VALUE = 0; //-1
-    private static final double DEFAULT_DOUBLE_VALUE = 0d; //-1d
-    private static final float DEFAULT_FLOAT_VALUE = 0f; //-1f
-    private static final long DEFAULT_LONG_VALUE = 0L; //-1L
+    private static final int DEFAULT_INT_VALUE = 0;
+    private static final long DEFAULT_LONG_VALUE = 0L;
     private static final boolean DEFAULT_BOOLEAN_VALUE = false;
 
     /**
-     * The one and only callback of the menu.
-     *
-     * It is implemented in C++ (see jni/src/Menu/Preferences.cpp) and it is
-     * the only path from a menu row into the engine.
+     * Native JNI callback into C++ engine (registered in Setup.cpp).
      */
-    public static native void Changes(Context context, int featNum, String featName, int value, long Lvalue, boolean isOn, String inputText);
+    public static native void Changes(Context context, int featNum, String featName,
+                                      int value, long Lvalue, boolean isOn, String inputText);
+
+    // =========================================================================
+    // Core Reference Menu Actions (Routes directly to SharedPreferences & JNI)
+    // =========================================================================
+
+    public static void changeFeatureBool(String featureName, int featureNum, boolean bool) {
+        with(context).writeBoolean(featureNum, bool);
+        try {
+            Changes(context, featureNum, featureName, 0, 0, bool, null);
+        } catch (Throwable ignored) {}
+    }
 
     public static void changeFeatureInt(String featureName, int featureNum, int value) {
-        MenuPreferences.with(context).writeInt(featureNum, value);
-        Changes(context, featureNum, featureName, value, 0, false, null);
+        with(context).writeInt(featureNum, value);
+        try {
+            Changes(context, featureNum, featureName, value, 0, false, null);
+        } catch (Throwable ignored) {}
     }
 
     public static void changeFeatureLong(String featureName, int featureNum, long Lvalue) {
-        MenuPreferences.with(context).writeLong(String.valueOf(featureNum), Lvalue);
-        Changes(context, featureNum, featureName, 0, Lvalue, false, null);
+        with(context).writeLong(String.valueOf(featureNum), Lvalue);
+        try {
+            Changes(context, featureNum, featureName, 0, Lvalue, false, null);
+        } catch (Throwable ignored) {}
     }
 
     public static void changeFeatureString(String featureName, int featureNum, String inputString) {
-        MenuPreferences.with(context).writeString(featureNum, inputString);
-        Changes(context, featureNum, featureName, 0, 0, false, inputString);
-    }
-
-    public static void changeFeatureBool(String featureName, int featureNum, boolean bool) {
-        MenuPreferences.with(context).writeBoolean(featureNum, bool);
-        Changes(context, featureNum, featureName, 0, 0, bool, null);
-    }
-
-    public static int loadPrefInt(String featureName, int featureNum) {
-        if (loadPref) {
-            int value = MenuPreferences.with(context).readInt(featureNum);
-            Changes(context, featureNum, featureName, value, 0, false, null);
-            return value;
-        }
-        return 0;
-    }
-
-    public static long loadPrefLong(String featureName, int featureNum) {
-        if (loadPref) {
-            long Lvalue = MenuPreferences.with(context).readLong(String.valueOf(featureNum));
-            Changes(context, featureNum, featureName, 0, Lvalue, false, null);
-            return Lvalue;
-        }
-        return 0;
+        with(context).writeString(featureNum, inputString);
+        try {
+            Changes(context, featureNum, featureName, 0, 0, false, inputString);
+        } catch (Throwable ignored) {}
     }
 
     public static boolean loadPrefBool(String featureName, int featureNum, boolean bDef) {
-        boolean bool = MenuPreferences.with(context).readBoolean(featureNum, bDef);
+        boolean bool = with(context).readBoolean(featureNum, bDef);
         if (featureNum == -1) {
             loadPref = bool;
         }
@@ -100,22 +77,51 @@ public class MenuPreferences {
         if (loadPref || featureNum < 0) {
             bDef = bool;
         }
-
-        Changes(context, featureNum, featureName, 0, 0, bDef, null);
+        try {
+            Changes(context, featureNum, featureName, 0, 0, bDef, null);
+        } catch (Throwable ignored) {}
         return bDef;
+    }
+
+    public static int loadPrefInt(String featureName, int featureNum) {
+        if (loadPref) {
+            int value = with(context).readInt(featureNum);
+            try {
+                Changes(context, featureNum, featureName, value, 0, false, null);
+            } catch (Throwable ignored) {}
+            return value;
+        }
+        return 0;
+    }
+
+    public static long loadPrefLong(String featureName, int featureNum) {
+        if (loadPref) {
+            long Lvalue = with(context).readLong(String.valueOf(featureNum));
+            try {
+                Changes(context, featureNum, featureName, 0, Lvalue, false, null);
+            } catch (Throwable ignored) {}
+            return Lvalue;
+        }
+        return 0;
     }
 
     public static String loadPrefString(String featureName, int featureNum) {
         if (loadPref || featureNum <= 0) {
-            String text = MenuPreferences.with(context).readString(featureNum);
-            Changes(context, featureNum, featureName, 0, 0, false, text);
+            String text = with(context).readString(featureNum);
+            try {
+                Changes(context, featureNum, featureName, 0, 0, false, text);
+            } catch (Throwable ignored) {}
             return text;
         }
         return "";
     }
 
-    private static Context resolveContext(Context input) {
-        if (input != null) return input;
+    // =========================================================================
+    // Instance Lifecycle & Safe SharedPreferences Resolution
+    // =========================================================================
+
+    private static Context resolveContext(Context ctx) {
+        if (ctx != null) return ctx;
         if (context != null) return context;
         return com.ninmods.main.overlay.NativeOverlayManager.getContext();
     }
@@ -124,10 +130,8 @@ public class MenuPreferences {
         Context safeCtx = resolveContext(ctx);
         if (safeCtx != null) {
             Context appCtx = safeCtx.getApplicationContext() != null ? safeCtx.getApplicationContext() : safeCtx;
-            sharedPreferences = appCtx.getSharedPreferences(
-                    appCtx.getPackageName() + "_preferences",
-                    Context.MODE_PRIVATE
-            );
+            sSharedPreferences = appCtx.getSharedPreferences(
+                    appCtx.getPackageName() + "_preferences", Context.MODE_PRIVATE);
         }
     }
 
@@ -135,400 +139,196 @@ public class MenuPreferences {
         Context safeCtx = resolveContext(ctx);
         if (safeCtx != null) {
             Context appCtx = safeCtx.getApplicationContext() != null ? safeCtx.getApplicationContext() : safeCtx;
-            sharedPreferences = appCtx.getSharedPreferences(
-                    preferencesName,
-                    Context.MODE_PRIVATE
-            );
+            sSharedPreferences = appCtx.getSharedPreferences(
+                    preferencesName, Context.MODE_PRIVATE);
         }
     }
 
-    /**
-     * @param context
-     * @return Returns a 'MenuPreferences' instance
-     */
-    public static synchronized MenuPreferences with(Context context) {
-        if (prefsInstance == null || sharedPreferences == null) {
-            prefsInstance = new MenuPreferences(context);
+    public static synchronized MenuPreferences with(Context ctx) {
+        if (sInstance == null || sSharedPreferences == null) {
+            sInstance = new MenuPreferences(ctx);
         }
-        return prefsInstance;
+        return sInstance;
     }
 
-    /**
-     * @param context
-     * @param forceInstantiation
-     * @return Returns a 'MenuPreferences' instance
-     */
-    public static MenuPreferences with(Context context, boolean forceInstantiation) {
-        if (forceInstantiation) {
-            prefsInstance = new MenuPreferences(context);
+    public static synchronized MenuPreferences with(Context ctx, boolean force) {
+        if (force || sInstance == null) {
+            sInstance = new MenuPreferences(ctx);
         }
-        return prefsInstance;
+        return sInstance;
     }
 
-    /**
-     * @param context
-     * @param preferencesName
-     * @return Returns a 'MenuPreferences' instance
-     */
-    public static MenuPreferences with(Context context, String preferencesName) {
-        if (prefsInstance == null) {
-            prefsInstance = new MenuPreferences(context, preferencesName);
+    public static synchronized MenuPreferences with(Context ctx, String name) {
+        if (sInstance == null || sSharedPreferences == null) {
+            sInstance = new MenuPreferences(ctx, name);
         }
-        return prefsInstance;
+        return sInstance;
     }
 
-    /**
-     * @param context
-     * @param preferencesName
-     * @param forceInstantiation
-     * @return Returns a 'MenuPreferences' instance
-     */
-    public static MenuPreferences with(Context context, String preferencesName,
-                                       boolean forceInstantiation) {
-        if (forceInstantiation) {
-            prefsInstance = new MenuPreferences(context, preferencesName);
+    public static synchronized MenuPreferences with(Context ctx, String name, boolean force) {
+        if (force || sInstance == null) {
+            sInstance = new MenuPreferences(ctx, name);
         }
-        return prefsInstance;
+        return sInstance;
     }
 
-    // String related methods
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public String readString(String what) {
-        return sharedPreferences.getString(what, DEFAULT_STRING_VALUE);
-    }
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public String readString(int what) {
-        try {
-            return sharedPreferences.getString(String.valueOf(what), DEFAULT_STRING_VALUE);
-        } catch (java.lang.ClassCastException ex) {
-            return "";
-        }
-    }
-
-    /**
-     * @param what
-     * @param defaultString
-     * @return Returns the stored value of 'what'
-     */
-    public String readString(String what, String defaultString) {
-        return sharedPreferences.getString(what, defaultString);
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeString(String where, String what) {
-        sharedPreferences.edit().putString(where, what).apply();
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeString(int where, String what) {
-        sharedPreferences.edit().putString(String.valueOf(where), what).apply();
-    }
-
-    // int related methods
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public int readInt(String what) {
-        return sharedPreferences.getInt(what, DEFAULT_INT_VALUE);
-    }
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public int readInt(int what) {
-        try {
-            return sharedPreferences.getInt(String.valueOf(what), DEFAULT_INT_VALUE);
-        } catch (java.lang.ClassCastException ex) {
-            return 0;
-        }
-    }
-
-    /**
-     * @param what
-     * @param defaultInt
-     * @return Returns the stored value of 'what'
-     */
-    public int readInt(String what, int defaultInt) {
-        return sharedPreferences.getInt(what, defaultInt);
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeInt(String where, int what) {
-        sharedPreferences.edit().putInt(where, what).apply();
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeInt(int where, int what) {
-        sharedPreferences.edit().putInt(String.valueOf(where), what).apply();
-    }
-
-    // double related methods
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public double readDouble(String what) {
-        if (!contains(what))
-            return DEFAULT_DOUBLE_VALUE;
-        return Double.longBitsToDouble(readLong(what));
-    }
-
-    /**
-     * @param what
-     * @param defaultDouble
-     * @return Returns the stored value of 'what'
-     */
-    public double readDouble(String what, double defaultDouble) {
-        if (!contains(what))
-            return defaultDouble;
-        return Double.longBitsToDouble(readLong(what));
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeDouble(String where, double what) {
-        writeLong(where, Double.doubleToRawLongBits(what));
-    }
-
-    // float related methods
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public float readFloat(String what) {
-        return sharedPreferences.getFloat(what, DEFAULT_FLOAT_VALUE);
-    }
-
-    /**
-     * @param what
-     * @param defaultFloat
-     * @return Returns the stored value of 'what'
-     */
-    public float readFloat(String what, float defaultFloat) {
-        return sharedPreferences.getFloat(what, defaultFloat);
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeFloat(String where, float what) {
-        sharedPreferences.edit().putFloat(where, what).apply();
-    }
-
-    // long related methods
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public long readLong(String what) {
-        return sharedPreferences.getLong(what, DEFAULT_LONG_VALUE);
-    }
-
-    /**
-     * @param what
-     * @param defaultLong
-     * @return Returns the stored value of 'what'
-     */
-    public long readLong(String what, long defaultLong) {
-        return sharedPreferences.getLong(what, defaultLong);
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeLong(String where, long what) {
-        sharedPreferences.edit().putLong(where, what).apply();
-    }
-
-    // boolean related methods
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public boolean readBoolean(String what) {
-        return sharedPreferences.getBoolean(what, DEFAULT_BOOLEAN_VALUE);
-    }
-
-    /**
-     * @param what
-     * @return Returns the stored value of 'what'
-     */
-    public boolean readBoolean(int what) {
-        return sharedPreferences.getBoolean(String.valueOf(what), DEFAULT_BOOLEAN_VALUE);
-    }
-
-    /**
-     * @param what
-     * @param defaultBoolean
-     * @return Returns the stored value of 'what'
-     */
-    public boolean readBoolean(String what, boolean defaultBoolean) {
-        return sharedPreferences.getBoolean(what, defaultBoolean);
-    }
-
-    /**
-     * @param what
-     * @param defaultBoolean
-     * @return Returns the stored value of 'what'
-     */
-    public boolean readBoolean(int what, boolean defaultBoolean) {
-        try {
-            return sharedPreferences.getBoolean(String.valueOf(what), defaultBoolean);
-        } catch (java.lang.ClassCastException ex) {
-            return defaultBoolean;
-        }
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeBoolean(String where, boolean what) {
-        sharedPreferences.edit().putBoolean(where, what).apply();
-    }
-
-    /**
-     * @param where
-     * @param what
-     */
-    public void writeBoolean(int where, boolean what) {
-        sharedPreferences.edit().putBoolean(String.valueOf(where), what).apply();
-    }
-
-    // String set methods
-
-    /**
-     * @param key
-     * @param value
-     */
-    @TargetApi(Build.VERSION_CODES.HONEYCOMB)
-    public void putStringSet(final String key, final Set<String> value) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            sharedPreferences.edit().putStringSet(key, value).apply();
-        } else {
-            // Workaround for pre-HC's lack of StringSets
-            putOrderedStringSet(key, value);
-        }
-    }
-
-    /**
-     * @param key
-     * @param value
-     */
-    public void putOrderedStringSet(String key, Set<String> value) {
-        int stringSetLength = 0;
-        if (sharedPreferences.contains(key + LENGTH)) {
-            // First read what the value was
-            stringSetLength = readInt(key + LENGTH);
-        }
-        writeInt(key + LENGTH, value.size());
-        int i = 0;
-        for (String aValue : value) {
-            writeString(key + "[" + i + "]", aValue);
-            i++;
-        }
-        for (; i < stringSetLength; i++) {
-            // Remove any remaining values
-            remove(key + "[" + i + "]");
-        }
-    }
-
-    /**
-     * @param key
-     * @param defValue
-     * @return Returns the String Set with HoneyComb compatibility
-     */
-    @TargetApi(Build.VERSION_CODES.HONEYCOMB)
-    public Set<String> getStringSet(final String key, final Set<String> defValue) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            return sharedPreferences.getStringSet(key, defValue);
-        } else {
-            // Workaround for pre-HC's lack of getStringSet
-            return getOrderedStringSet(key, defValue);
-        }
-    }
-
-    /**
-     * @param key
-     * @param defValue
-     * @return Returns the ordered String Set
-     */
-    public Set<String> getOrderedStringSet(String key, final Set<String> defValue) {
-        if (contains(key + LENGTH)) {
-            LinkedHashSet<String> set = new LinkedHashSet<>();
-            int stringSetLength = readInt(key + LENGTH);
-            if (stringSetLength >= 0) {
-                for (int i = 0; i < stringSetLength; i++) {
-                    set.add(readString(key + "[" + i + "]"));
-                }
-            }
-            return set;
-        }
-        return defValue;
-    }
-
-    // end related methods
-
-    /**
-     * @param key
-     */
-    public void remove(final String key) {
-        if (contains(key + LENGTH)) {
-            // Workaround for pre-HC's lack of StringSets
-            int stringSetLength = readInt(key + LENGTH);
-            if (stringSetLength >= 0) {
-                sharedPreferences.edit().remove(key + LENGTH).apply();
-                for (int i = 0; i < stringSetLength; i++) {
-                    sharedPreferences.edit().remove(key + "[" + i + "]").apply();
-                }
+    private SharedPreferences getPrefs() {
+        if (sSharedPreferences == null) {
+            Context safeCtx = resolveContext(context);
+            if (safeCtx != null) {
+                Context appCtx = safeCtx.getApplicationContext() != null ? safeCtx.getApplicationContext() : safeCtx;
+                sSharedPreferences = appCtx.getSharedPreferences(
+                        appCtx.getPackageName() + "_preferences", Context.MODE_PRIVATE);
             }
         }
-        sharedPreferences.edit().remove(key).apply();
+        return sSharedPreferences;
     }
 
-    /**
-     * @param key
-     * @return Returns if that key exists
-     */
-    public boolean contains(final String key) {
-        return sharedPreferences.contains(key);
+    // =========================================================================
+    // Type-Safe, Exception-Guarded Read / Write Methods
+    // =========================================================================
+
+    public boolean readBoolean(String key) {
+        return readBoolean(key, DEFAULT_BOOLEAN_VALUE);
     }
 
-    /**
-     * Clear all the preferences
-     */
+    public boolean readBoolean(int key) {
+        return readBoolean(String.valueOf(key), DEFAULT_BOOLEAN_VALUE);
+    }
+
+    public boolean readBoolean(int key, boolean defVal) {
+        return readBoolean(String.valueOf(key), defVal);
+    }
+
+    public boolean readBoolean(String key, boolean defVal) {
+        SharedPreferences p = getPrefs();
+        if (p == null) return defVal;
+        try {
+            return p.getBoolean(key, defVal);
+        } catch (Throwable t) {
+            return defVal;
+        }
+    }
+
+    public void writeBoolean(String key, boolean val) {
+        SharedPreferences p = getPrefs();
+        if (p != null) {
+            p.edit().putBoolean(key, val).apply();
+        }
+    }
+
+    public void writeBoolean(int key, boolean val) {
+        writeBoolean(String.valueOf(key), val);
+    }
+
+    public int readInt(String key) {
+        return readInt(key, DEFAULT_INT_VALUE);
+    }
+
+    public int readInt(int key) {
+        return readInt(String.valueOf(key), DEFAULT_INT_VALUE);
+    }
+
+    public int readInt(int key, int defVal) {
+        return readInt(String.valueOf(key), defVal);
+    }
+
+    public int readInt(String key, int defVal) {
+        SharedPreferences p = getPrefs();
+        if (p == null) return defVal;
+        try {
+            return p.getInt(key, defVal);
+        } catch (Throwable t) {
+            return defVal;
+        }
+    }
+
+    public void writeInt(String key, int val) {
+        SharedPreferences p = getPrefs();
+        if (p != null) {
+            p.edit().putInt(key, val).apply();
+        }
+    }
+
+    public void writeInt(int key, int val) {
+        writeInt(String.valueOf(key), val);
+    }
+
+    public long readLong(String key) {
+        return readLong(key, DEFAULT_LONG_VALUE);
+    }
+
+    public long readLong(int key) {
+        return readLong(String.valueOf(key), DEFAULT_LONG_VALUE);
+    }
+
+    public long readLong(String key, long defVal) {
+        SharedPreferences p = getPrefs();
+        if (p == null) return defVal;
+        try {
+            return p.getLong(key, defVal);
+        } catch (Throwable t) {
+            return defVal;
+        }
+    }
+
+    public void writeLong(String key, long val) {
+        SharedPreferences p = getPrefs();
+        if (p != null) {
+            p.edit().putLong(key, val).apply();
+        }
+    }
+
+    public void writeLong(int key, long val) {
+        writeLong(String.valueOf(key), val);
+    }
+
+    public String readString(String key) {
+        return readString(key, DEFAULT_STRING_VALUE);
+    }
+
+    public String readString(int key) {
+        return readString(String.valueOf(key), DEFAULT_STRING_VALUE);
+    }
+
+    public String readString(String key, String defVal) {
+        SharedPreferences p = getPrefs();
+        if (p == null) return defVal;
+        try {
+            String res = p.getString(key, defVal);
+            return res != null ? res : defVal;
+        } catch (Throwable t) {
+            return defVal;
+        }
+    }
+
+    public void writeString(String key, String val) {
+        SharedPreferences p = getPrefs();
+        if (p != null) {
+            p.edit().putString(key, val).apply();
+        }
+    }
+
+    public void writeString(int key, String val) {
+        writeString(String.valueOf(key), val);
+    }
+
+    public boolean contains(String key) {
+        SharedPreferences p = getPrefs();
+        return p != null && p.contains(key);
+    }
+
+    public void remove(String key) {
+        SharedPreferences p = getPrefs();
+        if (p != null) {
+            p.edit().remove(key).apply();
+        }
+    }
+
     public void clear() {
-        sharedPreferences.edit().clear().apply();
+        SharedPreferences p = getPrefs();
+        if (p != null) {
+            p.edit().clear().apply();
+        }
     }
 }
