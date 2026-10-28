@@ -300,12 +300,6 @@ public:
         int sock = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
         if (sock < 0) return false;
 
-        struct timeval tv;
-        tv.tv_sec = 3;
-        tv.tv_usec = 0;                     /* 3s timeout - never drop on temporary frame lag */
-        ::setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-        ::setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
         struct sockaddr_un addr;
         /* The address (name bytes AND length) is built by the shared helper
          * so that it can never differ from the one the Daemon binds to. */
