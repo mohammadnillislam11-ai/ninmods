@@ -77,6 +77,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <signal.h>
+#include "../Engine/OfficialMemory.h"
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -95,7 +96,7 @@
 #include "BooleanServer.h"
 #include "Namegun.h"
 #include "../Includes/gameoffsets.h"
-#include "../Includes/driver.h"
+#include <atomic>
 #include "../Includes/NinliteProtocol.h"
 #include "../Includes/TransformTypes.h"
 #include "../Unity/Vector3.hpp"
@@ -115,7 +116,6 @@
 static std::atomic<pid_t>   g_target_pid{-1};
 static std::atomic<uintptr_t> g_libAddress{0};
 static std::atomic<bool> g_isGameMax{true};
-static std::atomic<bool> g_driverReady{false};
 static NinLiteSocketServer g_server;
 
 static std::atomic<int> g_screenWidth{1920};
@@ -139,61 +139,20 @@ static const std::unordered_set<short> blockedWeaponIds = {
     6016, 10006, -15524, -15521, 601, 603, 1201, 1204, 602, 608, 23, 1401, 1006, 1015
 };
 
-/* ====================================================== kernel memory ==== */
-
-/**
- * All memory traffic goes through the Ring-0 character device.
- * The driver self test (read of our own address space) guarantees the IOCTL
- * ABI really matches before we trust a single byte.
- */
-static bool EnsureDriver() {
-    if (!driver) return false;
-    if (driver->isConnected()) {
-        g_driverReady.store(true, std::memory_order_relaxed);
-        return true;
-    }
-    /* The discovery probe walks /sys and four device nodes and performs an
-     * IOCTL self test - several hundred syscalls. It must NOT run on every
-     * single memory read, otherwise a daemon without a loaded driver would
-     * burn the whole CPU. Retried every two seconds instead, so the daemon
-     * also picks the driver up when it is inserted later. */
-    static std::atomic<int64_t> s_lastAttempt{0};
-    int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now().time_since_epoch()).count();
-    int64_t last = s_lastAttempt.load(std::memory_order_relaxed);
-    if (now - last < 2000) return false;
-    s_lastAttempt.store(now, std::memory_order_relaxed);
-
-    g_driverReady.store(driver->initDriver(), std::memory_order_relaxed);
-    return g_driverReady.load(std::memory_order_relaxed);
-}
-
+/* Official Linux memory access only (process_vm_readv / process_vm_writev).
+ * See Engine/OfficialMemory.h. No kernel driver, no device node, no IOCTL. */
 template <typename T>
 static T DaemonRead(uintptr_t addr) {
-    T val{};
-    pid_t pid = g_target_pid.load(std::memory_order_relaxed);
-    if (addr == 0 || pid <= 0) return val;
-    if (!EnsureDriver()) return val;
-    driver->initialize(pid);
-    driver->readSafe(addr, &val, sizeof(T));
-    return val;
+    return NinOfficial::Read<T>(g_target_pid.load(std::memory_order_relaxed), addr);
 }
 
 template <typename T>
 static bool DaemonWrite(uintptr_t addr, T val) {
-    pid_t pid = g_target_pid.load(std::memory_order_relaxed);
-    if (addr == 0 || pid <= 0) return false;
-    if (!EnsureDriver()) return false;
-    driver->initialize(pid);
-    return driver->write(addr, &val, sizeof(T));
+    return NinOfficial::Write<T>(g_target_pid.load(std::memory_order_relaxed), addr, val);
 }
 
 static bool DaemonReadBytes(uintptr_t addr, void* buf, size_t n) {
-    pid_t pid = g_target_pid.load(std::memory_order_relaxed);
-    if (addr == 0 || buf == nullptr || n == 0 || pid <= 0) return false;
-    if (!EnsureDriver()) return false;
-    driver->initialize(pid);
-    return driver->readSafe(addr, buf, n);
+    return NinOfficial::ReadBytes(g_target_pid.load(std::memory_order_relaxed), addr, buf, n);
 }
 
 /* ============================================================ helpers ==== */
@@ -505,17 +464,21 @@ static bool AttachToGame() {
     if (pid <= 0) return false;
 
     g_target_pid.store(pid, std::memory_order_relaxed);
-    if (!EnsureDriver()) {
-        LOGE("[DAEMON] Kernel driver unavailable - refusing to run driverless.");
-        return false;
+
+    /* Official access check: the kernel must let the daemon read the game's
+     * own memory. A refusal is reported, never faked. */
+    uint32_t elfMagic = 0;
+    bool readOk = NinOfficial::ReadBytes(pid, 0x0, &elfMagic, sizeof(elfMagic)) ||
+                  NinOfficial::ReadBytes(pid, 0x1000, &elfMagic, sizeof(elfMagic));
+    if (!readOk) {
+        LOGE("[DAEMON] process_vm_readv refused for PID %d (ptrace/SELinux policy).", (int)pid);
     }
-    driver->initialize(pid);
 
     uintptr_t libBase = FindCorrectLibBase(pid);
     g_libAddress.store(libBase, std::memory_order_relaxed);
-    LOGI("[DAEMON] Attached to Game PID: %d (MAX: %d), libil2cpp: 0x%lx, driver: %s",
+    LOGI("[DAEMON] Attached to Game PID: %d (MAX: %d), libil2cpp: 0x%lx, access: %s",
          (int)pid, (int)g_isGameMax.load(std::memory_order_relaxed), (unsigned long)libBase,
-         driver->getDriverModeName());
+         "process_vm_readv");
     return libBase != 0;
 }
 
@@ -1083,7 +1046,7 @@ static bool BringServerUpWithRetry(int maxAttempts, int delayMs) {
 int main(int argc, char* argv[]) {
     (void)argc; (void)argv;
 
-    LOGI("=== NINLITE ROOT DAEMON (100%% KERNEL DRIVER) STARTING ===");
+    LOGI("=== NINLITE ROOT DAEMON (official Linux process_vm_readv) STARTING ===");
     Namegun::Init();
 
     if (!BringServerUpWithRetry(10, 500)) {
@@ -1158,8 +1121,7 @@ int main(int argc, char* argv[]) {
             } else if (req.mode == Ninlite::MODE_INIT) {
                 if (!GameStillAlive()) AttachToGame();
                 res.success = (g_target_pid.load(std::memory_order_relaxed) > 0 &&
-                               g_libAddress.load(std::memory_order_relaxed) > 0 &&
-                               g_driverReady.load(std::memory_order_relaxed)) ? 1 : 0;
+                               g_libAddress.load(std::memory_order_relaxed) > 0) ? 1 : 0;
             } else if (req.mode == Ninlite::MODE_STOP) {
                 /* MODE_STOP was defined in the protocol but never handled, so
                  * the Daemon could never be shut down cleanly by the App. */

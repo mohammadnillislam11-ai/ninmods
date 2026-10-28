@@ -34,22 +34,21 @@ jstring IconWebViewData(JNIEnv *env, jobject thiz) {
  * menu, which is the same place where the reference menu puts its native
  * status text.
  *
- * Only real values are reported: the driver channel that is currently open,
+ * Only real values are reported: the memory channel that is in use,
  * the device node it is attached to and the pid of the game process.
  */
 static std::string BuildEngineStatus() {
     std::string status = "Engine: ";
 
-    if (driver != nullptr && driver->isConnected()) {
-        status += driver->getDriverModeName();
-        const char *node = driver->getNodeName();
-        if (node != nullptr && node[0] != '\0') {
-            status += " [";
-            status += node;
-            status += "]";
-        }
+    if (MemoryIO::g_pid.load() > 0) {
+        status += "Official Linux (process_vm_readv)";
     } else {
-        status += "kernel driver offline";
+        pid_t curPid = target_pid.load(std::memory_order_relaxed);
+        if (curPid > 0) {
+            status += "Official Linux (process_vm_readv)";
+        } else {
+            status += "Standby (Official Linux /proc)";
+        }
     }
 
     pid_t pid = target_pid.load(std::memory_order_relaxed);
@@ -76,8 +75,7 @@ static std::string BuildEngineStatus() {
  *
  * NINMODS keeps the same flow but with real, dynamic information: the
  * marquee subtitle carries the live engine status and the user is warned
- * when the kernel driver is not connected (without a driver the engine
- * stays completely idle).
+ * when no target process is attached.
  */
 void Init(JNIEnv *env, jobject thiz, jobject ctx, jobject title, jobject subtitle) {
     (void) thiz;
@@ -86,9 +84,13 @@ void Init(JNIEnv *env, jobject thiz, jobject ctx, jobject title, jobject subtitl
     std::string status = BuildEngineStatus();
     setText(env, subtitle, status.c_str());
 
-    if (driver == nullptr || !driver->isConnected()) {
+    pid_t pid = target_pid.load(std::memory_order_relaxed);
+    if (pid <= 0) {
+        pid = FindGamePid();
+    }
+    if (pid <= 0) {
         Toast(env, ctx,
-              "Kernel driver is not connected. The engine stays idle until the driver is loaded.",
+              "No target game detected. Start Free Fire, then toggle features.",
               TOAST_LENGTH_LONG);
     }
 }

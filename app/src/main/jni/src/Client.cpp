@@ -813,12 +813,9 @@ static void SetEspMasterSwitch(bool on) {
  * is broken". It is gone.
  *
  * A toggle is also the manual activation of the whole memory layer: only
- * from this moment on the driver may probe for kernel nodes.
+ * from this moment on the memory layer may be used.
  */
 void NinFeatureSetState(int featId, bool bState) {
-  if (driver) {
-    driver->AllowProbing();
-  }
   switch (featId) {
   // ESP Features
   case 1:
@@ -1197,50 +1194,42 @@ bool NinFeatureGetState(int featId) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_core_NativeBridge_isKernelDriverConnected(JNIEnv *env,
                                                                 jclass clazz) {
-  if (driver && driver->isConnected() && driver->getFd() >= 0)
-    return JNI_TRUE;
-  if (EnsureDriverConnectedThrottled())
-    return JNI_TRUE;
-  return JNI_FALSE;
+  (void) clazz;
+  return (MemoryIO::g_pid.load() > 0 || FindGamePid() > 0) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getEngineLiveStatus(JNIEnv *env,
                                                             jclass clazz) {
+  (void) clazz;
   char buf[512];
-  bool connected = (driver && driver->isConnected() && driver->getFd() >= 0);
-  if (!connected) {
-    connected = EnsureDriverConnectedThrottled();
-  }
-  const char *node = (connected && strlen(driver->getNodeName()) > 0)
-                         ? driver->getNodeName()
-                         : "/dev/BYNb (DISCONNECTED)";
-  const char *mode = connected ? driver->getDriverModeName() : "OFFLINE";
-  int fd = connected ? driver->getFd() : -1;
-  pid_t targetPid = (connected && driver) ? driver->getPid() : 0;
+  pid_t targetPid = target_pid.load(std::memory_order_relaxed);
+  if (targetPid <= 0) targetPid = FindGamePid();
+  bool memoryConnected = (targetPid > 0);
+  const char *node = memoryConnected ? "process_vm_readv (no device node)" : "DISCONNECTED";
+  const char *mode = memoryConnected ? "Official Linux (process_vm_readv)" : "OFFLINE";
+  int fd = -1;
 
-  /* The cached snapshot is published by the scene worker under a lock, so it
-   * must be read through the lock protected accessor. */
   Response cached = GetCachedResponseSnapshot();
-  int entities = connected ? cached.PlayerCount : 0;
-  int visible = connected ? cached.VisibleEnemyCount : 0;
+  int entities = (targetPid > 0) ? cached.PlayerCount : 0;
+  int visible = (targetPid > 0) ? cached.VisibleEnemyCount : 0;
   bool espActive = Actived.activar;
   bool aimActive = pPlayer.aimbot;
 
   snprintf(buf, sizeof(buf),
-           "KERNEL DRIVER : %s\n"
+           "MEMORY SOURCE: %s\n"
            "DEVICE NODE   : %s (fd: %d)\n"
            "CHANNEL MODE  : %s\n"
            "TARGET PID    : %s\n"
-           "MEMORY IOCTL  : %s\n"
+           "MEMORY API   : %s\n"
            "ENTITIES READ : %d TARGETS\n"
            "ENEMIES VIS   : %d VISIBLE\n"
            "HARDWARE ESP  : %s\n"
            "AIM ENGINE    : %s",
-           connected ? "ONLINE" : "OFFLINE (NOT LOADED)", node, fd, mode,
-           (targetPid > 0) ? std::to_string(targetPid).c_str()
-                           : "NONE (NO TARGET)",
-           connected ? "ACTIVE (32-BYTE RING 0)" : "STANDBY (LOADER REQUIRED)",
+           memoryConnected ? "ONLINE (process_vm_readv)" : "OFFLINE",
+           node, fd, mode,
+           (targetPid > 0) ? std::to_string(targetPid).c_str() : "NONE (NO TARGET)",
+           memoryConnected ? "process_vm_readv" : "NONE",
            entities, visible, espActive ? "ACTIVE" : "STANDBY",
            aimActive ? "ENABLED" : "OFF");
   return env->NewStringUTF(buf);
@@ -1377,19 +1366,20 @@ jclass g_NativeBridgeClassRef = nullptr;
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getMemoryAccessMode(JNIEnv *env, jclass clazz) {
-  /*
-   * The real memory path of the engine. The telemetry panel used to show a
-   * hardcoded "process_vm_readv / pread64" - that was wrong: both the app
-   * engine and the daemon read and write through the kernel driver.
-   */
   (void) clazz;
   const char *mode = "Not connected";
-  if (driver != nullptr && driver->isConnected()) {
-    mode = "Kernel Driver IOCTL (0x801/0x802)";
-  } else {
-    std::string connection = NinliteEngine::GetConnectionModeStr();
-    if (connection.find("RT") != std::string::npos) {
-      mode = "Root Daemon (Kernel Driver)";
+  {
+    pid_t pid = target_pid.load(std::memory_order_relaxed);
+    if (pid <= 0) pid = FindGamePid();
+    if (pid > 0) {
+      mode = "Official Linux Syscall (process_vm_readv)";
+    } else {
+      std::string connection = NinliteEngine::GetConnectionModeStr();
+      if (connection.find("Kernel") != std::string::npos) {
+        mode = "Root Daemon (Kernel Driver)";
+      } else if (connection.find("Daemon") != std::string::npos) {
+        mode = "Root Daemon (process_vm_readv)";
+      }
     }
   }
   return env->NewStringUTF(mode);

@@ -6,11 +6,11 @@
 #include "../../Icon/TextureLoader.h"
 
 /**
- * C++ Dear ImGui Native Kernel Driver Alert Modal Popup.
- * Handles the state where /dev/BYNb is not active.
+ * C++ Dear ImGui Native Process Memory Alert Modal Popup.
+ * Handles the state where the memory target is not attached (process_vm_readv).
  * Provides two clean paths:
  *   1. "OPEN LOADER" for Root users wanting to activate the kernel driver.
- *   2. "VIEW MENU ONLY (NON-ROOT)" for Non-Root users who just want to explore the menu UI.
+ *   2. "VIEW MENU ONLY (PREVIEW)" for Non-Root users who just want to explore the menu UI.
  */
 class DriverAlertPopup {
 public:
@@ -87,7 +87,7 @@ public:
                 drawList->AddImage((ImTextureID)(uintptr_t)g_EagleLogoTexture, ImVec2(hLogoX, hLogoY), ImVec2(hLogoX + hLogoW, hLogoY + hLogoH));
                 drawList->PopClipRect();
             } else {
-                drawList->AddText(ImVec2(winPos.x + 14.0f, winPos.y + 12.0f), IM_COL32(255, 120, 40, 250), "[KERNEL STATUS CHECK]");
+                drawList->AddText(ImVec2(winPos.x + 14.0f, winPos.y + 12.0f), IM_COL32(255, 120, 40, 250), "[PROCESS STATUS CHECK]");
             }
 
             // Close [X] Button on Header
@@ -97,11 +97,11 @@ public:
 
             // 3. Modal Body
             ImGui::SetCursorPosY(headerH + 10.0f);
-            ImGui::TextColored(ImVec4(1.0f, 0.40f, 0.20f, 1.0f), "KERNEL ENDPOINT (/dev/BYNb) OFFLINE");
+            ImGui::TextColored(ImVec4(1.0f, 0.40f, 0.20f, 1.0f), "MEMORY TARGET NOT ATTACHED");
             ImGui::Spacing();
-            ImGui::TextWrapped("The Linux Ring-0 driver device node was not detected in /dev.");
+            ImGui::TextWrapped("The game process memory was not detected (process_vm_readv).");
             ImGui::Spacing();
-            ImGui::TextDisabled("- Root users: Launch Driver Loader to insert kernel module.\n- Non-Root users: You can safely explore the menu UI.");
+            ImGui::TextDisabled("- Root users: Launch Driver Loader to insert kernel module or start daemon.\n- Non-Root users: You can safely explore the menu UI.");
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();

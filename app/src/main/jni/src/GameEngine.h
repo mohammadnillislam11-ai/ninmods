@@ -370,9 +370,9 @@ inline bool IsValidPlayerObject(uintptr_t player) {
 
 // ========== ELF Magic Header Checker ==========
 inline bool is_elf_header(uintptr_t addr) {
-    if (addr == 0 || !IsDriverConnected()) return false;
+    if (addr == 0 || target_pid.load() <= 0) return false;
     unsigned char magic[4] = {0};
-    if (DriverReadMemory(target_pid.load(), addr, magic, 4)) {
+    if (MemoryIO::ReadBytes(target_pid.load(), addr, magic, 4)) {
         return (magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F');
     }
     magic[0] = Read<uint8_t>(addr);
@@ -384,7 +384,7 @@ inline bool is_elf_header(uintptr_t addr) {
 
 // ========== ARM64 Instruction Decoders (Auto-Extract Static Pointers from Game Code) ==========
 inline uintptr_t DecodeAdrpLdr(uintptr_t pc) {
-    if (pc == 0 || !IsDriverConnected()) return 0;
+    if (pc == 0 || target_pid.load() <= 0) return 0;
     uint32_t inst1 = Read<uint32_t>(pc);
     uint32_t inst2 = Read<uint32_t>(pc + 4);
 
@@ -418,10 +418,10 @@ static bool IsValidViewMatrix(const D3DMatrix& m) {
 
 // ========== Module Base Address (ROBUST MULTI-ELF DETECTOR) ==========
 inline uintptr_t GetModuleBase(pid_t pid, const char* moduleName) {
-    // 1. First Priority: Direct Kernel Ring 0 Driver Base Address
-    uintptr_t kernelBase = DriverGetModuleBase(pid, moduleName);
+    // 1. Official Linux /proc/<pid>/maps module base (MemoryIO::ModuleBase)
+    uintptr_t kernelBase = MemoryIO::ModuleBase(pid, moduleName);
     if (kernelBase > 0) {
-        NIN_LOGI("DAEMON", "GetModuleBase: %s Base = 0x%lx (Ring-0 Kernel Driver Verified)", moduleName, (unsigned long)kernelBase);
+        NIN_LOGI("DAEMON", "GetModuleBase: %s Base = 0x%lx (official /proc/maps)", moduleName, (unsigned long)kernelBase);
         return kernelBase;
     }
 
@@ -579,7 +579,7 @@ inline void getUTF8(char* dst, uintptr_t addr) {
     memset(raw, 0, sizeof(raw));
     size_t toRead = (size_t)(stringLen * 2);
     if (toRead > sizeof(raw)) toRead = sizeof(raw);
-    DriverReadMemory(target_pid.load(), addr + Offsets::StringChars, raw, toRead);
+    MemoryIO::ReadBytes(target_pid.load(), addr + Offsets::StringChars, raw, toRead);
 
     int j = 0;
     for (int i = 0; i < (stringLen * 2) && (i + 1) < (int)toRead; i += 2) {
@@ -928,7 +928,6 @@ inline void CreateDataList(Response& SendResponse) {
             libAddress.store(0, std::memory_order_relaxed);
             return;
         }
-        EnsureDriverConnectedThrottled();
     }
 
     if (currentPid != s_last_verified_pid) {
@@ -940,9 +939,6 @@ inline void CreateDataList(Response& SendResponse) {
         uintptr_t base = GetModuleBase(currentPid, "libil2cpp.so");
         libAddress.store(base, std::memory_order_relaxed);
         if (base == 0) return;
-        /* Throttled, gated probe - InitMemoryAccess() probed on every engine
-         * tick while the driver was offline. */
-        if (!IsDriverConnected()) EnsureDriverConnectedThrottled();
     }
 
     static time_t lastLogTime = 0;
@@ -1661,7 +1657,7 @@ inline void SceneWorker() {
         auto startedAt = std::chrono::steady_clock::now();
         bool updated = false;
 
-        if (driver && driver->isConnected()) {
+        if (target_pid.load() > 0) {
             CreateDataList(scratch);
             updated = true;
         } else {
@@ -1804,7 +1800,7 @@ inline Response GetCachedResponseSnapshot() {
 }
 
 inline bool isConnected() {
-    if (driver && driver->isConnected()) {
+    if (target_pid.load() > 0) {
         return true;
     }
     return NinEngine::DaemonLink::Instance().IsConnected();

@@ -6,10 +6,11 @@
 #include <unistd.h>
 #include <cstring>
 #include <cstdio>
+#include <ctime>
 
 #include "Includes/Logger.h"
 #include "Includes/NativeCrypto.h"
-#include "Includes/driver.h"
+#include "Includes/MemoryIO.h"
 #include "Includes/Utils.h"
 
 namespace {
@@ -68,84 +69,34 @@ inline bool DigestEquals(const char *a, const char *b) {
 } // namespace
 
 // ============================================================================
-// BANKING-GRADE APPLICATION SECURITY & DRIVER INQUIRY JNI EXPORTS
+// APPLICATION SECURITY & PROCESS MEMORY INQUIRY JNI EXPORTS
 // ============================================================================
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_DriverManager_nativeProbeDriverInfo(JNIEnv *env,
                                                                jclass clazz) {
-  bool is_active = false;
-  std::string active_node = "None";
-  int maj = 0;
-  int min = 0;
-  std::string dev_id_str = "None";
-  std::string perms_str = "Inaccessible";
-  std::string status_text = "Inactive";
-
-  // 1. Primary: Check Unified c_driver Engine
-  if (driver && (driver->isConnected() || EnsureDriverConnectedThrottled())) {
-    is_active = true;
-    active_node = (strlen(driver->getNodeName()) > 0) ? driver->getNodeName()
-                                                      : "/dev/BYNb";
-    int c_fd = driver->getFd();
-    struct stat st{};
-    if (stat(active_node.c_str(), &st) == 0) {
-      maj = major(st.st_rdev);
-      min = minor(st.st_rdev);
-      char dev_buf[64];
-      snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (0x%lX)", maj,
-               min, (unsigned long)st.st_rdev);
-      dev_id_str = dev_buf;
-    } else {
-      dev_id_str = "Ring-0 Device (" + active_node + ")";
-    }
-    perms_str = "rw-rw-rw- (FD: " + std::to_string(c_fd) + " Connected)";
-    status_text = std::string("ACTIVE & RESPONDING (") +
-                  driver->getDriverModeName() + ")";
+  (void) clazz;
+  pid_t target = target_pid.load(std::memory_order_relaxed);
+  if (target <= 0) target = FindGamePid();
+  bool attached = (target > 0);
+  bool readable = false;
+  if (attached) {
+    uint32_t magic = 0;
+    readable = MemoryIO::ReadBytes(target, 0x1000, &magic, sizeof(magic)) ||
+               MemoryIO::ReadBytes(target, 0x0, &magic, sizeof(magic));
   }
-
-  // 2. Fallback: Check official character & proc nodes
-  if (!is_active) {
-    const char *candidate_nodes[] = {"/dev/BYNb", "/dev/mem_tool", "/dev/nh",
-                                     "/dev/wanbai", "/proc/uevents_records"};
-
-    for (const char *node : candidate_nodes) {
-      struct stat st;
-      if (stat(node, &st) == 0 &&
-          (S_ISCHR(st.st_mode) || S_ISREG(st.st_mode))) {
-        active_node = node;
-        is_active = true;
-        maj = major(st.st_rdev);
-        min = minor(st.st_rdev);
-        char dev_buf[64];
-        snprintf(dev_buf, sizeof(dev_buf), "Major: %d, Minor: %d (0x%lX)", maj,
-                 min, (unsigned long)st.st_rdev);
-        dev_id_str = dev_buf;
-
-        int test_fd = open(node, O_RDWR);
-        if (test_fd >= 0) {
-          perms_str = "rw-rw-rw- (FD Open OK)";
-          status_text = "ACTIVE & RESPONDING (Ring 0)";
-          close(test_fd);
-        } else {
-          perms_str = "Node exists (Restricted permission)";
-          status_text = "Node detected, run chmod 666 in loader";
-        }
-        break;
-      }
-    }
+  std::string mode = "OFFLINE";
+  if (attached) {
+    mode = "Official Linux (process_vm_readv)";
   }
-
   std::string json = "{";
-  json += "\"is_active\":" + std::string(is_active ? "true" : "false") + ",";
-  json += "\"active_node\":\"" + active_node + "\",";
-  json += "\"major\":" + std::to_string(maj) + ",";
-  json += "\"minor\":" + std::to_string(min) + ",";
-  json += "\"device_id\":\"" + dev_id_str + "\",";
-  json += "\"permissions\":\"" + perms_str + "\",";
-  json += "\"status_text\":\"" + status_text + "\"";
-  json += "}";
-
+  json += "\"mode\":\"" + mode + "\",";
+  json += "\"target_pid\":" + std::to_string((int)target) + ",";
+  json += "\"attached\":" + std::string(attached ? "true" : "false") + ",";
+  json += "\"readable\":" + std::string(readable ? "true" : "false") + ",";
+  json += "\"status_text\":\"" +
+          std::string(readable ? "ACTIVE" : (attached ? "TARGET REFUSED READ" : "NO TARGET")) +
+          "\"}";
   return env->NewStringUTF(json.c_str());
 }
 
@@ -153,9 +104,6 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_auth_SecurityVault_nativeSignRequest(
     JNIEnv *env, jclass clazz, jstring jPayload, jlong timestamp,
     jstring jNonce, jstring jHwid) {
-  /* GetStringUTFChars returns NULL when the JVM is out of memory or when an
-   * exception is pending. Building a std::string from that NULL pointer is
-   * undefined behaviour and crashed the process inside the licence flow. */
   const char *payload = "";
   const char *nonce = "";
   const char *hwid = "";
@@ -201,7 +149,10 @@ Java_com_ninmods_main_auth_SecurityVault_nativeSignRequest(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_auth_SecurityVault_nativeVerifyIntegrity(
     JNIEnv *env, jclass clazz, jobject context, jstring certDigest) {
-  // Prevent false-positive tamper blocks on legitimate root devices (Magisk, KernelSU, APatch, LSPosed)
+  (void) env;
+  (void) clazz;
+  (void) context;
+  (void) certDigest;
   NIN_LOGI("SECURITY", ">>> [INTEGRITY_CHECK] Process environment validated genuine <<<");
   return JNI_TRUE;
 }
@@ -209,11 +160,12 @@ Java_com_ninmods_main_auth_SecurityVault_nativeVerifyIntegrity(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_auth_SecurityVault_nativeSetTamperState(
     JNIEnv *env, jclass clazz, jboolean tampered) {
+  (void) env;
+  (void) clazz;
   const bool genuine = SecurityVault_SetTamperState(tampered == JNI_TRUE);
   if (!genuine) {
     NIN_LOGE("SECURITY",
-             ">>> [VAULT_LOCKED] Tamper state recorded - the native engine stays "
-             "locked <<<");
+             ">>> [VAULT_LOCKED] Tamper state recorded - the native engine stays locked <<<");
   }
   return genuine ? JNI_TRUE : JNI_FALSE;
 }
@@ -221,6 +173,7 @@ Java_com_ninmods_main_auth_SecurityVault_nativeSetTamperState(
 extern "C" JNIEXPORT void JNICALL
 Java_com_ninmods_main_auth_SecurityVault_nativeSetSession(
     JNIEnv *env, jclass clazz, jstring jToken, jstring jHwid, jlong expirySec) {
+  (void) clazz;
   const char *token =
       jToken ? env->GetStringUTFChars(jToken, nullptr) : nullptr;
   const char *hwid = jHwid ? env->GetStringUTFChars(jHwid, nullptr) : nullptr;
@@ -248,8 +201,6 @@ Java_com_ninmods_main_auth_SecurityVault_nativeSetSession(
       g_security_session[sizeof(g_security_session) - 1] = '\0';
       strncpy(g_security_hwid, hwid, sizeof(g_security_hwid) - 1);
       g_security_hwid[sizeof(g_security_hwid) - 1] = '\0';
-      /* The expiry used to be validated and then thrown away, so a session
-       * stayed valid for the whole life of the process. */
       g_security_expiry_epoch = (long long)time(nullptr) + (long long)expirySec;
       g_session_verified.store(true, std::memory_order_relaxed);
       NIN_LOGI(
@@ -268,5 +219,7 @@ Java_com_ninmods_main_auth_SecurityVault_nativeSetSession(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ninmods_main_auth_SecurityVault_nativeIsSessionValid(JNIEnv *env,
                                                               jclass clazz) {
+  (void) env;
+  (void) clazz;
   return SecurityVault_IsSessionValid() ? JNI_TRUE : JNI_FALSE;
 }
