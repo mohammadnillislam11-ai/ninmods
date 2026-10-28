@@ -413,8 +413,7 @@ public class ModMenu {
         List<MenuController.MenuFeatureItem> items = MenuController.parseDsl(rawDsl);
 
         if (items.isEmpty()) {
-            populateFallbackFeatures();
-            return;
+            items = MenuController.getFeaturesFromCatalog();
         }
 
         for (MenuController.MenuFeatureItem item : items) {
@@ -431,51 +430,6 @@ public class ModMenu {
             } else if ("Spinner".equalsIgnoreCase(item.type)) {
                 addOptionsItem(container, item.id, item.name, item.options);
             }
-        }
-
-        populateSystemTab();
-    }
-
-    private void populateFallbackFeatures() {
-        LinearLayout vis = mTabContainers.get("VISUALS");
-        if (vis != null) {
-            addToggleItem(vis, 1, "ESP MASTER SWITCH", false);
-            addToggleItem(vis, 2, "ESP BOX (2D)", false);
-            addToggleItem(vis, 4, "ESP LINE (TRACER)", false);
-            addToggleItem(vis, 5, "ESP HEALTH BAR", false);
-            addToggleItem(vis, 6, "ESP PLAYER NAME", false);
-            addToggleItem(vis, 7, "ESP DISTANCE IN METERS", false);
-            addToggleItem(vis, 206, "ESP WEAPON NAME", false);
-            addToggleItem(vis, 207, "THREAT COUNTER", false);
-            addToggleItem(vis, 208, "ESP INFO LINE", true);
-            addToggleItem(vis, 27, "DRAW FOV CIRCLE", true);
-            addOptionsItem(vis, 201, "ESP BOX STYLE", new String[]{"STROKE", "FILLED", "CORNER", "ROUNDED"});
-            addOptionsItem(vis, 202, "ESP LINE SNAP MODE", new String[]{"TOP", "CENTER", "BOTTOM"});
-            addSliderItem(vis, 209, "ESP TEXT SIZE", 8, 24);
-        }
-
-        LinearLayout aim = mTabContainers.get("AIMBOT");
-        if (aim != null) {
-            addToggleItem(aim, 20, "AIM HARD (REAL AIM)", false);
-            addToggleItem(aim, 21, "AIM COLLIDER LOCK", false);
-            addToggleItem(aim, 22, "SILENT AIM (MAGIC BULLET)", false);
-            addToggleItem(aim, 23, "AIM MAGNET V2", false);
-            addToggleItem(aim, 24, "IGNORE KNOCKED PLAYERS", true);
-            addToggleItem(aim, 216, "KILL IN CHEST", false);
-            addSliderItem(aim, 303, "AIM FOV ANGLE", 10, 180);
-            addSliderItem(aim, 101, "MAX TARGET DISTANCE", 10, 350);
-            addSliderItem(aim, 214, "HEAD RATE", 0, 3);
-            addSliderItem(aim, 215, "CHEST RATE", 0, 6);
-        }
-
-        LinearLayout com = mTabContainers.get("COMBAT");
-        if (com != null) {
-            addToggleItem(com, 40, "NO RECOIL (100% STABLE)", false);
-            addToggleItem(com, 41, "SPEED MOVEMENT (2X)", false);
-            addToggleItem(com, 42, "PLAYER TO ME (TELEPORT)", false);
-            addToggleItem(com, 43, "UNDERGROUND CAMERA", false);
-            addToggleItem(com, 44, "ANTICHEAT REALTIME BYPASS", false);
-            addSliderItem(com, 102, "GAME SPEED MULTIPLIER", 1, 5);
         }
 
         populateSystemTab();

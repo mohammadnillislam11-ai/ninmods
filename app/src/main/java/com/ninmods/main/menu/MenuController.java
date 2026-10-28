@@ -899,6 +899,76 @@ public final class MenuController {
     }
 
     /**
+     * Dynamically builds the menu feature list from the central FeatureCatalog.
+     * Prevents hardcoded lists of features from existing in any menu UI.
+     *
+     * @return List of standardized MenuFeatureItem objects.
+     */
+    public static List<MenuFeatureItem> getFeaturesFromCatalog() {
+        List<MenuFeatureItem> items = new ArrayList<>();
+        for (FeatureCatalog feat : FeatureCatalog.values()) {
+            String cat = "VISUALS";
+            if (feat.group() == FeatureCatalog.Group.AIM) {
+                cat = "AIMBOT";
+            } else if (feat.group() == FeatureCatalog.Group.COMBAT) {
+                cat = "COMBAT";
+            }
+
+            String type = (feat.type() == FeatureCatalog.Type.SLIDER) ? "SeekBar" : "Toggle";
+            String readableName = feat.key().replace('.', ' ').toUpperCase();
+            String[] options = null;
+
+            if (feat == FeatureCatalog.ESP_BOX_STYLE) {
+                type = "Spinner";
+                readableName = "ESP BOX STYLE";
+                options = new String[]{"STROKE", "FILLED", "CORNER", "ROUNDED"};
+            } else if (feat == FeatureCatalog.ESP_LINE_SNAP) {
+                type = "Spinner";
+                readableName = "ESP LINE SNAP MODE";
+                options = new String[]{"TOP", "CENTER", "BOTTOM"};
+            } else if (feat == FeatureCatalog.ESP_MASTER) readableName = "ESP MASTER SWITCH";
+            else if (feat == FeatureCatalog.ESP_BOX) readableName = "ESP BOX (2D)";
+            else if (feat == FeatureCatalog.ESP_LINE) readableName = "ESP LINE (TRACER)";
+            else if (feat == FeatureCatalog.ESP_HEALTH) readableName = "ESP HEALTH BAR";
+            else if (feat == FeatureCatalog.ESP_NAME) readableName = "ESP PLAYER NAME";
+            else if (feat == FeatureCatalog.ESP_DISTANCE) readableName = "ESP DISTANCE IN METERS";
+            else if (feat == FeatureCatalog.ESP_WEAPON) readableName = "ESP WEAPON NAME";
+            else if (feat == FeatureCatalog.ESP_THREAT_COUNT) readableName = "THREAT COUNTER";
+            else if (feat == FeatureCatalog.ESP_INFO_LINE) readableName = "ESP INFO LINE";
+            else if (feat == FeatureCatalog.AIM_AUTOLOCK) readableName = "AIM HARD (REAL AIM)";
+            else if (feat == FeatureCatalog.AIM_STICKY) readableName = "AIM COLLIDER LOCK";
+            else if (feat == FeatureCatalog.AIM_SILENT) readableName = "SILENT AIM (MAGIC BULLET)";
+            else if (feat == FeatureCatalog.AIM_MAGNET) readableName = "AIM MAGNET V2";
+            else if (feat == FeatureCatalog.AIM_IGNORE_KNOCKED) readableName = "IGNORE KNOCKED PLAYERS";
+            else if (feat == FeatureCatalog.AIM_KILL_IN_CHEST) readableName = "KILL IN CHEST";
+            else if (feat == FeatureCatalog.AIM_FOV_CIRCLE) readableName = "DRAW FOV CIRCLE";
+            else if (feat == FeatureCatalog.COMBAT_NO_RECOIL) readableName = "NO RECOIL (100% STABLE)";
+            else if (feat == FeatureCatalog.COMBAT_SPEED_HACK) readableName = "SPEED MOVEMENT (2X)";
+            else if (feat == FeatureCatalog.COMBAT_PLAYER_TO_ME) readableName = "PLAYER TO ME (TELEPORT)";
+            else if (feat == FeatureCatalog.COMBAT_UNDERCAM) readableName = "UNDERGROUND CAMERA";
+            else if (feat == FeatureCatalog.COMBAT_ANTICHEAT) readableName = "ANTICHEAT REALTIME BYPASS";
+            else if (feat == FeatureCatalog.AIM_FOV) readableName = "AIM FOV ANGLE";
+            else if (feat == FeatureCatalog.AIM_MAX_DISTANCE) readableName = "MAX TARGET DISTANCE";
+            else if (feat == FeatureCatalog.COMBAT_GAME_SPEED) readableName = "GAME SPEED MULTIPLIER";
+            else if (feat == FeatureCatalog.ESP_TEXT_SIZE) readableName = "ESP TEXT SIZE";
+            else if (feat == FeatureCatalog.AIM_HEAD_RATE) readableName = "HEAD RATE";
+            else if (feat == FeatureCatalog.AIM_CHEST_RATE) readableName = "CHEST RATE";
+
+            items.add(new MenuFeatureItem(
+                    feat.nativeId(),
+                    readableName,
+                    type,
+                    feat.defaultSwitch(),
+                    feat.min(),
+                    feat.max(),
+                    options,
+                    cat
+            ));
+        }
+        return items;
+    }
+
+    /**
      * Resolves the target process ID of the detected game.
      *
      * @return Process identifier (PID) if detected, or -1 otherwise.
