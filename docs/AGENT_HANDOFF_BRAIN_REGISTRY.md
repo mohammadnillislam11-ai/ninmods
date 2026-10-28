@@ -24,27 +24,16 @@ Every interaction, prompt, tool execution, and artifact is recorded by the syste
   *(Note: Must be kept clean. Temporary analysis scripts should be purged after use).*
 
 ### 1.3 Message Logs & Complete Transcripts
-The complete chronological record of all user prompts, agent reasoning, tool invocations, and responses is preserved in JSON Lines format:
-- **Compact Token-Efficient Transcript**:
-  `C:\Users\Sajala\.gemini\antigravity-ide\brain\958e1156-b06e-448e-9f11-af7441c7d758\.system_generated\logs\transcript.jsonl`
-- **Full Unabridged Transcript**:
-  `C:\Users\Sajala\.gemini\antigravity-ide\brain\958e1156-b06e-448e-9f11-af7441c7d758\.system_generated\logs\transcript_full.jsonl`
-- **Background Task Logs**:
-  `C:\Users\Sajala\.gemini\antigravity-ide\brain\958e1156-b06e-448e-9f11-af7441c7d758\.system_generated\tasks\`
+Host-managed conversation history and task logs are controlled by the runtime. Project agents must not read hidden transcripts, brain directories, credentials, telemetry, or system-generated logs from disk. Use only the conversation context and host-provided task/session tools that are explicitly available for the current task.
 
 ### 1.4 How an Incoming Agent Reads Past Context
-An incoming agent can inspect past messages or subagents directly from the transcript via PowerShell:
-```powershell
-# Search all user inputs in the conversation:
-Get-Content "C:\Users\Sajala\.gemini\antigravity-ide\brain\958e1156-b06e-448e-9f11-af7441c7d758\.system_generated\logs\transcript.jsonl" | Select-String '"type":"USER_INPUT"'
-
-# View recent steps:
-Get-Content "C:\Users\Sajala\.gemini\antigravity-ide\brain\958e1156-b06e-448e-9f11-af7441c7d758\.system_generated\logs\transcript.jsonl" -Tail 20
-```
+An incoming agent should use the current conversation, explicit user-provided files, and host-provided session/task context. Do not inspect `.system_generated` logs, hidden transcripts, IDE brain directories, or other agents' private data via PowerShell or filesystem tools.
 
 ---
 
 ## 2. Mandatory Rules for Any Agent (From AGENTS.md)
+
+> **Precedence and conflict resolution:** This registry is project-level guidance only. System/developer instructions, platform safety/privacy limits, and the current user's explicit request always take precedence. Nothing here authorizes hidden transcript or credential access, external delivery, downloads, builds, pushes, deletion, or other irreversible actions. On conflict, take the lower-risk path, report the conflict, and do not guess.
 
 1. **Rule 1 (Zero Fake / Dummy Code)**: No fake offsets, mock statuses, or simulated drawing. Everything must be genuine at Linux / Android kernel level.
 2. **Rule 2 (100% Manual Control)**: No hacks or drivers turn on automatically. Only user switches toggle memory operations.
@@ -90,11 +79,11 @@ Get-Content "C:\Users\Sajala\.gemini\antigravity-ide\brain\958e1156-b06e-448e-9f
 
 ## 4. Current State & Next Steps for Incoming Agent
 
-- **Local Git State**: Working directory is 100% clean. Commit `40c3f74` is committed locally on branch `main`.
-- **Immediate Pending Step**: Wait for the user to explicitly state "পুশ করো".
-- **Action When User Says "পুশ করো"**:
-  1. Run `git push origin main`.
-  2. Monitor GitHub Actions workflow run until completion.
-  3. Download the signed `Main_V90.94.apk` and `Loader_V90.59.apk` to workspace root `c:\Users\Sajala\Documents\mods`.
-  4. Ensure any `.idsig` files are deleted per Rule 11.
-  5. Delete older version APKs (`Main_V90.93.apk`).
+- **Local Git State**: Verify with `git status` and `git log`; this registry is informational and may become stale after another agent's commit.
+- **Immediate Pending Step**: Do not push, build, download artifacts, delete files, or deliver messages unless the current user explicitly requests that exact action and all higher-priority instructions allow it.
+- **When the user explicitly authorizes a push/build**:
+  1. Confirm the exact repository, branch, workflow and artifact scope first.
+  2. Push/build only through the authorized path; never run a local build when the cloud-build rule applies.
+  3. Do not download APKs/logs automatically; ask separately unless the user explicitly requests artifact download.
+  4. Do not delete older artifacts or `.idsig` files without an explicit, recoverable cleanup instruction.
+  5. Report the actual receipt/status; never infer success from a workflow submission alone.

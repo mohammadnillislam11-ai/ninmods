@@ -1790,5 +1790,16 @@ inline void StopMemoryWorkersForChannelSwitch() {
     pPlayer.aimbotlock.store(false, std::memory_order_relaxed);
     pPlayer.silen4a.store(false, std::memory_order_relaxed);
     pPlayer.aimMagnet.store(false, std::memory_order_relaxed);
-    Actived.activar = false;
+    pPlayer.PlayerToMe.store(false, std::memory_order_relaxed);
+    pPlayer.NoRecoil.store(false, std::memory_order_relaxed);
+    pPlayer.SpeedHackV2.store(false, std::memory_order_relaxed);
+    pPlayer.undercam.store(false, std::memory_order_relaxed);
+    ShareLocalPlayer.store(0, std::memory_order_relaxed);
+    ShareEnemy.store(0, std::memory_order_relaxed);
+    Actived.activar.store(false, std::memory_order_relaxed);
+    {
+        std::lock_guard<std::mutex> lock(g_engineTransactionMutex);
+        s_cachedResponse = Response{};
+    }
+    NinEngine::DaemonLink::Instance().PushControl(Ninlite::MODE_MASTER, false, 0);
 }

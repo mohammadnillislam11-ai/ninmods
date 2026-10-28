@@ -1,5 +1,6 @@
 #include "Detection/GameDetection.h"
 #include "Includes/Logger.h"
+#include "Includes/EngineChannel.h"
 #include "Engine/DaemonLink.h"
 
 #include <jni.h>
@@ -16,11 +17,14 @@
 #include <atomic>
 #include <chrono>
 
-/*
+/**
  * OFFICIAL LINUX PROCESS DETECTION ENGINE
  * =======================================
  * Genuine Linux & C++ systems programming using standard POSIX /proc interfaces.
  * Complies with Linux Standard Base (LSB) and Linux kernel proc(5) specifications.
+ * Strictly adheres to Rule 3 (Driver Channel Isolation):
+ *  - QX Channel: queries the root daemon exclusively via UNIX domain IPC
+ *  - RT Channel: queries the Linux /proc filesystem directly
  */
 
 namespace NinDetection {
@@ -125,21 +129,28 @@ pid_t FindPidByProcFs(const char *packageName) {
 static GameProcess ScanProcessInternal() {
     GameProcess result;
 
-    // 1. Check Root Daemon IPC (Linux abstract UNIX socket)
-    pid_t daemonPid = 0;
-    bool daemonIsMax = false;
-    if (NinEngine::DaemonLink::Instance().GetDetect(daemonPid, daemonIsMax)) {
-        if (IsProcessAlive(daemonPid)) {
-            result.pid = daemonPid;
-            result.isMax = daemonIsMax;
-            result.packageName = daemonIsMax ? kPkgMax : kPkgNormal;
-            result.gameTitle = daemonIsMax ? "Free Fire MAX" : "Free Fire Normal";
-            result.isDetected = true;
-            return result;
+    /* Rule 3 (Strict Driver Isolation):
+     * If QX channel is active, process detection is performed exclusively
+     * by the root daemon over IPC.
+     * If RT channel is active, process detection is performed directly
+     * via the POSIX /proc filesystem. */
+    if (NinChannel::IsQxActive()) {
+        pid_t daemonPid = 0;
+        bool daemonIsMax = false;
+        if (NinEngine::DaemonLink::Instance().GetDetect(daemonPid, daemonIsMax)) {
+            if (IsProcessAlive(daemonPid)) {
+                result.pid = daemonPid;
+                result.isMax = daemonIsMax;
+                result.packageName = daemonIsMax ? kPkgMax : kPkgNormal;
+                result.gameTitle = daemonIsMax ? "Free Fire MAX" : "Free Fire Normal";
+                result.isDetected = true;
+                return result;
+            }
         }
+        return result;
     }
 
-    // 2. Official Linux POSIX /proc filesystem scan
+    // RT Channel: Official Linux POSIX /proc filesystem scan
     const char *packages[] = {kPkgNormal, kPkgMax, kPkgIndia};
     bool isMaxFlags[]      = {false, true, false};
     const char *titles[]   = {"Free Fire Normal", "Free Fire MAX", "Free Fire India"};
@@ -167,14 +178,14 @@ GameProcess Detect() {
         return g_cachedProcess;
     }
 
-    // 2. Throttle fresh /proc scans to at most once per 600ms to preserve CPU
+    // 2. Throttle fresh scans to at most once per 600ms to preserve CPU
     int64_t now = GetCurrentTimeMs();
     if (now - g_lastScanTimeMs.load(std::memory_order_relaxed) < 600) {
         return g_cachedProcess;
     }
     g_lastScanTimeMs.store(now, std::memory_order_relaxed);
 
-    // 3. Scan Linux /proc filesystem and root IPC
+    // 3. Scan process state respecting strict channel isolation
     g_cachedProcess = ScanProcessInternal();
     return g_cachedProcess;
 }

@@ -86,6 +86,11 @@ public class NinLiteOverlayManager {
                     return;
                 }
 
+                // Stop conflicting RT overlay if active to enforce strict single-channel isolation
+                if (com.ninmods.main.overlay.NativeOverlayManager.isRunning()) {
+                    com.ninmods.main.overlay.NativeOverlayManager.stop();
+                }
+
                 String hwid = AuthApiController.getHwid(mContext);
                 boolean hasActiveLicense = AuthManager.hasActiveLicense(mContext);
                 String activeKey = AuthManager.getActiveLicenseKey(mContext);

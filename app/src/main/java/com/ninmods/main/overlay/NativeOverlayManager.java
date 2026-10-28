@@ -187,6 +187,7 @@ public class NativeOverlayManager {
             return;
         }
         try {
+            sEspOverlayView.stop();
             if (sEspOverlayView.isAttachedToWindow()) {
                 wm.removeView(sEspOverlayView);
             }
@@ -228,6 +229,11 @@ public class NativeOverlayManager {
                 if (mIsAttached && MenuOverlayService.isRunning()) {
                     AppLogger.log(TAG, "Floating overlay already running. Active brand: " + mActiveBrandId);
                     return;
+                }
+
+                // Stop conflicting QX overlay if active to enforce strict single-channel isolation
+                if (com.ninmods.main.menu.ninlite.NinLiteOverlayManager.isRunning()) {
+                    com.ninmods.main.menu.ninlite.NinLiteOverlayManager.stop();
                 }
 
                 // 0. The persistent feature store has to exist before a menu
