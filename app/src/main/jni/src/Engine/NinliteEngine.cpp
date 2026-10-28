@@ -230,7 +230,9 @@ void StartEngine(const std::string &nativeLibDir) {
                                        std::to_string(rc) + ")";
             }
 
-            for (int i = 0; i < 30; ++i) {
+            NinEngine::DaemonLink::Instance().EnsureStarted();
+
+            for (int i = 0; i < 60; ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 if (isNinLiteDaemonAvailable()) {
                     break;

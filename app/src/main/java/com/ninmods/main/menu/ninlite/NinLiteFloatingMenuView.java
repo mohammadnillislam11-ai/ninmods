@@ -134,6 +134,7 @@ public class NinLiteFloatingMenuView {
         this.mController.init(context);
         initViews();
         FeatureSettings.addListener(mFeatureListener);
+        startRealShellAndEngine();
     }
 
     /**

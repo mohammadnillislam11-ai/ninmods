@@ -315,7 +315,11 @@ public:
         }
 
         if (::connect(sock, (struct sockaddr*)&addr, len) != 0) {
+            int err = errno;
             ::close(sock);
+            #if __has_include(<android/log.h>)
+            __android_log_print(ANDROID_LOG_DEBUG, "NIN_CLIENT", "connect() error: %d (%s)", err, strerror(err));
+            #endif
             return false;
         }
         fd_ = sock;

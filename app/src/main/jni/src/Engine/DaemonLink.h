@@ -91,6 +91,7 @@ public:
 
     /* Non-blocking: true when the worker currently holds a live connection. */
     bool IsConnected() {
+        EnsureStarted();
         std::lock_guard<std::mutex> lock(cacheMutex_);
         return cache_.connected;
     }
@@ -119,12 +120,15 @@ private:
 
         while (true) {
             /* 0. Keep the connection alive. Connect() runs ONLY here, on the
-             * worker, at most once per second - never on a caller's thread. */
+             * worker, at most once per 200ms during initial handshake. */
             if (!client.IsConnected()) {
                 auto tryAt = std::chrono::steady_clock::now();
-                if (tryAt - lastConnect >= std::chrono::seconds(1)) {
+                if (tryAt - lastConnect >= std::chrono::milliseconds(200)) {
                     lastConnect = tryAt;
-                    client.Connect();
+                    if (client.Connect()) {
+                        std::lock_guard<std::mutex> lock(cacheMutex_);
+                        cache_.connected = true;
+                    }
                 }
             }
 

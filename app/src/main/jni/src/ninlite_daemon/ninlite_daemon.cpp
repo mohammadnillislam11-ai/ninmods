@@ -489,17 +489,20 @@ static bool AttachToGame() {
 
     g_target_pid.store(pid, std::memory_order_relaxed);
 
-    /* Official access check: the kernel must let the daemon read the game's
-     * own memory. A refusal is reported, never faked. */
-    uint32_t elfMagic = 0;
-    bool readOk = NinOfficial::ReadBytes(pid, 0x0, &elfMagic, sizeof(elfMagic)) ||
-                  NinOfficial::ReadBytes(pid, 0x1000, &elfMagic, sizeof(elfMagic));
-    if (!readOk) {
-        LOGE("[DAEMON] process_vm_readv refused for PID %d (ptrace/SELinux policy).", (int)pid);
-    }
-
     uintptr_t libBase = FindCorrectLibBase(pid);
     g_libAddress.store(libBase, std::memory_order_relaxed);
+
+    if (libBase != 0) {
+        uint32_t elfMagic = 0;
+        bool readOk = NinOfficial::ReadBytes(pid, libBase, &elfMagic, sizeof(elfMagic));
+        if (readOk && (elfMagic == 0x464c457f)) {
+            LOGI("[DAEMON] Verified genuine process_vm_readv access on libil2cpp (ELF: 0x%08x)", elfMagic);
+        } else if (!readOk) {
+            LOGE("[DAEMON] process_vm_readv refused at 0x%lx for PID %d (errno: %d - %s)",
+                 (unsigned long)libBase, (int)pid, errno, strerror(errno));
+        }
+    }
+
     LOGI("[DAEMON] Attached to Game PID: %d (MAX: %d), libil2cpp: 0x%lx, access: %s",
          (int)pid, (int)g_isGameMax.load(std::memory_order_relaxed), (unsigned long)libBase,
          "process_vm_readv");
