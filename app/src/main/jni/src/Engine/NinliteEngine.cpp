@@ -1,6 +1,3 @@
-#include <sys/socket.h>
-#include <sys/un.h>
-
 #include "NinliteEngine.h"
 #include "Includes/Logger.h"
 #include "Includes/JavaShell.h"
@@ -11,7 +8,6 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <dirent.h>
 #include <string>
 #include <thread>
 #include <unistd.h>

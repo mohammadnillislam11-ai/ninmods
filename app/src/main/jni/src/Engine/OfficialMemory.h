@@ -31,7 +31,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <fcntl.h>
 #include <sys/syscall.h>
 #include <sys/types.h>

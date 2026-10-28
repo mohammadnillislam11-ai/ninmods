@@ -1378,11 +1378,6 @@ Java_com_ninmods_main_core_Utils_getGamePackage(JNIEnv *env, jclass clazz) {
   return env->NewStringUTF(OBFUSCATE("com.dts.freefireth"));
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_ninmods_main_core_Utils_getDaemonName(JNIEnv *env, jclass clazz) {
-  return env->NewStringUTF("");
-}
-
 /* The mode selection (SAFE / EXTREME) used to feed the feature blocking
  * gate. The gate is gone - every feature is manually toggleable - so the
  * mode no longer changes any engine behaviour. The exports stay as no-ops
