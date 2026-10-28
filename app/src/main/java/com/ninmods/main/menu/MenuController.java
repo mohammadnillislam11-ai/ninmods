@@ -191,11 +191,35 @@ public final class MenuController {
                               final Runnable onExpand) {
         if (expandedView == null) return;
 
+        View rootFrame = (expandedView.getParent() instanceof View)
+                ? (View) expandedView.getParent()
+                : ((collapsedView != null && collapsedView.getParent() instanceof View)
+                        ? (View) collapsedView.getParent() : expandedView.getRootView());
+
+        if (params != null && wm != null && rootFrame != null) {
+            DisplayMetrics dm = expandedView.getContext().getResources().getDisplayMetrics();
+            int expW = (expandedView.getLayoutParams() != null && expandedView.getLayoutParams().width > 0)
+                    ? expandedView.getLayoutParams().width : dp(290);
+            int expH = (expandedView.getLayoutParams() != null && expandedView.getLayoutParams().height > 0)
+                    ? expandedView.getLayoutParams().height : dp(325);
+
+            if (params.x + expW > dm.widthPixels) {
+                params.x = Math.max(0, dm.widthPixels - expW);
+            }
+            if (params.y + expH > dm.heightPixels) {
+                params.y = Math.max(0, dm.heightPixels - expH);
+            }
+            try {
+                wm.updateViewLayout(rootFrame, params);
+            } catch (Throwable ignored) {}
+        }
+
         expandedView.setVisibility(View.VISIBLE);
         expandedView.setAlpha(0f);
-        expandedView.setScaleX(0.75f);
-        expandedView.setScaleY(0.75f);
-        expandedView.setTranslationX(-dp(20));
+        expandedView.setScaleX(0.85f);
+        expandedView.setScaleY(0.85f);
+        expandedView.setTranslationX(0f);
+        expandedView.setTranslationY(0f);
 
         if (collapsedView != null) {
             collapsedView.animate()
@@ -211,7 +235,6 @@ public final class MenuController {
                 .alpha(1.0f)
                 .scaleX(1.0f)
                 .scaleY(1.0f)
-                .translationX(0f)
                 .setDuration(220)
                 .setInterpolator(new DecelerateInterpolator())
                 .withEndAction(() -> {
@@ -224,7 +247,7 @@ public final class MenuController {
 
     /**
      * Animates the collapse of the floating menu back to the compact bubble icon.
-     * Uses smooth reverse slide, scale, and spring overshoot for fluid feedback.
+     * Uses smooth reverse scale and spring overshoot for fluid feedback without position jumps.
      *
      * @param collapsedView The floating bubble icon view to restore.
      * @param expandedView The full menu card view to shrink and hide.
@@ -235,12 +258,30 @@ public final class MenuController {
     public void animateCollapse(final View collapsedView, final View expandedView,
                                 final WindowManager.LayoutParams params, final WindowManager wm,
                                 final Runnable onCollapse) {
+        View rootFrame = (collapsedView != null && collapsedView.getParent() instanceof View)
+                ? (View) collapsedView.getParent()
+                : (expandedView != null && expandedView.getParent() instanceof View ? (View) expandedView.getParent() : null);
+
+        if (params != null && wm != null && rootFrame != null) {
+            DisplayMetrics dm = rootFrame.getContext().getResources().getDisplayMetrics();
+            int colW = dp(62);
+            int colH = dp(62);
+            if (params.x + colW > dm.widthPixels) {
+                params.x = Math.max(0, dm.widthPixels - colW);
+            }
+            if (params.y + colH > dm.heightPixels) {
+                params.y = Math.max(0, dm.heightPixels - colH);
+            }
+            try {
+                wm.updateViewLayout(rootFrame, params);
+            } catch (Throwable ignored) {}
+        }
+
         if (expandedView != null) {
             expandedView.animate()
                     .alpha(0f)
-                    .scaleX(0.75f)
-                    .scaleY(0.75f)
-                    .translationX(-dp(20))
+                    .scaleX(0.85f)
+                    .scaleY(0.85f)
                     .setDuration(160)
                     .withEndAction(() -> expandedView.setVisibility(View.GONE))
                     .start();
@@ -432,7 +473,7 @@ public final class MenuController {
                 WindowManager.LayoutParams activeParams = params;
                 WindowManager activeWm = wm;
 
-                if (activeParams == null && rootFrame != null && rootFrame.getLayoutParams() instanceof WindowManager.LayoutParams) {
+                if (rootFrame != null && rootFrame.getLayoutParams() instanceof WindowManager.LayoutParams) {
                     activeParams = (WindowManager.LayoutParams) rootFrame.getLayoutParams();
                 }
                 if (activeWm == null && rootFrame != null) {
@@ -470,6 +511,11 @@ public final class MenuController {
                             activeParams.x = Math.max(0, Math.min(newX, dm.widthPixels - viewW));
                             activeParams.y = Math.max(0, Math.min(newY, dm.heightPixels - viewH));
 
+                            if (params != null) {
+                                params.x = activeParams.x;
+                                params.y = activeParams.y;
+                            }
+
                             try {
                                 activeWm.updateViewLayout(rootFrame, activeParams);
                             } catch (Throwable ignored) {}
@@ -479,18 +525,41 @@ public final class MenuController {
                     case MotionEvent.ACTION_UP:
                         if (rootFrame != null) rootFrame.setAlpha(1.0f);
                         if (!isMoving) {
-                            boolean isExpanded = (expandedView != null && expandedView.getVisibility() == View.VISIBLE);
+                            View expView = expandedView;
+                            View colView = collapsedView;
+                            if (expView == null && rootFrame instanceof ViewGroup) {
+                                ViewGroup vg = (ViewGroup) rootFrame;
+                                for (int i = 0; i < vg.getChildCount(); i++) {
+                                    View child = vg.getChildAt(i);
+                                    if (child != null && child.getLayoutParams() != null && child.getLayoutParams().width > dp(100)) {
+                                        expView = child;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (colView == null && rootFrame instanceof ViewGroup) {
+                                ViewGroup vg = (ViewGroup) rootFrame;
+                                for (int i = 0; i < vg.getChildCount(); i++) {
+                                    View child = vg.getChildAt(i);
+                                    if (child != null && (child.getLayoutParams() == null || child.getLayoutParams().width <= dp(100))) {
+                                        colView = child;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            boolean isExpanded = (expView != null && expView.getVisibility() == View.VISIBLE);
                             if (isExpanded) {
                                 if (onCollapse != null) {
                                     onCollapse.run();
-                                } else if (collapsedView != null) {
-                                    animateCollapse(collapsedView, expandedView, activeParams, activeWm, null);
+                                } else if (colView != null && expView != null) {
+                                    animateCollapse(colView, expView, activeParams, activeWm, null);
                                 }
                             } else {
                                 if (onExpand != null) {
                                     onExpand.run();
-                                } else if (collapsedView != null && expandedView != null) {
-                                    animateExpand(collapsedView, expandedView, activeParams, activeWm, null);
+                                } else if (colView != null && expView != null) {
+                                    animateExpand(colView, expView, activeParams, activeWm, null);
                                 }
                             }
                         }

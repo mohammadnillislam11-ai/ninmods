@@ -206,8 +206,34 @@ public class NinLiteFloatingMenuView {
         mRootFrame.addView(mCollapsedView);
         mRootFrame.addView(mExpandedView);
 
+        setupDragTouchListeners();
+
         mCollapsedView.setVisibility(View.VISIBLE);
         mExpandedView.setVisibility(View.GONE);
+    }
+
+    private void setupDragTouchListeners() {
+        View.OnTouchListener bubbleListener = mController.createDragTouchListener(
+                mRootFrame, mParams, mWindowManager, mCollapsedView, mExpandedView,
+                this::expandMenu, this::collapseToLogo);
+
+        if (mCollapsedView instanceof ViewGroup && ((ViewGroup) mCollapsedView).getChildCount() > 0) {
+            View bubble = ((ViewGroup) mCollapsedView).getChildAt(0);
+            if (bubble != null) {
+                bubble.setOnTouchListener(bubbleListener);
+            }
+        } else if (mCollapsedView != null) {
+            mCollapsedView.setOnTouchListener(bubbleListener);
+        }
+
+        if (mExpandedView != null && mExpandedView.getChildCount() > 0) {
+            View header = mExpandedView.getChildAt(0);
+            if (header != null) {
+                header.setOnTouchListener(mController.createDragTouchListener(
+                        mRootFrame, mParams, mWindowManager, mCollapsedView, mExpandedView,
+                        this::expandMenu, this::collapseToLogo));
+            }
+        }
     }
 
     private View createCollapsedLogoView() {
