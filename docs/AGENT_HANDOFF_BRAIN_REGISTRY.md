@@ -82,12 +82,15 @@ Get-Content "C:\Users\Sajala\.gemini\antigravity-ide\brain\958e1156-b06e-448e-9f
 - `core/AppLogger.java`: Refactored to write diagnostics directly to `/storage/emulated/0/Download/ninmods.log` per Rule 16.
 - `version.xml`: Bumped to version `90.94` (version code `994`).
 - **100% Verified JNI Bindings**: Exhaustive cross-audit of all 41 C++ `Java_` exports and 7 `RegisterNatives` methods against all Java native methods. Zero unbound exports, zero missing methods, zero wrong registry/classes.
+- **Strict RT/QX Aim Worker Decoupling**: `ContinuousAimWorker` and `UpdateAimMagnetFast` explicitly check `NinChannel::IsQxActive()` and yield without touching memory in QX mode.
+- **Daemon Socket Recovery**: `NinLiteSocketServer.h` closes listening fd on bind/listen failure to enable clean retry, and preserves listener on accept error.
+- **Multi-ABI Daemon Packaging**: GitHub Actions workflow builds and packages `libninlite_daemon.so` for both `arm64-v8a` and `x86_64`.
 
 ---
 
 ## 4. Current State & Next Steps for Incoming Agent
 
-- **Local Git State**: Working directory is 100% clean. Commit `23e2fc2` is committed locally on branch `main`.
+- **Local Git State**: Working directory is 100% clean. Commit `40c3f74` is committed locally on branch `main`.
 - **Immediate Pending Step**: Wait for the user to explicitly state "পুশ করো".
 - **Action When User Says "পুশ করো"**:
   1. Run `git push origin main`.
