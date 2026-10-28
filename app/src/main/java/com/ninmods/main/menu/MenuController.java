@@ -473,10 +473,19 @@ public final class MenuController {
                     case MotionEvent.ACTION_UP:
                         if (rootFrame != null) rootFrame.setAlpha(1.0f);
                         if (!isMoving) {
-                            if (collapsedView != null && collapsedView.getVisibility() == View.VISIBLE) {
-                                animateExpand(collapsedView, expandedView, activeParams, activeWm, onExpand);
-                            } else if (expandedView != null && expandedView.getVisibility() == View.VISIBLE) {
-                                animateCollapse(collapsedView, expandedView, activeParams, activeWm, onCollapse);
+                            boolean isExpanded = (expandedView != null && expandedView.getVisibility() == View.VISIBLE);
+                            if (isExpanded) {
+                                if (onCollapse != null) {
+                                    onCollapse.run();
+                                } else if (collapsedView != null) {
+                                    animateCollapse(collapsedView, expandedView, activeParams, activeWm, null);
+                                }
+                            } else {
+                                if (onExpand != null) {
+                                    onExpand.run();
+                                } else if (collapsedView != null && expandedView != null) {
+                                    animateExpand(collapsedView, expandedView, activeParams, activeWm, null);
+                                }
                             }
                         }
                         return true;
@@ -998,9 +1007,9 @@ public final class MenuController {
     public String getGameTitle() {
         try {
             String title = NativeBridge.getDetectedGameTitle();
-            return (title != null && !title.isEmpty()) ? title : "Free Fire";
+            return (title != null && !title.isEmpty()) ? title : "Waiting for Game...";
         } catch (Throwable t) {
-            return "Free Fire";
+            return "Waiting for Game...";
         }
     }
 
@@ -1010,7 +1019,12 @@ public final class MenuController {
      * @return Engine mode string.
      */
     public String getEngineMode() {
-        return "Kernel Driver (Ring-0)";
+        try {
+            String mode = NativeBridge.getConnectionMode();
+            return (mode != null && !mode.isEmpty()) ? mode : "Kernel Driver (Ring-0)";
+        } catch (Throwable t) {
+            return "Kernel Driver (Ring-0)";
+        }
     }
 
     /**

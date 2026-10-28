@@ -971,4 +971,18 @@ public class NinLiteFloatingMenuView {
             mController.animateCollapse(mCollapsedView, mExpandedView, mParams, mWindowManager, null);
         }
     }
+
+    /**
+     * Releases view resources and detaches from the WindowManager.
+     */
+    public void release() {
+        if (mWindowManager != null && mRootFrame != null && mIsAttached) {
+            try {
+                if (mRootFrame.isAttachedToWindow()) {
+                    mWindowManager.removeView(mRootFrame);
+                }
+            } catch (Throwable ignored) {}
+            mIsAttached = false;
+        }
+    }
 }

@@ -231,7 +231,7 @@ public class ModMenu {
         titleCol.addView(titleText);
 
         TextView subtitleText = new TextView(mContext);
-        subtitleText.setText("KERNEL ENGINE");
+        subtitleText.setText(mController.getEngineMode().toUpperCase());
         subtitleText.setTextColor(COLOR_TEXT_DIM);
         subtitleText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
         subtitleText.setLetterSpacing(0.08f);
@@ -367,7 +367,7 @@ public class ModMenu {
 
         mFooterText = new TextView(mContext);
         String vStr = mContext.getString(R.string.app_version);
-        mFooterText.setText("NINMODS V" + vStr + " • KERNEL DRIVER RING-0");
+        mFooterText.setText(mContext.getString(R.string.app_name).toUpperCase() + " V" + vStr + " • " + mController.getEngineMode().toUpperCase());
         mFooterText.setTextColor(COLOR_TEXT_DIM);
         mFooterText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
         mFooterText.setLetterSpacing(0.05f);
@@ -392,9 +392,17 @@ public class ModMenu {
     // --- Dynamic Population via MenuController & JNI ---
 
     public void ShowMenu() {
-        if (rootFrame.getParent() == null) {
+        if (mCollapsedView != null && mCollapsedView.getParent() == null) {
             rootFrame.addView(mCollapsedView);
+        }
+        if (mExpandedView != null && mExpandedView.getParent() == null) {
             rootFrame.addView(mExpandedView);
+        }
+        if (mCollapsedView != null) {
+            mCollapsedView.setVisibility(View.VISIBLE);
+        }
+        if (mExpandedView != null) {
+            mExpandedView.setVisibility(View.GONE);
         }
 
         mMainHandler.postDelayed(() -> {
@@ -544,12 +552,19 @@ public class ModMenu {
         item.addView(title);
 
         Switch sw = new Switch(mContext);
-        // Bind switch to central MenuController
         mController.bindSwitch(sw, featId, label, defaultVal);
         applySwitchStyling(sw);
 
+        mController.addListener((fId, state, val) -> {
+            if (fId == featId) {
+                applySwitchStyling(sw);
+            }
+        });
+
         sw.setOnCheckedChangeListener((btn, isChecked) -> {
-            mController.toggleFeature(mContext, featId, label, isChecked);
+            if (btn.isPressed()) {
+                mController.toggleFeature(mContext, featId, label, isChecked);
+            }
             applySwitchStyling(sw);
         });
 
