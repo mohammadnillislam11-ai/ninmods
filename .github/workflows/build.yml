@@ -33,28 +33,25 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "ndk.dir=$ANDROID_HOME/ndk/24.0.8215888" >> local.properties
 
-          # Step 1: Compile shared library (libninmods.so) and root daemon (ninlite_daemon) via ndk-build
+          # Step 1: Build both configured ABIs. The daemon is a separate
+          # executable and must be packaged for every ABI shipped by the app.
           $ANDROID_HOME/ndk/24.0.8215888/ndk-build -C app/src/main/jni APP_ABI="arm64-v8a x86_64"
 
-          # Step 2: Package ninlite_daemon executable as libninlite_daemon.so into jniLibs
-          # Android extracts files from APK lib/ folder into nativeLibraryDir at install time.
-          # NinLiteFloatingMenuView.java looks for "libninlite_daemon.so" in nativeLibraryDir.
-          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
-          if [ -f "app/src/main/libs/arm64-v8a/ninlite_daemon" ]; then
-            echo "Packaging ninlite_daemon -> jniLibs/arm64-v8a/libninlite_daemon.so"
-            cp -f app/src/main/libs/arm64-v8a/ninlite_daemon app/src/main/jniLibs/arm64-v8a/libninlite_daemon.so
-          else
-            echo "ERROR: ninlite_daemon not found in libs/arm64-v8a/ — ndk-build may have failed"
-            ls -la app/src/main/libs/arm64-v8a/ || true
-            exit 1
-          fi
-          if [ -f "app/src/main/libs/x86_64/ninlite_daemon" ]; then
-            echo "Packaging ninlite_daemon -> jniLibs/x86_64/libninlite_daemon.so"
-            cp -f app/src/main/libs/x86_64/ninlite_daemon app/src/main/jniLibs/x86_64/libninlite_daemon.so
-          fi
+          # Step 2: Package the daemon under the exact filename used by the
+          # Java root launcher in every ABI directory.
+          for abi in arm64-v8a x86_64; do
+            mkdir -p "app/src/main/jniLibs/$abi"
+            daemon="app/src/main/libs/$abi/ninlite_daemon"
+            if [ ! -f "$daemon" ]; then
+              echo "ERROR: $daemon is missing"
+              ls -la "app/src/main/libs/$abi/" || true
+              exit 1
+            fi
+            cp -f "$daemon" "app/src/main/jniLibs/$abi/libninlite_daemon.so"
+          done
 
-          # Step 3: Build APK with Gradle (externalNativeBuild re-runs ndk-build for shared libs)
-          ./gradlew assembleDebug --stacktrace
+          # Step 3: Only a release artifact may be signed and published.
+          ./gradlew assembleRelease --stacktrace
 
       - name: Sign & Align APK
         env:
@@ -65,14 +62,25 @@ jobs:
           # app/src/main/jni/src/Includes/NativeCrypto.h
           EXPECTED_CERT_SHA256: 46f9c3598550d9a66915913d38d1229585f661c14c3179900ba49839faac984e
         run: |
-          APK_SRC=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_SRC" ]; then
+            echo "::error::No release APK was produced"
+            exit 1
+          fi
           echo "Found APK at: $APK_SRC"
           APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
-          if [ -z "$APP_VER" ]; then APP_VER="90.1"; fi
+          if [ -z "$APP_VER" ]; then
+            echo "::error::Canonical version.xml is missing app_version"
+            exit 1
+          fi
           echo "Building Main_V${APP_VER}.apk"
-          KS_PASS="${RELEASE_KEYSTORE_PASSWORD:-ninmods123}"
-          KEY_ALIAS="${RELEASE_KEY_ALIAS:-ninmods}"
-          KEY_PASS="${RELEASE_KEY_PASSWORD:-$KS_PASS}"
+          if [ -z "$RELEASE_KEYSTORE_PASSWORD" ] || [ -z "$RELEASE_KEY_ALIAS" ] || [ -z "$RELEASE_KEY_PASSWORD" ]; then
+            echo "::error::Signing secrets are required; refusing to use a fallback password or alias."
+            exit 1
+          fi
+          KS_PASS="$RELEASE_KEYSTORE_PASSWORD"
+          KEY_ALIAS="$RELEASE_KEY_ALIAS"
+          KEY_PASS="$RELEASE_KEY_PASSWORD"
           if [ ! -f "release.keystore" ]; then
             echo "::error::release.keystore is missing."
             echo "::error::The application refuses to start when it was signed with a certificate other than the one compiled into the native library, so the build cannot silently generate a new key."
@@ -118,7 +126,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           APP_VER=$(grep '<string name="app_version">' app/src/main/res/values/version.xml | sed -E 's/.*<string name="app_version">([^<]+)<\/string>.*/\1/' | tr -d ' \r\n')
-          if [ -z "$APP_VER" ]; then APP_VER="90.58"; fi
+          if [ -z "$APP_VER" ]; then
+            echo "::error::Canonical version.xml is missing app_version"
+            exit 1
+          fi
           echo "Cleaning up all older releases..."
           for old_tag in $(gh release list --limit 50 --json tagName -q '.[].tagName'); do
             echo "Deleting old release: $old_tag"
