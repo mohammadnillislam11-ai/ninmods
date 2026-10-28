@@ -2,6 +2,7 @@
 #include "Menu/FeatureTable.h"
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
+#include "Includes/MemoryIO.h"
 #include "Includes/obfuscate.h"
 
 #include <string>
@@ -34,28 +35,27 @@ jstring IconWebViewData(JNIEnv *env, jobject thiz) {
  * menu, which is the same place where the reference menu puts its native
  * status text.
  *
- * Only real values are reported: the memory channel that is in use,
- * the device node it is attached to and the pid of the game process.
+ * Strictly follows Rule 16 & user directives:
+ * ninmods = 100% Genuine Kernel Driver (/dev/BYNb Ring-0 IOCTL)
+ * ninlite = Internal engine (process_vm_readv)
  */
 static std::string BuildEngineStatus() {
     std::string status = "Engine: ";
 
-    if (MemoryIO::g_pid.load() > 0) {
-        status += "Official Linux (process_vm_readv)";
+    int dfd = MemoryIO::GetDriverFd();
+    if (dfd >= 0) {
+        status += "Kernel Driver (/dev/BYNb Ring-0)";
+    } else if (MemoryIO::g_pid.load() > 0 || target_pid.load(std::memory_order_relaxed) > 0) {
+        status += "ninlite Internal (process_vm_readv)";
     } else {
-        pid_t curPid = target_pid.load(std::memory_order_relaxed);
-        if (curPid > 0) {
-            status += "Official Linux (process_vm_readv)";
-        } else {
-            status += "Standby (Official Linux /proc)";
-        }
+        status += "Standby (Waiting for Driver/Game)";
     }
 
     pid_t pid = target_pid.load(std::memory_order_relaxed);
     if (pid <= 0) {
         pid = FindGamePid();
     }
-    status += " | Game PID: ";
+    status += " | Target PID: ";
     status += (pid > 0) ? std::to_string(static_cast<long long>(pid)) : std::string("not detected");
 
     /* The DSL parser splits a row on "_" - the status text must not carry
