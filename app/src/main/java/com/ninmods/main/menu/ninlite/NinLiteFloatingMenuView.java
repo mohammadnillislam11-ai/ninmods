@@ -731,6 +731,7 @@ public class NinLiteFloatingMenuView {
         NativeBridge.startNinliteEngineNative(nativeLibDir);
         NativeBridge.setFeatureState(1, true);
         NativeBridge.setFeatureState(999, true);
+        FeatureSettings.setEnabled(FeatureCatalog.ESP_MASTER, true);
 
         // Attach ESP surface when engine is started
         com.ninmods.main.overlay.NativeOverlayManager.attachEspSurface(mContext, mWindowManager);

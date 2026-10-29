@@ -134,18 +134,6 @@ public final class FeatureSettings {
             if (value) {
                 setEnabled(FeatureCatalog.ESP_MASTER, true);
             }
-            return;
-        }
-
-        if (feature == FeatureCatalog.ESP_MASTER && !value) {
-            /* The master is off: every ESP sub feature is off as well. */
-            for (FeatureCatalog esp : FeatureCatalog.values()) {
-                if (esp == FeatureCatalog.ESP_MASTER || esp.isSlider()) continue;
-                if (esp.group() != FeatureCatalog.Group.ESP) continue;
-                writeStoredSwitch(esp, false);
-                pushSwitchToEngine(esp, false);
-                notifyChanged(esp, false, 0);
-            }
         }
     }
 

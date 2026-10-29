@@ -305,7 +305,8 @@ void DrawESP(ESP esp) {
       toePos = headPos;
 
     float distance = player.Distancia;
-    float maxEspDist = (pPlayer.AimDistance > 50.0f) ? pPlayer.AimDistance : 350.0f;
+    float aimDist = pPlayer.AimDistance.load(std::memory_order_relaxed);
+    float maxEspDist = (aimDist > 50.0f) ? aimDist : 350.0f;
     if (distance < 0.1f || distance > maxEspDist)
       continue;
 
@@ -868,17 +869,6 @@ void NinFeatureSetState(int featId, bool bState) {
   // ESP Features
   case 1:
     SetEspMasterSwitch(bState);
-    if (!bState) {
-      /* Master off: every ESP sub feature goes with it. */
-      pEspPlayer.espCaixa = false;
-      pEspPlayer.espSkeleton = false;
-      pEspPlayer.espLinha = false;
-      pEspPlayer.espHealth = false;
-      pEspPlayer.espName = false;
-      pEspPlayer.espDistance = false;
-      pEspPlayer.espDrawCount = false;
-      pEspPlayer.espIden360 = false;
-    }
     break;
   case 2:
     pEspPlayer.espCaixa = bState;
