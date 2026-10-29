@@ -729,6 +729,8 @@ public class NinLiteFloatingMenuView {
         // Delegate 100% of root shell, SELinux policy, and daemon execution to C++
         String nativeLibDir = mContext.getApplicationInfo().nativeLibraryDir;
         NativeBridge.startNinliteEngineNative(nativeLibDir);
+        NativeBridge.setFeatureState(1, true);
+        NativeBridge.setFeatureState(999, true);
 
         // Attach ESP surface when engine is started
         com.ninmods.main.overlay.NativeOverlayManager.attachEspSurface(mContext, mWindowManager);

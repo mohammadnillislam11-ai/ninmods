@@ -245,6 +245,7 @@ void StartEngine(const std::string &nativeLibDir) {
 
             NinEngine::DaemonLink::Instance().EnsureStarted();
             SyncFeature(Ninlite::MODE_INIT, true, 0);
+            SyncFeature(Ninlite::MODE_MASTER, true, 0);
             NIN_LOGI("QX", "Root daemon launched and IPC worker engaged permanently (zero timer)");
         }
 

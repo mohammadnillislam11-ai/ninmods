@@ -345,7 +345,18 @@ void DrawESP(ESP esp) {
       lineEnd = (pEspPlayer.lineType == LINE_BOTTOM)
                     ? Vector3(adjustedHeadX, boxY + boxHeight, 0)
                     : Vector3(adjustedHeadX, boxY, 0);
-      esp.DrawLine(currentBoxColor, thickness, lineStart, lineEnd);
+      // ZqwClient-style Dual Glow anti-aliasing Tracer Line with distance fade
+      float distFactor = 1.0f - (distance / 350.0f);
+      if (distFactor < 0.25f) distFactor = 0.25f;
+      if (distFactor > 1.0f) distFactor = 1.0f;
+
+      Color glowColor = currentBoxColor;
+      glowColor.a = static_cast<int>(80 * distFactor);
+      esp.DrawLine(glowColor, thickness + 2.5f, lineStart, lineEnd);
+
+      Color coreColor = currentBoxColor;
+      coreColor.a = static_cast<int>(240 * distFactor);
+      esp.DrawLine(coreColor, thickness, lineStart, lineEnd);
     }
 
     if (pEspPlayer.espCaixa) {
@@ -916,6 +927,7 @@ void NinFeatureSetState(int featId, bool bState) {
      * classic menu switch changed the app side only, while the Daemon (the
      * component that actually moves the aim) never heard about it. */
     SyncWithNinLiteDaemon(Ninlite::MODE_SILENT, bState, 0);
+    if (bState) SetEspMasterSwitch(true);
     break;
   case 23:
     pPlayer.aimMagnet = bState;
