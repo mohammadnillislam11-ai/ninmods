@@ -305,7 +305,8 @@ void DrawESP(ESP esp) {
       toePos = headPos;
 
     float distance = player.Distancia;
-    if (distance < 0.1f || distance > 150.0f)
+    float maxEspDist = (pPlayer.AimDistance > 50.0f) ? pPlayer.AimDistance : 350.0f;
+    if (distance < 0.1f || distance > maxEspDist)
       continue;
 
     // Dynamic distance scaling for clean visuals

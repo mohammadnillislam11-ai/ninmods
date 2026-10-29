@@ -762,38 +762,9 @@ public class NinLiteFloatingMenuView {
         layout.addView(createAccentSliderRow("Silent Fov", FeatureCatalog.AIM_FOV));
         layout.addView(createAccentSliderRow("Legit Delay", FeatureCatalog.AIM_LEGIT_DELAY));
 
-        // Dropdown Header: "Silent Target"
-        TextView targetHeader = new TextView(mContext);
-        targetHeader.setText("Silent Target");
-        targetHeader.setTextColor(COLOR_TEXT_WHITE);
-        targetHeader.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        targetHeader.setTypeface(Typeface.DEFAULT_BOLD);
-        targetHeader.setPadding(0, dp(10), 0, dp(4));
-        layout.addView(targetHeader);
-
-        // Styled Dropdown Spinner ("Legit", "Head", "Chest", "Neck")
-        Spinner spinner = new Spinner(mContext);
-        LinearLayout.LayoutParams spinLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34));
-        spinner.setLayoutParams(spinLp);
-
-        String[] targets = {"Legit", "Head", "Chest", "Neck"};
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(mContext, android.R.layout.simple_spinner_dropdown_item, targets) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView tv = (TextView) super.getView(position, convertView, parent);
-                tv.setTextColor(COLOR_TEXT_WHITE);
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-                tv.setTypeface(Typeface.DEFAULT_BOLD);
-                return tv;
-            }
-        };
-        spinner.setAdapter(adapter);
-
-        // Unified dropdown binding via MenuController
-        mController.bindDropdown(spinner, FeatureCatalog.AIM_SILENT_TARGET.nativeId(),
-                FeatureCatalog.AIM_SILENT_TARGET.key(), targets, 0);
-
-        layout.addView(spinner);
+        // Styled Dropdown for Silent Target
+        layout.addView(createDropdownRow("Silent Target", FeatureCatalog.AIM_SILENT_TARGET,
+                new String[]{"Legit", "Head", "Chest", "Neck"}, 1));
         sv.addView(layout);
         return sv;
     }
@@ -820,8 +791,10 @@ public class NinLiteFloatingMenuView {
         layout.addView(createCircleCheckboxRow("ESP Distance", FeatureCatalog.ESP_DISTANCE));
         layout.addView(createCircleCheckboxRow("ESP Name", FeatureCatalog.ESP_NAME));
 
-        layout.addView(createAccentSliderRow("Box Style (0-3)", FeatureCatalog.ESP_BOX_STYLE));
-        layout.addView(createAccentSliderRow("Line Snap Mode", FeatureCatalog.ESP_LINE_SNAP));
+        layout.addView(createDropdownRow("Box Style", FeatureCatalog.ESP_BOX_STYLE,
+                new String[]{"Corner", "2D Box", "Filled", "Rounded"}, 0));
+        layout.addView(createDropdownRow("Line Snap Mode", FeatureCatalog.ESP_LINE_SNAP,
+                new String[]{"Top (Head)", "Center (Crosshair)", "Bottom (Feet)"}, 0));
 
         sv.addView(layout);
         return sv;
@@ -919,6 +892,60 @@ public class NinLiteFloatingMenuView {
         return row;
     }
 
+    private View createDropdownRow(String label, final FeatureCatalog feature, String[] options, int defaultIndex) {
+        LinearLayout container = new LinearLayout(mContext);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(0, dp(6), 0, dp(6));
+
+        TextView lbl = new TextView(mContext);
+        lbl.setText(label);
+        lbl.setTextColor(COLOR_TEXT_WHITE);
+        lbl.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        lbl.setTypeface(Typeface.DEFAULT_BOLD);
+        lbl.setPadding(0, 0, 0, dp(4));
+        container.addView(lbl);
+
+        Spinner spinner = new Spinner(mContext);
+        LinearLayout.LayoutParams spinLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
+        spinner.setLayoutParams(spinLp);
+
+        GradientDrawable spinBg = new GradientDrawable();
+        spinBg.setColor(0xFF101928);
+        spinBg.setCornerRadius(dp(8));
+        spinBg.setStroke(dp(1.0f), 0xFF1E2D42);
+        spinner.setBackground(spinBg);
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(mContext, android.R.layout.simple_spinner_dropdown_item, options) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView tv = (TextView) super.getView(position, convertView, parent);
+                tv.setTextColor(COLOR_CYAN_LIGHT);
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                tv.setTypeface(Typeface.DEFAULT_BOLD);
+                tv.setPadding(dp(8), dp(4), dp(8), dp(4));
+                return tv;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                View view = super.getDropDownView(position, convertView, parent);
+                if (view instanceof TextView) {
+                    TextView tv = (TextView) view;
+                    tv.setTextColor(Color.WHITE);
+                    tv.setBackgroundColor(0xFF0F172A);
+                    tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                    tv.setPadding(dp(12), dp(10), dp(12), dp(10));
+                }
+                return view;
+            }
+        };
+        spinner.setAdapter(adapter);
+
+        mController.bindDropdown(spinner, feature.nativeId(), feature.key(), options, defaultIndex);
+        container.addView(spinner);
+        return container;
+    }
+
     // Exact Screenshot 1 Circular Checkbox (Circle outline with white fill when checked)
     private View createCircleCheckboxRow(String label, final FeatureCatalog feature) {
         LinearLayout row = new LinearLayout(mContext);
@@ -952,8 +979,9 @@ public class NinLiteFloatingMenuView {
         row.addView(tv);
 
         // Unified circle checkbox binding via MenuController
+        boolean defaultState = feature.isSlider() ? (feature.defaultValue() > 0) : feature.defaultSwitch();
         mController.bindCircleCheckbox(row, circleBox, innerDot, feature.nativeId(), feature.key(),
-                feature.defaultValue() > 0.5f, Color.WHITE, Color.WHITE, COLOR_CARD_BG);
+                defaultState, COLOR_CYAN, 0xFF3E4F66, COLOR_CARD_BG);
 
         return row;
     }
