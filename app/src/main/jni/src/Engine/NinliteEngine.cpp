@@ -189,7 +189,7 @@ void StartEngine(const std::string &nativeLibDir) {
 
         int rc = RunRootScriptViaJava(script);
         if (rc != 0) {
-            NIN_LOGW("QX", "Root script returned %d (SELinux permissive optional)", rc);
+            NIN_LOGE("QX", "Root script returned %d (SELinux permissive optional)", rc);
         }
 
         g_ninlite_engine_started.store(true, std::memory_order_relaxed);
