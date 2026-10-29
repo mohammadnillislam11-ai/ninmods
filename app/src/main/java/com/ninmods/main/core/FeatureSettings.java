@@ -130,11 +130,7 @@ public final class FeatureSettings {
          * inside the native switch statement, which made the master switch in
          * the other menu show a stale value. It is done here so the change is
          * visible, persisted and pushed to the engine exactly once. */
-        if (feature.group() == FeatureCatalog.Group.ESP && feature != FeatureCatalog.ESP_MASTER) {
-            if (value) {
-                setEnabled(FeatureCatalog.ESP_MASTER, true);
-            }
-        }
+        // Direct activation: each feature drives itself independently without Master button gating
     }
 
     /**

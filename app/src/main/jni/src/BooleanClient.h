@@ -71,7 +71,7 @@ inline struct PlayerState {
 
 inline struct ActivedState {
     std::atomic<bool> Bypass{false};
-    std::atomic<bool> activar{false};
+    std::atomic<bool> activar{true}; // Always true: individual toggles drive rendering
 } Actived;
 
 inline struct EspPlayerState {

@@ -731,7 +731,6 @@ public class NinLiteFloatingMenuView {
         NativeBridge.startNinliteEngineNative(nativeLibDir);
         NativeBridge.setFeatureState(1, true);
         NativeBridge.setFeatureState(999, true);
-        FeatureSettings.setEnabled(FeatureCatalog.ESP_MASTER, true);
 
         // Attach ESP surface when engine is started
         com.ninmods.main.overlay.NativeOverlayManager.attachEspSurface(mContext, mWindowManager);
@@ -758,6 +757,7 @@ public class NinLiteFloatingMenuView {
         // options as ENABLED while the engine had them switched off.
         layout.addView(createCircleCheckboxRow("Silent Aim Enable", FeatureCatalog.AIM_SILENT));
         layout.addView(createCircleCheckboxRow("Ignore Knocked", FeatureCatalog.AIM_IGNORE_KNOCKED));
+        layout.addView(createCircleCheckboxRow("Show FOV Circle", FeatureCatalog.AIM_FOV_CIRCLE));
 
         // Sliders with Cyan Value indicator: "Silent Fov", "Legit Delay"
         layout.addView(createAccentSliderRow("Silent Fov", FeatureCatalog.AIM_FOV));
@@ -782,7 +782,7 @@ public class NinLiteFloatingMenuView {
         layout.setOrientation(LinearLayout.VERTICAL);
 
         layout.addView(createSectionHeaderTitle("ESP Visuals"));
-        layout.addView(createCircleCheckboxRow("ESP Master", FeatureCatalog.ESP_MASTER));
+        // ESP Master removed - features activate directly
         /* The classic overlay menu drives the very same engine flags under
          * different numeric ids (2/4/5/7/6 instead of 111..115). Both menus
          * now use the shared FeatureCatalog, so one flag can no longer be

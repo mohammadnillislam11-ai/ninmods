@@ -159,8 +159,7 @@ void DrawESP(ESP esp) {
   }
 
   bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock || pPlayer.aimMagnet;
-  if (Actived.activar && anyAimActive && showFOVCircle &&
-      pPlayer.AimFov > 0) {
+  if (anyAimActive && showFOVCircle && pPlayer.AimFov > 0) {
     DrawFOVCircle(esp, pPlayer.AimFov, pEspPlayer.espColor);
   }
 
@@ -172,7 +171,7 @@ void DrawESP(ESP esp) {
     return;
 
   // Draw Live Threat Counter HUD once per frame if enabled
-  if (Actived.activar && (pEspPlayer.espDrawCount || pEspPlayer.espCount)) {
+  if (pEspPlayer.espDrawCount || pEspPlayer.espCount) {
     const bool showOnScreen = response.VisibleEnemyCount > 0;
     const bool showNearScreen = response.VisibleNearOffScreenEnemyCount > 0;
     const bool showProximity = response.ProximityEnemyCount > 0;
@@ -296,8 +295,7 @@ void DrawESP(ESP esp) {
     auto player = response.Players[i];
     if (player.Head.Z <= 0.0f)
       continue;
-    if (!Actived.activar)
-      continue;
+    // Individual feature flags below determine what to draw
 
     Vector3 headPos = player.Head;
     Vector3 toePos = player.Toe;
@@ -326,11 +324,21 @@ void DrawESP(ESP esp) {
     float boxY = headPos.Y - (boxHeight * 0.12f);
     float boxX = headPos.X - (width / 2.0f) + totalXAdjust;
 
-    Color currentBoxColor = pEspPlayer.espColor;
+    /* ZqwClient-style visible / non-visible colour split.
+     * Visible (on-screen): use espColor (default cyan/user choice).
+     * Not visible (off-screen): slightly desaturated, dimmer tint.
+     * Knocked: always Red regardless of visibility. Bot: Red. */
+    bool isPlayerVisible = (player.Flags & Ninlite::PLAYER_FLAG_VISIBLE) != 0;
+    bool isPlayerKnocked = player.IsCaido; // mapped from PLAYER_FLAG_KNOCKED by GameEngine
+
+    Color visibleColor  = pEspPlayer.espColor;             // on-screen colour (user's choice)
+    Color offColor      = Color(100, 210, 255, 200);       // off-screen: muted cyan
+    Color currentBoxColor = isPlayerVisible ? visibleColor : offColor;
+
     if (player.Name)
-      currentBoxColor = Color::Red(); // player.Name == true -> bot
-    if (player.IsCaido)
-      currentBoxColor = Color::Red(); // knocked (changed from Yellow to Red)
+      currentBoxColor = Color::Red(); // Bot -> always red
+    if (isPlayerKnocked)
+      currentBoxColor = Color(255, 60, 60, 220); // Knocked -> vivid red
     Color strokeColor = Color(0, 0, 0, 255);
 
     float adjustedHeadX = headPos.X + totalXAdjust;

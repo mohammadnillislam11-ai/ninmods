@@ -674,7 +674,7 @@ static void CreateDataList(Ninlite::Response& res) {
     res.visibleNearOffScreenEnemyCount = 0;
     res.proximityEnemyCount = 0;
 
-    if (!Actived.activar) return;
+    // Zero Master dependency: Daemon scans entities actively whenever attached
     if (!GameStillAlive() && !AttachToGame()) return;
     uintptr_t libBase = g_libAddress.load(std::memory_order_relaxed);
     if (libBase == 0) return;
@@ -854,10 +854,20 @@ static void CreateDataList(Ninlite::Response& res) {
         pData->specialAbilities = specialStatus;
         pData->weaponId = (uint16_t)(short)ReadCurrentWeapon(enemy);
 
+        /* Determine if the enemy head is currently on-screen (visible).
+         * Used by Client.cpp for ZqwClient-style visible (green) vs
+         * non-visible (cyan) colour differentiation in ESP. */
+        const int screenW_vf = g_screenWidth.load(std::memory_order_relaxed);
+        const int screenH_vf = g_screenHeight.load(std::memory_order_relaxed);
+        bool isOnScreenNow = (screenW_vf > 0 && screenH_vf > 0 &&
+                              screenHead.X >= 0.0f && screenHead.X <= (float)screenW_vf &&
+                              screenHead.Y >= 0.0f && screenHead.Y <= (float)screenH_vf);
+
         uint32_t flags = 0;
-        if (isKnocked) flags |= Ninlite::PLAYER_FLAG_KNOCKED;
-        if (isClientBot) flags |= Ninlite::PLAYER_FLAG_BOT;
-        if (isSpecial) flags |= Ninlite::PLAYER_FLAG_SPECIAL;
+        if (isKnocked)     flags |= Ninlite::PLAYER_FLAG_KNOCKED;
+        if (isClientBot)   flags |= Ninlite::PLAYER_FLAG_BOT;
+        if (isSpecial)     flags |= Ninlite::PLAYER_FLAG_SPECIAL;
+        if (isOnScreenNow) flags |= Ninlite::PLAYER_FLAG_VISIBLE;
         pData->flags = flags;
 
         /* real health */

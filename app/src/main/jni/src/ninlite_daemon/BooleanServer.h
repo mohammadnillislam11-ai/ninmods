@@ -49,7 +49,7 @@ inline struct DaemonPlayerState {
 } pPlayer;
 
 inline struct DaemonActivedState {
-    std::atomic<bool> activar{false};
+    std::atomic<bool> activar{true}; // Always true: daemon scans actively when attached
 } Actived;
 
 #endif // NINLITE_BOOLEAN_SERVER_H

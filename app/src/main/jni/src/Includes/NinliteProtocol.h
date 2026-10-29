@@ -105,9 +105,10 @@ enum RequestMode : int32_t {
 /* ---------------------------------------------------------- player flags */
 
 enum PlayerFlags : uint32_t {
-    PLAYER_FLAG_KNOCKED = 1u << 0,   /* downed / knocked state       */
+    PLAYER_FLAG_KNOCKED = 1u << 0,   /* downed / knocked state        */
     PLAYER_FLAG_BOT     = 1u << 1,   /* AI controlled client bot      */
     PLAYER_FLAG_SPECIAL = 1u << 2,   /* active skill transformation   */
+    PLAYER_FLAG_VISIBLE = 1u << 3,   /* enemy head is on-screen       */
 };
 
 /* ------------------------------------------------------------ wire types */

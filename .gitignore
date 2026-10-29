@@ -95,3 +95,6 @@ lint/tmp/
 
 # Android Profiling
 *.hprof
+# Project-private docs (NOT to be published to GitHub)
+docs/README.md
+docs/AGENT_HANDOFF_BRAIN_REGISTRY.md

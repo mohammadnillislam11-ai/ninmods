@@ -48,6 +48,8 @@ struct PlayerData {
     char PlayerName[64];
     short WeaponId;
     int SpecialAbilities;
+    /** Ninlite::PlayerFlags bitmask (KNOCKED/BOT/SPECIAL/VISIBLE). */
+    uint32_t Flags;
 };
 
 struct Response {
@@ -1742,6 +1744,7 @@ inline Response RequestDaemonESP(int screenWidth, int screenHeight) {
         dst.WeaponId = (short)src.weaponId;
         dst.IsCaido = (src.flags & Ninlite::PLAYER_FLAG_KNOCKED) != 0;
         dst.Name = (src.flags & Ninlite::PLAYER_FLAG_BOT) != 0;
+        dst.Flags  = src.flags;  // full bitmask pass-through (includes VISIBLE)
         memset(dst.PlayerName, 0, sizeof(dst.PlayerName));
         strncpy(dst.PlayerName, src.playerName, sizeof(dst.PlayerName) - 1);
         dst.PlayerName[sizeof(dst.PlayerName) - 1] = '\0';
