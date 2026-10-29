@@ -33,18 +33,7 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "ndk.dir=$ANDROID_HOME/ndk/24.0.8215888" >> local.properties
 
-          # Step 1: Compile shared library (libninmods.so) via ndk-build
-          $ANDROID_HOME/ndk/24.0.8215888/ndk-build -C app/src/main/jni APP_ABI=arm64-v8a
-
-          # Step 2: Ensure jniLibs exists for arm64-v8a
-          mkdir -p app/src/main/jniLibs/arm64-v8a
-          LIB_ARM64=$(find app/ -type f -name "libninmods.so" | grep "arm64" | head -n 1)
-          if [ -n "$LIB_ARM64" ]; then
-            echo "Copying libninmods.so to jniLibs from: $LIB_ARM64"
-            cp -f "$LIB_ARM64" app/src/main/jniLibs/arm64-v8a/libninmods.so
-          fi
-
-          # Step 3: Build APK with Gradle
+          # Step 1: Build APK with Gradle (Gradle invokes externalNativeBuild ndkBuild automatically)
           ./gradlew assembleDebug --stacktrace
 
       - name: Sign & Align APK
