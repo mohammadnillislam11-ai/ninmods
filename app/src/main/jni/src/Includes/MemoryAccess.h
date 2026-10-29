@@ -19,6 +19,8 @@
 #include <sys/types.h>
 
 #include "MemoryIO.h"
+#include "EngineChannel.h"
+#include "../Engine/OfficialMemory.h"
 
 /**
  * @brief Reads a single value of the target process through the driver.
@@ -33,7 +35,10 @@ inline T Read(uintptr_t address) {
     if (address == 0) {
         return buf;
     }
-    if (!MemoryIO::ReadBytes(target_pid.load(), address, &buf, sizeof(T))) {
+    bool ok = NinChannel::IsQxActive()
+        ? NinOfficial::ReadBytes(target_pid.load(), address, &buf, sizeof(T))
+        : MemoryIO::ReadBytes(target_pid.load(), address, &buf, sizeof(T));
+    if (!ok) {
         memset(&buf, 0, sizeof(T));
     }
     return buf;
@@ -91,7 +96,9 @@ inline bool Write(uintptr_t address, T value) {
     if (address == 0) {
         return false;
     }
-    return MemoryIO::WriteBytes(target_pid.load(), address, &value, sizeof(T));
+    return NinChannel::IsQxActive()
+        ? NinOfficial::WriteBytes(target_pid.load(), address, &value, sizeof(T))
+        : MemoryIO::WriteBytes(target_pid.load(), address, &value, sizeof(T));
 }
 
 /**
@@ -119,7 +126,9 @@ inline bool WriteBytes(uintptr_t address, const void *data, size_t size) {
     if (address == 0 || data == nullptr) {
         return false;
     }
-    return MemoryIO::WriteBytes(target_pid.load(), address, data, size);
+    return NinChannel::IsQxActive()
+        ? NinOfficial::WriteBytes(target_pid.load(), address, data, size)
+        : MemoryIO::WriteBytes(target_pid.load(), address, data, size);
 }
 
 /**
@@ -134,7 +143,9 @@ inline bool ReadBytes(uintptr_t address, void *buffer, size_t size) {
     if (size == 0 || buffer == nullptr || address == 0) {
         return false;
     }
-    return MemoryIO::ReadBytes(target_pid.load(), address, buffer, size);
+    return NinChannel::IsQxActive()
+        ? NinOfficial::ReadBytes(target_pid.load(), address, buffer, size)
+        : MemoryIO::ReadBytes(target_pid.load(), address, buffer, size);
 }
 
 /**

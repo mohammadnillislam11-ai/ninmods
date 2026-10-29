@@ -1,7 +1,7 @@
 #include "Detection/GameDetection.h"
 #include "Includes/Logger.h"
 #include "Includes/EngineChannel.h"
-#include "Engine/DaemonLink.h"
+// DaemonLink removed - direct Linux proc detection
 
 #include <jni.h>
 #include <cstdio>
@@ -136,22 +136,8 @@ static GameProcess ScanProcessInternal() {
      * by the root daemon over IPC.
      * If RT channel is active, process detection is performed directly
      * via the POSIX /proc filesystem. */
-    if (NinChannel::IsQxActive()) {
-        pid_t daemonPid = 0;
-        bool daemonIsMax = false;
-        NinEngine::DaemonLink::Instance().RequestDetect();
-        if (NinEngine::DaemonLink::Instance().GetDetect(daemonPid, daemonIsMax)) {
-            if (daemonPid > 0 && IsProcessAlive(daemonPid)) {
-                result.pid = daemonPid;
-                result.isMax = daemonIsMax;
-                result.packageName = daemonIsMax ? kPkgMax : kPkgNormal;
-                result.gameTitle = daemonIsMax ? "Free Fire MAX" : "Free Fire Normal";
-                result.isDetected = true;
-                return result;
-            }
-        }
-        return result;
-    }
+    /* Both modes (Kernel Driver & Direct Syscall) resolve game PID via fast direct Linux /proc inspection.
+     * Zero socket delay, instant discovery matching ZqwClient architecture. */
 
     // RT Channel: Official Linux POSIX /proc filesystem scan
     const char *packages[] = {kPkgNormal, kPkgMax, kPkgIndia};

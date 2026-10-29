@@ -4,7 +4,7 @@
 #include "Includes/Utils.h"
 #include "Includes/MemoryIO.h"
 #include "Includes/obfuscate.h"
-#include "Engine/DaemonLink.h"
+// DaemonLink removed
 
 #include <string>
 #include <vector>
@@ -57,7 +57,7 @@ static std::string BuildEngineStatus() {
     std::string status = "Engine: ";
     status += MemoryIO::DescribeChannel();
     status += " | QX Daemon: ";
-    status += NinEngine::DaemonLink::Instance().IsConnected() ? "connected" : "not running";
+    status += "Direct Internal";
 
     pid_t pid = target_pid.load(std::memory_order_relaxed);
     if (pid <= 0) {

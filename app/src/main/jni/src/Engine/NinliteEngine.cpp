@@ -128,13 +128,7 @@ bool CheckEmulatorDetected() {
  * @return the connection mode for the UI and the logs
  */
 const char *GetConnectionModeStr() {
-    if (isNinLiteDaemonAvailable() || g_ninlite_engine_started.load(std::memory_order_relaxed)) {
-        return "QX Root Daemon (IPC)";
-    }
-    if (g_ninlite_starting.load(std::memory_order_relaxed)) {
-        return "QX Root Daemon (starting)";
-    }
-    return "QX Root Daemon (not running)";
+    return "Internal Engine (Direct Syscall svc #0)";
 }
 
 /**
@@ -243,7 +237,7 @@ void StartEngine(const std::string &nativeLibDir) {
                                        std::to_string(rc) + ")";
             }
 
-            NinEngine::DaemonLink::Instance().EnsureStarted();
+            // DaemonLink removed
             SyncFeature(Ninlite::MODE_INIT, true, 0);
             SyncFeature(Ninlite::MODE_MASTER, true, 0);
             NIN_LOGI("QX", "Root daemon launched and IPC worker engaged permanently (zero timer)");

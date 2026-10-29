@@ -78,7 +78,7 @@ inline bool IsRtActive() {
  * @return the channel name for the UI and the logs
  */
 inline const char *DescribeActiveChannel() {
-    return IsQxActive() ? "QX (root daemon, IPC)" : "RT (Ring-0 kernel driver)";
+    return IsQxActive() ? "Internal Engine (Direct Syscall)" : "RT/QX (Ring-0 Kernel Driver)";
 }
 
 } // namespace NinChannel

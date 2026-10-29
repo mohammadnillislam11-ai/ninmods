@@ -41,7 +41,7 @@
 
 #include "BooleanClient.h"
 #include "GameEngine.h"
-#include "ninlite_daemon/Namegun.h"
+#include "Includes/Namegun.h"
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
 #include "Detection/GameDetection.h"
@@ -344,29 +344,31 @@ void DrawESP(ESP esp) {
     float adjustedHeadX = headPos.X + totalXAdjust;
 
     if (pEspPlayer.espLinha) {
-      Vector3 lineStart, lineEnd;
-      if (pEspPlayer.lineType == LINE_TOP)
-        lineStart = Vector3(screenWidth / 2, 0, 0);
-      else if (pEspPlayer.lineType == LINE_CENTER)
-        lineStart = Vector3(screenWidth / 2, screenHeight / 2, 0);
-      else
-        lineStart = Vector3(screenWidth / 2, screenHeight, 0);
+      // ZqwClient Pure Tracer Architecture (matches esp.hpp lines 498-505 exactly):
+      // Anchor: top center of screen (g_sw * 0.5f, 0)
+      // Target: Head screen position
+      // Dual-layer anti-aliased glow (4.0f outer glow @ 35% alpha, 1.8f inner core @ 95% alpha)
+      Vector3 anchor = (pEspPlayer.lineType == LINE_BOTTOM)
+                           ? Vector3(screenWidth * 0.5f, screenHeight, 0)
+                           : (pEspPlayer.lineType == LINE_CENTER)
+                                 ? Vector3(screenWidth * 0.5f, screenHeight * 0.5f, 0)
+                                 : Vector3(screenWidth * 0.5f, 0.0f, 0);
 
-      lineEnd = (pEspPlayer.lineType == LINE_BOTTOM)
-                    ? Vector3(adjustedHeadX, boxY + boxHeight, 0)
-                    : Vector3(adjustedHeadX, boxY, 0);
-      // ZqwClient-style Dual Glow anti-aliasing Tracer Line with distance fade
-      float distFactor = 1.0f - (distance / 350.0f);
-      if (distFactor < 0.25f) distFactor = 0.25f;
-      if (distFactor > 1.0f) distFactor = 1.0f;
+      Vector3 targetHead = Vector3(adjustedHeadX, headPos.Y, 0);
 
-      Color glowColor = currentBoxColor;
-      glowColor.a = static_cast<int>(80 * distFactor);
-      esp.DrawLine(glowColor, thickness + 2.5f, lineStart, lineEnd);
+      float aa = 1.0f - (distance / 350.0f);
+      if (aa < 0.25f) aa = 0.25f;
+      if (aa > 1.0f)  aa = 1.0f;
 
-      Color coreColor = currentBoxColor;
-      coreColor.a = static_cast<int>(240 * distFactor);
-      esp.DrawLine(coreColor, thickness, lineStart, lineEnd);
+      // 1. Thick Outer Glow Layer (4.0f width, 0.35f alpha * aa)
+      Color glowCol = currentBoxColor;
+      glowCol.a = static_cast<int>(255.0f * 0.35f * aa);
+      esp.DrawLine(glowCol, 4.0f, anchor, targetHead);
+
+      // 2. Crisp Inner Core Line (1.8f width, 0.95f alpha * aa)
+      Color coreCol = currentBoxColor;
+      coreCol.a = static_cast<int>(255.0f * 0.95f * aa);
+      esp.DrawLine(coreCol, 1.8f, anchor, targetHead);
     }
 
     if (pEspPlayer.espCaixa) {
