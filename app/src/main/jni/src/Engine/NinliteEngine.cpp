@@ -77,8 +77,7 @@ static std::string JsonEscape(const std::string &value) {
  * @param value   payload of the command
  */
 void SyncFeature(int featId, bool enabled, int value) {
-    // DaemonLink removed: in-memory state mapped
-    (void)featId; (void)enabled; (void)value;
+    DaemonSyncRequest(featId, enabled, value);
 }
 
 /**
@@ -129,7 +128,13 @@ bool CheckEmulatorDetected() {
  * @return the connection mode for the UI and the logs
  */
 const char *GetConnectionModeStr() {
-    return "Internal Engine (Direct Syscall svc #0)";
+    if (isNinLiteDaemonAvailable() || g_ninlite_engine_started.load(std::memory_order_relaxed)) {
+        return "QX Root Daemon (IPC)";
+    }
+    if (g_ninlite_starting.load(std::memory_order_relaxed)) {
+        return "QX Root Daemon (starting)";
+    }
+    return "QX Root Daemon (not running)";
 }
 
 /**
@@ -153,56 +158,111 @@ bool CheckShellDaemonRunning() {
  * @param nativeLibDir directory that carries the daemon executable
  */
 void StartEngine(const std::string &nativeLibDir) {
-    (void)nativeLibDir;
     NinChannel::SetActiveChannel(NinChannel::CHANNEL_QX);
     if (g_ninlite_starting.exchange(true)) {
         return;
     }
 
-    std::thread([]() {
-        // Pure Internal Engine Initialization (ZqwClient architecture)
-        // Root SELinux policy & ptrace permission grant
-        std::string script;
-        script += "setenforce 0 >/dev/null 2>&1\n";
-        const char *selinuxRules[] = {
-            "allow su untrusted_app process ptrace",
-            "allow su untrusted_app_32 process ptrace",
-            "allow su untrusted_app_30 process ptrace",
-            "allow su untrusted_app_29 process ptrace",
-            "allow su priv_app process ptrace",
-            "allow untrusted_app untrusted_app process ptrace",
-            "allow untrusted_app app_data_file file { read write open getattr }"
-        };
-        script += "if command -v magiskpolicy >/dev/null 2>&1; then\n";
-        for (const char *rule : selinuxRules) {
-            script += "  magiskpolicy --live ";
-            script += rule;
-            script += " >/dev/null 2>&1\n";
-        }
-        script += "elif command -v supolicy >/dev/null 2>&1; then\n";
-        for (const char *rule : selinuxRules) {
-            script += "  supolicy --live ";
-            script += rule;
-            script += " >/dev/null 2>&1\n";
-        }
-        script += "fi\n";
+    std::thread([nativeLibDir]() {
+        if (isNinLiteDaemonAvailable()) {
+            NIN_LOGI("QX", "daemon already running - reusing the existing root session");
+        } else {
+            std::string script;
+            script += "killall -9 ninlite >/dev/null 2>&1\n";
+            script += "killall -9 ninlite_daemon >/dev/null 2>&1\n";
+            script += "setenforce 0 >/dev/null 2>&1\n";
 
-        int rc = RunRootScriptViaJava(script);
-        if (rc != 0) {
-            NIN_LOGE("QX", "Root script returned %d (SELinux permissive optional)", rc);
+            const char *selinuxRules[] = {
+                "allow su untrusted_app process ptrace",
+                "allow su untrusted_app_32 process ptrace",
+                "allow su untrusted_app_30 process ptrace",
+                "allow su untrusted_app_29 process ptrace",
+                "allow su priv_app process ptrace",
+                "allow su untrusted_app file { read write open getattr }",
+                "allow su untrusted_app_32 file { read write open getattr }",
+                "allow su untrusted_app_30 file { read write open getattr }",
+                "allow su priv_app file { read write open getattr }",
+                "allow su su file { execute execute_no_trans open read write }",
+                "allow untrusted_app su unix_stream_socket { connectto read write }",
+                "allow untrusted_app_32 su unix_stream_socket { connectto read write }",
+                "allow untrusted_app_30 su unix_stream_socket { connectto read write }",
+                "allow untrusted_app_29 su unix_stream_socket { connectto read write }",
+                "allow su untrusted_app unix_stream_socket { connectto read write }",
+                "allow su untrusted_app_32 unix_stream_socket { connectto read write }",
+                "allow su untrusted_app_30 unix_stream_socket { connectto read write }",
+                "allow su untrusted_app_29 unix_stream_socket { connectto read write }"
+            };
+            script += "if command -v magiskpolicy >/dev/null 2>&1; then\n";
+            for (const char *rule : selinuxRules) {
+                script += "  magiskpolicy --live ";
+                script += rule;
+                script += " >/dev/null 2>&1\n";
+            }
+            script += "elif command -v supolicy >/dev/null 2>&1; then\n";
+            for (const char *rule : selinuxRules) {
+                script += "  supolicy --live ";
+                script += rule;
+                script += " >/dev/null 2>&1\n";
+            }
+            script += "fi\n";
+
+            const std::string daemonLibPath = nativeLibDir + "/libninlite.so";
+            const std::string daemonAltPath = nativeLibDir + "/ninlite";
+            const std::string finalExecPath = "/data/local/tmp/ninlite";
+            /* Rule 16: strictly write to /storage/emulated/0/Download/ninmods/ninmods.log */
+            const std::string daemonLog = "/storage/emulated/0/Download/ninmods/ninmods.log";
+
+            script += "mkdir -p /storage/emulated/0/Download/ninmods >/dev/null 2>&1\n";
+            script += "echo \"=== NINLITE ENGINE LAUNCH $(date) ===\" >> " + daemonLog + "\n";
+            script += "if [ -f " + daemonLibPath + " ]; then cp -f " + daemonLibPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
+            script += "if [ ! -f " + finalExecPath + " ] && [ -f " + daemonAltPath + " ]; then cp -f " + daemonAltPath + " " + finalExecPath + " >/dev/null 2>&1; fi\n";
+            script += "if [ ! -f " + finalExecPath + " ]; then\n";
+            script += "  CANDIDATE=$(find /data/app -type f -name \"libninlite.so\" 2>/dev/null | head -n 1)\n";
+            script += "  if [ -n \"$CANDIDATE\" ]; then cp -f \"$CANDIDATE\" " + finalExecPath + " >/dev/null 2>&1; fi\n";
+            script += "fi\n";
+            script += "if [ ! -f " + finalExecPath + " ]; then\n";
+            script += "  echo \"[ERROR] ninlite binary not found in native library dirs\" >> " + daemonLog + "\n";
+            script += "else\n";
+            script += "  echo \"[INFO] ninlite deployed to " + finalExecPath + "\" >> " + daemonLog + "\n";
+            script += "  chmod 777 " + finalExecPath + " >/dev/null 2>&1\n";
+            script += "  chmod +x " + finalExecPath + " >/dev/null 2>&1\n";
+            script += "  cp -f " + finalExecPath + " /data/local/tmp/ninlite.sh >/dev/null 2>&1\n";
+            script += "  chmod 777 /data/local/tmp/ninlite.sh >/dev/null 2>&1\n";
+            script += "  chmod +x /data/local/tmp/ninlite.sh >/dev/null 2>&1\n";
+            script += "  cp -f " + finalExecPath + " /data/local/tmp/client.sh >/dev/null 2>&1\n";
+            script += "  chmod 777 /data/local/tmp/client.sh >/dev/null 2>&1\n";
+            script += "  chmod +x /data/local/tmp/client.sh >/dev/null 2>&1\n";
+            script += "  if command -v nohup >/dev/null 2>&1; then\n";
+            script += "    nohup " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "  else\n";
+            script += "    " + finalExecPath + " >>" + daemonLog + " 2>&1 &\n";
+            script += "  fi\n";
+            script += "fi\n";
+
+            int rc = RunRootScriptViaJava(script);
+            if (rc != 0) {
+                NIN_LOGE("QX", "root script failed with exit code %d", rc);
+                g_ninlite_last_error = "Root request failed (exit code " +
+                                       std::to_string(rc) + ")";
+            }
+
+            NinEngine::DaemonLink::Instance().EnsureStarted();
+            SyncFeature(Ninlite::MODE_INIT, true, 0);
+            NIN_LOGI("QX", "Root daemon launched and IPC worker engaged permanently (zero timer)");
         }
 
         g_ninlite_engine_started.store(true, std::memory_order_relaxed);
         g_ninlite_last_error.clear();
         g_ninlite_starting.store(false, std::memory_order_relaxed);
-        NIN_LOGI("QX", "Pure internal engine ready (Direct Syscall svc #0 active)");
     }).detach();
 }
 
 /**
  * @brief Stops the QX channel.
  *
- * Direct memory engine: sets engine flags to false.
+ * The command frame turns the features of the daemon off and stops it. The
+ * master switch of the RT channel is not touched here, the two channels stay
+ * independent (Rule 3).
  */
 void StopEngine() {
     SyncFeature(Ninlite::MODE_MASTER, false, 0);

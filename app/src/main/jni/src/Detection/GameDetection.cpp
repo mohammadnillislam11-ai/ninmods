@@ -1,10 +1,7 @@
-#include <atomic>
-extern std::atomic<pid_t> target_pid;
-#include "../Engine/OfficialMemory.h"
-#include "Detection/GameDetection.h"
+﻿#include "Detection/GameDetection.h"
 #include "Includes/Logger.h"
 #include "Includes/EngineChannel.h"
-// DaemonLink removed - direct Linux proc detection
+#include "Engine/DaemonLink.h"
 
 #include <jni.h>
 #include <cstdio>
@@ -98,11 +95,7 @@ static bool CheckProcCmdline(pid_t pid, const char *pkgName) {
 bool IsProcessAlive(pid_t pid) {
     if (pid <= 0) return false;
     if (kill(pid, 0) == 0) return true;
-    if (errno == EPERM) return true;
-    // Android SELinux /proc liveness check
-    char p[32];
-    snprintf(p, sizeof(p), "/proc/%d", static_cast<int>(pid));
-    return (access(p, F_OK) == 0);
+    return (errno == EPERM);
 }
 
 pid_t FindPidByProcFs(const char *packageName) {
@@ -138,57 +131,41 @@ pid_t FindPidByProcFs(const char *packageName) {
 static GameProcess ScanProcessInternal() {
     GameProcess result;
 
-    // 1. Direct Syscall FastScan (Bypasses /proc SELinux restrictions via direct raw syscall svc #0 getdents64)
-    bool isMax = false;
-    pid_t fastPid = NinOfficial::FastScanPid(isMax);
-    if (fastPid > 0) {
-        result.pid = fastPid;
-        result.isMax = isMax;
-        result.packageName = isMax ? "com.dts.freefiremax" : "com.dts.freefireth";
-        result.gameTitle = isMax ? "Free Fire MAX" : "Free Fire Normal";
-        result.isDetected = true;
-        target_pid.store(fastPid, std::memory_order_relaxed);
+    /* Rule 3 (Strict Driver Isolation):
+     * If QX channel is active, process detection is performed exclusively
+     * by the root daemon over IPC.
+     * If RT channel is active, process detection is performed directly
+     * via the POSIX /proc filesystem. */
+    if (NinChannel::IsQxActive()) {
+        pid_t daemonPid = 0;
+        bool daemonIsMax = false;
+        NinEngine::DaemonLink::Instance().RequestDetect();
+        if (NinEngine::DaemonLink::Instance().GetDetect(daemonPid, daemonIsMax)) {
+            if (daemonPid > 0 && IsProcessAlive(daemonPid)) {
+                result.pid = daemonPid;
+                result.isMax = daemonIsMax;
+                result.packageName = daemonIsMax ? kPkgMax : kPkgNormal;
+                result.gameTitle = daemonIsMax ? "Free Fire MAX" : "Free Fire Normal";
+                result.isDetected = true;
+                return result;
+            }
+        }
         return result;
     }
 
-    // 2. High-speed pidof query fallback (100% works across all Android versions 10-16 under root)
+    // RT Channel: Official Linux POSIX /proc filesystem scan
     const char *packages[] = {kPkgNormal, kPkgMax, kPkgIndia};
     bool isMaxFlags[]      = {false, true, false};
     const char *titles[]   = {"Free Fire Normal", "Free Fire MAX", "Free Fire India"};
 
     for (int i = 0; i < 3; ++i) {
-        char cmd[128];
-        snprintf(cmd, sizeof(cmd), "pidof %s 2>/dev/null", packages[i]);
-        FILE *fp = popen(cmd, "r");
-        if (fp) {
-            char pidBuf[32] = {0};
-            if (fgets(pidBuf, sizeof(pidBuf) - 1, fp)) {
-                pid_t shellPid = static_cast<pid_t>(atoi(pidBuf));
-                if (shellPid > 0) {
-                    pclose(fp);
-                    result.pid = shellPid;
-                    result.isMax = isMaxFlags[i];
-                    result.packageName = packages[i];
-                    result.gameTitle = titles[i];
-                    result.isDetected = true;
-                    target_pid.store(shellPid, std::memory_order_relaxed);
-                    return result;
-                }
-            }
-            pclose(fp);
-        }
-    }
-
-    // 3. POSIX /proc directory scan fallback
-    for (int i = 0; i < 3; ++i) {
         pid_t pid = FindPidByProcFs(packages[i]);
-        if (pid > 0 && IsProcessAlive(pid)) {
+        if (IsProcessAlive(pid)) {
             result.pid = pid;
             result.isMax = isMaxFlags[i];
             result.packageName = packages[i];
             result.gameTitle = titles[i];
             result.isDetected = true;
-            target_pid.store(pid, std::memory_order_relaxed);
             return result;
         }
     }

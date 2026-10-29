@@ -1,4 +1,4 @@
-#if __has_include(<EGL/egl.h>)
+﻿#if __has_include(<EGL/egl.h>)
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #else
@@ -41,7 +41,7 @@
 
 #include "BooleanClient.h"
 #include "GameEngine.h"
-#include "Includes/Namegun.h"
+#include "ninlite_daemon/Namegun.h"
 #include "Includes/Logger.h"
 #include "Includes/Utils.h"
 #include "Detection/GameDetection.h"
@@ -159,7 +159,8 @@ void DrawESP(ESP esp) {
   }
 
   bool anyAimActive = pPlayer.silen4a || pPlayer.aimbot || pPlayer.aimbotlock || pPlayer.aimMagnet;
-  if (anyAimActive && showFOVCircle && pPlayer.AimFov > 0) {
+  if (Actived.activar && anyAimActive && showFOVCircle &&
+      pPlayer.AimFov > 0) {
     DrawFOVCircle(esp, pPlayer.AimFov, pEspPlayer.espColor);
   }
 
@@ -171,7 +172,7 @@ void DrawESP(ESP esp) {
     return;
 
   // Draw Live Threat Counter HUD once per frame if enabled
-  if (pEspPlayer.espDrawCount || pEspPlayer.espCount) {
+  if (Actived.activar && (pEspPlayer.espDrawCount || pEspPlayer.espCount)) {
     const bool showOnScreen = response.VisibleEnemyCount > 0;
     const bool showNearScreen = response.VisibleNearOffScreenEnemyCount > 0;
     const bool showProximity = response.ProximityEnemyCount > 0;
@@ -295,7 +296,8 @@ void DrawESP(ESP esp) {
     auto player = response.Players[i];
     if (player.Head.Z <= 0.0f)
       continue;
-    // Individual feature flags below determine what to draw
+    if (!Actived.activar)
+      continue;
 
     Vector3 headPos = player.Head;
     Vector3 toePos = player.Toe;
@@ -303,9 +305,7 @@ void DrawESP(ESP esp) {
       toePos = headPos;
 
     float distance = player.Distancia;
-    float aimDist = pPlayer.AimDistance.load(std::memory_order_relaxed);
-    float maxEspDist = (aimDist > 50.0f) ? aimDist : 350.0f;
-    if (distance < 0.1f || distance > maxEspDist)
+    if (distance < 0.1f || distance > 150.0f)
       continue;
 
     // Dynamic distance scaling for clean visuals
@@ -324,51 +324,28 @@ void DrawESP(ESP esp) {
     float boxY = headPos.Y - (boxHeight * 0.12f);
     float boxX = headPos.X - (width / 2.0f) + totalXAdjust;
 
-    /* ZqwClient-style visible / non-visible colour split.
-     * Visible (on-screen): use espColor (default cyan/user choice).
-     * Not visible (off-screen): slightly desaturated, dimmer tint.
-     * Knocked: always Red regardless of visibility. Bot: Red. */
-    bool isPlayerVisible = (player.Flags & Ninlite::PLAYER_FLAG_VISIBLE) != 0;
-    bool isPlayerKnocked = player.IsCaido; // mapped from PLAYER_FLAG_KNOCKED by GameEngine
-
-    Color visibleColor  = pEspPlayer.espColor;             // on-screen colour (user's choice)
-    Color offColor      = Color(100, 210, 255, 200);       // off-screen: muted cyan
-    Color currentBoxColor = isPlayerVisible ? visibleColor : offColor;
-
+    Color currentBoxColor = pEspPlayer.espColor;
     if (player.Name)
-      currentBoxColor = Color::Red(); // Bot -> always red
-    if (isPlayerKnocked)
-      currentBoxColor = Color(255, 60, 60, 220); // Knocked -> vivid red
+      currentBoxColor = Color::Red(); // player.Name == true -> bot
+    if (player.IsCaido)
+      currentBoxColor = Color::Red(); // knocked (changed from Yellow to Red)
     Color strokeColor = Color(0, 0, 0, 255);
 
     float adjustedHeadX = headPos.X + totalXAdjust;
 
     if (pEspPlayer.espLinha) {
-      // ZqwClient Pure Tracer Architecture (matches esp.hpp lines 498-505 exactly):
-      // Anchor: top center of screen (g_sw * 0.5f, 0)
-      // Target: Head screen position
-      // Dual-layer anti-aliased glow (4.0f outer glow @ 35% alpha, 1.8f inner core @ 95% alpha)
-      Vector3 anchor = (pEspPlayer.lineType == LINE_BOTTOM)
-                           ? Vector3(screenWidth * 0.5f, screenHeight, 0)
-                           : (pEspPlayer.lineType == LINE_CENTER)
-                                 ? Vector3(screenWidth * 0.5f, screenHeight * 0.5f, 0)
-                                 : Vector3(screenWidth * 0.5f, 0.0f, 0);
+      Vector3 lineStart, lineEnd;
+      if (pEspPlayer.lineType == LINE_TOP)
+        lineStart = Vector3(screenWidth / 2, 0, 0);
+      else if (pEspPlayer.lineType == LINE_CENTER)
+        lineStart = Vector3(screenWidth / 2, screenHeight / 2, 0);
+      else
+        lineStart = Vector3(screenWidth / 2, screenHeight, 0);
 
-      Vector3 targetHead = Vector3(adjustedHeadX, headPos.Y, 0);
-
-      float aa = 1.0f - (distance / 350.0f);
-      if (aa < 0.25f) aa = 0.25f;
-      if (aa > 1.0f)  aa = 1.0f;
-
-      // 1. Thick Outer Glow Layer (4.0f width, 0.35f alpha * aa)
-      Color glowCol = currentBoxColor;
-      glowCol.a = static_cast<int>(255.0f * 0.35f * aa);
-      esp.DrawLine(glowCol, 4.0f, anchor, targetHead);
-
-      // 2. Crisp Inner Core Line (1.8f width, 0.95f alpha * aa)
-      Color coreCol = currentBoxColor;
-      coreCol.a = static_cast<int>(255.0f * 0.95f * aa);
-      esp.DrawLine(coreCol, 1.8f, anchor, targetHead);
+      lineEnd = (pEspPlayer.lineType == LINE_BOTTOM)
+                    ? Vector3(adjustedHeadX, boxY + boxHeight, 0)
+                    : Vector3(adjustedHeadX, boxY, 0);
+      esp.DrawLine(currentBoxColor, thickness, lineStart, lineEnd);
     }
 
     if (pEspPlayer.espCaixa) {
@@ -835,10 +812,9 @@ Java_com_ninmods_main_core_NativeBridge_closeOverlay(JNIEnv *env,
  * a feature flag / slider.
  */
 static void SyncWithNinLiteDaemon(int mode, bool isOn, int value) {
-  // Pure internal engine mode: Daemon removed, settings mapped directly in-memory
-  (void)mode;
-  (void)isOn;
-  (void)value;
+  /* Non-blocking: the DaemonLink worker owns the socket and coalesces the
+   * newest value per mode. The menu thread never waits for the daemon. */
+  NinEngine::DaemonLink::Instance().PushControl(mode, isOn, value);
 }
 
 /* The selected silent aim target (0 = Legit, 1 = Head, 2 = Chest, 3 = Neck).
@@ -880,6 +856,17 @@ void NinFeatureSetState(int featId, bool bState) {
   // ESP Features
   case 1:
     SetEspMasterSwitch(bState);
+    if (!bState) {
+      /* Master off: every ESP sub feature goes with it. */
+      pEspPlayer.espCaixa = false;
+      pEspPlayer.espSkeleton = false;
+      pEspPlayer.espLinha = false;
+      pEspPlayer.espHealth = false;
+      pEspPlayer.espName = false;
+      pEspPlayer.espDistance = false;
+      pEspPlayer.espDrawCount = false;
+      pEspPlayer.espIden360 = false;
+    }
     break;
   case 2:
     pEspPlayer.espCaixa = bState;
@@ -929,7 +916,6 @@ void NinFeatureSetState(int featId, bool bState) {
      * classic menu switch changed the app side only, while the Daemon (the
      * component that actually moves the aim) never heard about it. */
     SyncWithNinLiteDaemon(Ninlite::MODE_SILENT, bState, 0);
-    if (bState) SetEspMasterSwitch(true);
     break;
   case 23:
     pPlayer.aimMagnet = bState;
@@ -1410,11 +1396,13 @@ jclass g_NativeBridgeClassRef = nullptr;
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getMemoryAccessMode(JNIEnv *env, jclass clazz) {
   (void) clazz;
-  if (NinChannel::IsQxActive()) {
-    return env->NewStringUTF("Direct Syscall svc #0 (Pure Internal)");
-  }
+  /* The mode must describe the channel that is really active: the verified
+   * Ring-0 driver of the app or the QX daemon of the root process. */
   if (MemoryIO::IsDriverReady()) {
     return env->NewStringUTF("Ring-0 Kernel Driver (IOCTL)");
+  }
+  if (NinliteEngine::CheckShellDaemonRunning()) {
+    return env->NewStringUTF("Root Daemon (IPC, process_vm_readv)");
   }
   return env->NewStringUTF("Not connected");
 }
