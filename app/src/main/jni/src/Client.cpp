@@ -1410,13 +1410,11 @@ jclass g_NativeBridgeClassRef = nullptr;
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_ninmods_main_core_NativeBridge_getMemoryAccessMode(JNIEnv *env, jclass clazz) {
   (void) clazz;
-  /* The mode must describe the channel that is really active: the verified
-   * Ring-0 driver of the app or the QX daemon of the root process. */
+  if (NinChannel::IsQxActive()) {
+    return env->NewStringUTF("Direct Syscall svc #0 (Pure Internal)");
+  }
   if (MemoryIO::IsDriverReady()) {
     return env->NewStringUTF("Ring-0 Kernel Driver (IOCTL)");
-  }
-  if (NinliteEngine::CheckShellDaemonRunning()) {
-    return env->NewStringUTF("Root Daemon (IPC, process_vm_readv)");
   }
   return env->NewStringUTF("Not connected");
 }

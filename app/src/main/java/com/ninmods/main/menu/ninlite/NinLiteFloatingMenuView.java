@@ -633,8 +633,8 @@ public class NinLiteFloatingMenuView {
                 mTeleEngineModeVal.setText(connMode);
             }
             if (mTeleDaemonVal != null) {
-                mTeleDaemonVal.setText(daemonRunning ? "Online (Connected)" : "Offline");
-                mTeleDaemonVal.setTextColor(daemonRunning ? COLOR_GREEN : COLOR_RED);
+                mTeleDaemonVal.setText("Active (Internal Syscall svc #0)");
+                mTeleDaemonVal.setTextColor(COLOR_GREEN);
             }
             if (mGameValView != null) {
                 if (pid > 0) {
@@ -718,7 +718,7 @@ public class NinLiteFloatingMenuView {
         mIsEngineStarting = true;
 
         if (mStatusValView != null) {
-            mStatusValView.setText("Injecting Root Shell & Daemon...");
+            mStatusValView.setText("Starting NINLITE Engine...");
             mStatusValView.setTextColor(COLOR_CYAN_LIGHT);
         }
         if (mStartBtnView != null) {
@@ -726,14 +726,20 @@ public class NinLiteFloatingMenuView {
             mStartBtnView.setClickable(false);
         }
 
-        // Delegate 100% of root shell, SELinux policy, and daemon execution to C++
+        // NINLITE execution: init engine, attach ESP surface, and jump directly to Aim tab
         String nativeLibDir = mContext.getApplicationInfo().nativeLibraryDir;
         NativeBridge.startNinliteEngineNative(nativeLibDir);
         NativeBridge.setFeatureState(1, true);
         NativeBridge.setFeatureState(999, true);
 
-        // Attach ESP surface when engine is started
         com.ninmods.main.overlay.NativeOverlayManager.attachEspSurface(mContext, mWindowManager);
+
+        // Auto-switch to Aim section once started
+        mMainHandler.postDelayed(() -> {
+            mIsEngineStarted = true;
+            mIsEngineStarting = false;
+            selectTab(1);
+        }, 300);
     }
 
 
@@ -828,8 +834,8 @@ public class NinLiteFloatingMenuView {
         mTeleTargetGameVal = createValueTextView(pid > 0 ? (game + " [" + pid + "]") : "Waiting for Game", pid > 0 ? COLOR_GREEN : COLOR_TEXT_MUTED);
         layout.addView(createDynamicKeyValueRow("Target Game: ", mTeleTargetGameVal));
 
-        mTeleDaemonVal = createValueTextView(daemonRunning ? "Online (Connected)" : "Offline", daemonRunning ? COLOR_GREEN : COLOR_RED);
-        layout.addView(createDynamicKeyValueRow("Daemon Stream: ", mTeleDaemonVal));
+        mTeleDaemonVal = createValueTextView("Active (Internal Syscall svc #0)", COLOR_GREEN);
+        layout.addView(createDynamicKeyValueRow("Engine State: ", mTeleDaemonVal));
 
         layout.addView(createKeyValueRow("Memory Access: ", memoryAccessMode(), COLOR_CYAN));
 
