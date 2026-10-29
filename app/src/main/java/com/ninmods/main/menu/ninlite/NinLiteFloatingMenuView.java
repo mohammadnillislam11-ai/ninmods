@@ -781,6 +781,7 @@ public class NinLiteFloatingMenuView {
         layout.setOrientation(LinearLayout.VERTICAL);
 
         layout.addView(createSectionHeaderTitle("ESP Visuals"));
+        layout.addView(createCircleCheckboxRow("ESP Master", FeatureCatalog.ESP_MASTER));
         /* The classic overlay menu drives the very same engine flags under
          * different numeric ids (2/4/5/7/6 instead of 111..115). Both menus
          * now use the shared FeatureCatalog, so one flag can no longer be

@@ -674,8 +674,7 @@ static void CreateDataList(Ninlite::Response& res) {
     res.visibleNearOffScreenEnemyCount = 0;
     res.proximityEnemyCount = 0;
 
-    bool anyFeatureActive = Actived.activar || pPlayer.silen4a || pPlayer.aimhard || pPlayer.aimbotlock;
-    if (!anyFeatureActive) return;
+    if (!Actived.activar) return;
     if (!GameStillAlive() && !AttachToGame()) return;
     uintptr_t libBase = g_libAddress.load(std::memory_order_relaxed);
     if (libBase == 0) return;
