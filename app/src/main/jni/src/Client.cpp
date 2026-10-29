@@ -835,9 +835,10 @@ Java_com_ninmods_main_core_NativeBridge_closeOverlay(JNIEnv *env,
  * a feature flag / slider.
  */
 static void SyncWithNinLiteDaemon(int mode, bool isOn, int value) {
-  /* Non-blocking: the DaemonLink worker owns the socket and coalesces the
-   * newest value per mode. The menu thread never waits for the daemon. */
-  NinEngine::DaemonLink::Instance().PushControl(mode, isOn, value);
+  // Pure internal engine mode: Daemon removed, settings mapped directly in-memory
+  (void)mode;
+  (void)isOn;
+  (void)value;
 }
 
 /* The selected silent aim target (0 = Legit, 1 = Head, 2 = Chest, 3 = Neck).

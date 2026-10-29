@@ -1675,12 +1675,12 @@ inline void EnsureSceneWorkerStarted() {
 /* The daemon socket lives in Engine/DaemonLink.h - ONE worker thread owns it.
  * Nothing in this file touches the socket or waits for it any more. */
 inline bool isNinLiteDaemonAvailable() {
-    return NinEngine::DaemonLink::Instance().IsConnected();
+    return target_pid.load(std::memory_order_relaxed) > 0;
 }
 
 /* Queues a control frame for the daemon. Never blocks. */
 inline bool DaemonSyncRequest(int mode, bool enabled, int value) {
-    NinEngine::DaemonLink::Instance().PushControl(mode, enabled, value);
+    // DaemonLink removed
     return true;
 }
 
@@ -1696,10 +1696,10 @@ inline bool DaemonSyncRequest(int mode, bool enabled, int value) {
  * @return true when the Daemon answered
  */
 inline bool RequestDaemonDetect(pid_t &outPid, bool &outIsMax) {
-    NinEngine::DaemonLink::Instance().RequestDetect();
+    // DaemonLink removed
     outPid = 0;
     outIsMax = false;
-    return NinEngine::DaemonLink::Instance().GetDetect(outPid, outIsMax);
+    return target_pid.load(std::memory_order_relaxed) > 0;
 }
 
 // RequestDaemonESP removed - direct CreateDataList used
@@ -1756,5 +1756,5 @@ inline void StopMemoryWorkersForChannelSwitch() {
         std::lock_guard<std::mutex> lock(g_engineTransactionMutex);
         s_cachedResponse = Response{};
     }
-    NinEngine::DaemonLink::Instance().PushControl(Ninlite::MODE_MASTER, false, 0);
-}
+    // DaemonLink removed
+}
