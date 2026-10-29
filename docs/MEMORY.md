@@ -82,11 +82,25 @@ setenforce 0
 
 ---
 
-## 3. Root Daemon IPC Mode (`ninlite` - QX Channel)
+## 3. Root Daemon IPC Mode (`ninlite` - QX Channel) & Android Sandbox Isolation
 
-`ninlite` is designed for high-performance zero-injection memory inspection using a standalone root daemon process (`ninlite_daemon`):
-- **Communication Channel**: Abstract UNIX domain socket `@ninlite_ipc`.
-- **System Memory Operation**: Official Linux kernel syscall `process_vm_readv` (Syscall number 270 on AArch64, 376 on ARMv7).
+### Android Sandbox Security Reality (Why `.sh` / Root Binary Is Strictly Required)
+* **UID/DAC Boundary**: Under standard Android security, every app runs under its own unique Linux UID (e.g. `u0_a215`). An untrusted application process (`untrusted_app`) is blocked by Linux DAC and Android SELinux from reading or inspecting the memory of another application (the game running under `u0_a310`).
+* **Direct Syscall Restriction**: Issuing raw inline assembly syscalls (`svc #0` / `process_vm_readv` Syscall 270) directly from within the app process fails with `EPERM` (Operation Not Permitted) because the calling process lacks `ptrace` rights over target processes under other UIDs.
+* **Architecture Solution (`client.sh` / Standalone Root Executable)**:
+  - `ninlite` is compiled as a standalone root executable binary (`LOCAL_MODULE := ninlite` in `Android.mk`).
+  - When the user taps **[ Start ]** in the NINLITE floating menu, the app executes the root launcher via SuperUser:
+    ```sh
+    su -c /data/local/tmp/client.sh
+    # which executes the deployed standalone binary at /data/local/tmp/ninlite
+    ```
+  - Running under **UID 0 (Root)** completely bypasses the UID DAC boundary. The binary can scan `/proc` entries, detect game PIDs across Android 10-16, and execute `process_vm_readv` (Syscall 270) with genuine kernel permissions.
+  - The root binary hosts an abstract UNIX domain socket (`AF_UNIX`). The separate Floating Menu UI connects to this socket via `DaemonLink` to receive live game telemetry (PID, title, entities) and send feature toggles in real time.
+
+### Technical Specifications
+- **Daemon Executable Deployment**: Deployed to `/data/local/tmp/ninlite` and symlinked/copied as `/data/local/tmp/client.sh`.
+- **Communication Channel**: Abstract UNIX domain socket matching STORM_MODS / proven Linux IPC standards.
+- **System Memory Operation**: Official Linux kernel syscall `process_vm_readv` (Syscall number 270 on AArch64, 376 on ARMv7) running under UID 0.
 - **Security Boundary**: Zero library injection into the game process address space. Both anti-cheat and process integrity remain completely untouched.
 
 ### Verified Physical Device Evidence (`ninmods.log`)
